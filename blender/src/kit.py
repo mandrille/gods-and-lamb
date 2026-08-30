@@ -89,9 +89,9 @@ def init_materials():
         "dirt":       flat("Dirt", (0.460, 0.270, 0.130), 0.66),
         "dirt_dark":  flat("DirtDark", (0.300, 0.170, 0.085), 0.68),
         "soil":       flat("Soil", (0.330, 0.200, 0.120), 0.74),
-        "sand":       flat("Sand", (0.900, 0.800, 0.520), 0.66),
-        "stone":      flat("Stone", (0.600, 0.610, 0.620), 0.60),
-        "stone_dark": flat("StoneDark", (0.420, 0.430, 0.450), 0.62),
+        "sand":       flat("Sand", (0.910, 0.760, 0.400), 0.66),
+        "stone":      flat("Stone", (0.640, 0.618, 0.575), 0.60),
+        "stone_dark": flat("StoneDark", (0.450, 0.430, 0.400), 0.62),
         # Water is OPAQUE. A transparent surface over a modelled bed costs a
         # second draw and an alpha sort on a mobile GPU, for a pond seen from
         # forty degrees. Colour does the job.

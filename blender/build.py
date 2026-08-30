@@ -20,8 +20,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
 ASSETS = os.path.join(ROOT, "assets")
 OUT = os.path.join(ROOT, "out")
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+# assets/_kit holds shared ASSET helpers -- geometry that defines what a tile
+# or a plant IS, as opposed to the machinery in src/. It is on the path rather
+# than in src/ because it is art: changing it restyles the world.
+KIT = os.path.join(ROOT, "assets", "_kit")
+for _p in (SRC, KIT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import timing                                                     # noqa: E402
 timing.unbuffer()
@@ -295,6 +300,34 @@ def target_field(rest):
     print("wrote out/look/%s_field_{high,low}.png" % stem)
 
 
+def target_scene(rest):
+    """Build the demo island and render it. The look-dev shot.
+
+    This is the only picture that can answer whether the pieces belong to the
+    same world. A per-asset render tells you an asset is correct; only a scene
+    tells you the cliff, the bank and the canopy agree with each other.
+    """
+    import shot
+    import kit
+    import island
+
+    _fresh_scene()
+    placed = island.build()
+    size = kit.bounds(placed)
+    tris = sum(kit.evaluated_tris(o) for o in placed)
+    meshes = len({o.data.name for o in placed})
+    print("island: %d object(s), %d unique mesh(es), %d tris, "
+          "%.1f x %.1f x %.1f m"
+          % (len(placed), meshes, tris, size[0], size[1], size[2]))
+
+    for name, dirv, fill in (("hero", (-0.80, -1.00, 0.62), 0.92),
+                             ("high", (-0.55, -1.00, 1.05), 0.94),
+                             ("low", (-0.90, -1.00, 0.30), 0.92)):
+        shot.render(os.path.join(OUT, "look", "island_%s.png" % name),
+                    placed, res=(1600, 1000), fill=fill, dirv=dirv)
+    print("wrote out/look/island_{hero,high,low}.png")
+
+
 def target_list(rest):
     import registry
     found = registry.discover(verbose=True)
@@ -335,6 +368,7 @@ TARGETS = {
     "look": target_look,
     "ao": target_ao,
     "field": target_field,
+    "scene": target_scene,
     "measure": target_measure,
     "list": target_list,
     "vocab": target_vocab,

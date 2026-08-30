@@ -12,7 +12,14 @@ fallback quietly disabled a check for weeks because nothing made noise about
 it.
 """
 
-FAMILIES = frozenset()
+FAMILIES = frozenset({
+    'bush',
+    'crop',
+    'ground',
+    'house',
+    'rock',
+    'tree',
+})
 
 # Floor for the selftest ratchet: the number of negative controls that must
 # exist. It may grow, never shrink -- a case cannot silently disappear.
