@@ -72,7 +72,7 @@ def _check_declaration(path, mod, decl, seen):
     if decl["cls"] not in CLASSES:
         raise SystemExit("FAIL: %s declares cls=%r; known classes are %s."
                          % (rel, decl["cls"], ", ".join(CLASSES)))
-    if vocab.FAMILIES and decl["family"] not in vocab.FAMILIES:
+    if vocab.FAMILIES and not os.environ.get("LAMB_VOCAB_OPEN")             and decl["family"] not in vocab.FAMILIES:
         raise SystemExit(
             "FAIL: %s declares family=%r, which is not in the closed "
             "vocabulary. Reuse an existing family and take a fresh variant if "
@@ -110,6 +110,15 @@ def discover(verbose=False):
         print("[VOCAB] OPEN - src/vocab.py is empty, so any family name is "
               "accepted. Run `build.py -- vocab` once the asset set settles; "
               "verify.assert_names fails the sweep until you do.")
+    elif os.environ.get("LAMB_VOCAB_OPEN"):
+        # The escape hatch for authoring a NEW family. It exists so a closed
+        # vocabulary does not block work, and it is loud so it cannot become
+        # the way the project is normally run: the orchestrator regenerates
+        # with `build.py -- vocab` when the new assets land, and the check is
+        # closed again for everyone else.
+        print("[VOCAB] LAMB_VOCAB_OPEN is set - the closed vocabulary is NOT "
+              "being enforced. Regenerate with `build.py -- vocab` before "
+              "landing anything that relies on this.")
     found = {}
     seen = {}
     for dirpath, dirnames, filenames in os.walk(ASSETS):

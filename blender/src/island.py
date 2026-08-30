@@ -20,45 +20,60 @@ import kit
 import registry
 
 # G grass   D dirt   S stone   P path   W water   A sand   C crop soil   . empty
+#
+# HALF-METRE TILES, so this map is twice the resolution of the 1 m version for
+# the same physical island. Four times the blocks is the point: a hut spans
+# three tiles instead of one and a half, and the ground reads as detail rather
+# than as a handful of slabs.
 LOWER = [
-    "..AAAAAA....",
-    ".AAGGGGAA...",
-    ".AGGGGGGAA..",
-    "AGGGGGGGGA..",
-    "AGGGGGGGGGA.",
-    "AGGGGGGGGGA.",
-    ".AGGGGGGGGA.",
-    ".AAGGGGGGA..",
-    "..AAAAAAA...",
+    "......AAAAAAAA......",
+    "....AAAAAAAAAAAA....",
+    "...AAGGGGGGGGAAAA...",
+    "..AAGGGGGGGGGGGAA...",
+    ".AAGGGGGGGGGGGGGAA..",
+    ".AGGGGGGGGGGGGGGGAA.",
+    "AAGGGGGGGGGGGGGGGGA.",
+    "AGGGGGGGGGGGGGGGGGA.",
+    "AGGGGGGGGGGGGGGGGGA.",
+    "AAGGGGGGGGGGGGGGGGA.",
+    ".AGGGGGGGGGGGGGGGAA.",
+    ".AAGGGGGGGGGGGGGAA..",
+    "..AAGGGGGGGGGGGAA...",
+    "...AAAGGGGGGGAAA....",
+    "....AAAAAAAAAAA.....",
+    "......AAAAAAA.......",
 ]
 
-# The raised inland. Where a tile appears here it sits one block above LOWER,
-# and the exposed side of that block is the cliff face the grass band drapes.
+# The raised inland. Two blocks up, not one: at half scale a single block is a
+# 0.5 m step and reads as a kerb, not as a cliff. The block underneath is
+# filled with FILL so the cliff is solid rather than a floating shelf.
 UPPER = [
-    "............",
-    "............",
-    "...GGG......",
-    "..GGGGG.....",
-    "..GGPPG.....",
-    "..GGPPG.....",
-    "...GGGG.....",
-    "....GG......",
-    "............",
+    "....................",
+    "....................",
+    "....................",
+    "....................",
+    ".....GGGGGG.........",
+    "....GGGGGGGG........",
+    "....GGGGGGGG........",
+    "....GGGPPGGG........",
+    "....GGGPPGGG........",
+    "....GGGGGGGG........",
+    ".....GGGGGG.........",
+    "......GGGG..........",
+    "....................",
+    "....................",
+    "....................",
+    "....................",
 ]
 
 # Water and worked ground are cut into the LOWER layer after the fact, so the
 # island reads as land that has been lived on rather than as a mosaic.
-# The plateau used to reach col 7 and buried most of this, so the first island
-# showed a single blue sliver at the far edge. The cliff was hiding the water,
-# which is exactly the kind of thing only a SCENE render tells you.
-PONDS = [(7, 3), (8, 3),
-         (7, 4), (8, 4), (9, 4),
-         (7, 5), (8, 5), (9, 5),
-         (7, 6), (8, 6)]
-FIELDS = [(3, 7), (4, 7), (5, 7)]
+PONDS = [(c, r) for r in range(5, 11) for c in range(13, 17)
+         if not (r in (5, 10) and c in (13, 16))]
+FIELDS = [(c, r) for r in (11, 12) for c in range(5, 10)]
 # A route off the plateau. Without it the raised inland is an island on an
 # island and the village reads as two unrelated places.
-TRACK = [(5, 6), (5, 7), (4, 2), (5, 2)]
+TRACK = [(8, 11), (8, 12), (8, 13), (9, 11), (7, 3), (8, 3), (7, 2), (8, 2)]
 
 CODE = {
     "G": "Terrain/grass",
@@ -70,31 +85,41 @@ CODE = {
     "C": "Terrain/soil",
 }
 
+# What a cliff is made of under its grass cap.
+FILL = "Terrain/dirt"
+
 # Props, placed by tile coordinate on whichever layer is topmost there.
+# Coordinates are TILE indices, so they doubled with the grid.
 # (asset, col, row, yaw, scale)
 PROPS = [
-    ("Buildings/hut", 4, 4, 0.0, 1.0),
+    ("Buildings/hut", 8, 6, 0.0, 1.0),
     # On the plateau, framing the hut.
-    ("Nature/tree", 3, 3, 24.0, 1.0),
-    ("Nature/tree", 5, 6, -37.0, 0.88),
-    ("Nature/bush", 3, 6, -48.0, 0.95),
-    ("Nature/bush", 5, 2, 80.0, 1.05),
+    ("Nature/tree", 6, 5, 24.0, 1.0),
+    ("Nature/tree", 10, 9, -37.0, 0.88),
+    ("Nature/bush", 6, 10, -48.0, 0.95),
+    ("Nature/bush", 10, 4, 80.0, 1.05),
     # On the shore, below the cliff.
-    ("Nature/tree", 2, 7, 61.0, 0.92),
-    ("Nature/tree", 8, 2, -18.0, 0.84),
-    ("Nature/bush", 6, 7, 15.0, 1.0),
-    ("Nature/bush", 1, 5, 122.0, 0.85),
-    ("Nature/rock", 9, 6, 33.0, 1.0),
-    ("Nature/rock", 1, 3, -12.0, 0.8),
-    ("Nature/rock", 6, 1, 71.0, 0.7),
+    ("Nature/tree", 4, 12, 61.0, 0.92),
+    ("Nature/tree", 15, 3, -18.0, 0.84),
+    ("Nature/tree", 3, 7, 128.0, 0.95),
+    ("Nature/bush", 12, 12, 15.0, 1.0),
+    ("Nature/bush", 2, 9, 122.0, 0.85),
+    ("Nature/bush", 16, 8, -60.0, 0.9),
+    ("Nature/rock", 17, 11, 33.0, 1.0),
+    ("Nature/rock", 2, 5, -12.0, 0.8),
+    ("Nature/rock", 12, 2, 71.0, 0.7),
+    ("Nature/rock", 5, 14, 12.0, 0.75),
     # The field, on the flat below the plateau.
-    ("Nature/crop_row", 3, 7, 0.0, 1.0),
-    ("Nature/crop_row", 4, 7, 0.0, 1.0),
-    ("Nature/crop_row", 5, 7, 0.0, 1.0),
+    ("Nature/crop_row", 5, 11, 0.0, 1.0),
+    ("Nature/crop_row", 6, 11, 0.0, 1.0),
+    ("Nature/crop_row", 7, 11, 0.0, 1.0),
+    ("Nature/crop_row", 5, 12, 0.0, 1.0),
+    ("Nature/crop_row", 6, 12, 0.0, 1.0),
 ]
 
-TILE = 1.0
-LIFT = 1.0        # one block of height per layer
+TILE = 0.5        # must match tilekit.SIZE
+LIFT = 0.5        # one block of height, = tilekit.HEIGHT
+UPPER_BLOCKS = 2  # how many blocks the plateau stands above the shore
 
 
 def _grid(layer):
@@ -170,23 +195,31 @@ def build():
         # ASCII and obvious in the render.
         return (ox + col * TILE, oy + (rows - 1 - row) * TILE)
 
-    # Ground. The upper layer sits a block higher AND keeps a block beneath it,
-    # so a cliff is solid rather than a floating shelf.
+    # Ground. The upper layer stands UPPER_BLOCKS up and the blocks beneath it
+    # are filled, so a cliff is solid rather than a floating shelf -- and only
+    # the topmost block wears the grass cap, which is what makes the cliff face
+    # read as earth with turf on top.
     for (col, row), ch in sorted(lower.items()):
         x, y = world(col, row)
         placed.append(_place(_prototype(CODE[ch], cache), (x, y, 0.0)))
     for (col, row), ch in sorted(upper.items()):
         x, y = world(col, row)
-        placed.append(_place(_prototype(CODE[ch], cache), (x, y, LIFT)))
+        for block in range(1, UPPER_BLOCKS):
+            placed.append(_place(_prototype(FILL, cache), (x, y, LIFT * block)))
+        placed.append(_place(_prototype(CODE[ch], cache),
+                             (x, y, LIFT * UPPER_BLOCKS)))
 
-    # Props sit on whichever layer is topmost under them.
+    # Props sit on whichever layer is topmost under them. A tile TOP is its
+    # base plus one block, so a prop on the shore stands at LIFT and one on the
+    # plateau stands at LIFT * (UPPER_BLOCKS + 1).
     for aid, col, row, yaw, scale in PROPS:
         if (col, row) not in lower and (col, row) not in upper:
             raise SystemExit("FAIL: prop %s is at (%d, %d), which is not land."
                              % (aid, col, row))
-        z = LIFT * 2.0 if (col, row) in upper else LIFT
+        blocks = UPPER_BLOCKS + 1 if (col, row) in upper else 1
         x, y = world(col, row)
-        placed.append(_place(_prototype(aid, cache), (x, y, z), yaw, scale))
+        placed.append(_place(_prototype(aid, cache), (x, y, LIFT * blocks),
+                             yaw, scale))
 
     bpy.context.view_layer.update()
     return placed

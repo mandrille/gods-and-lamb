@@ -14,15 +14,23 @@ hole wherever four tiles meet.
 """
 from kit import M, box, soften_top, soften_all
 
-SIZE = 1.0        # the grid module. Nothing may overhang it.
-HEIGHT = 1.0      # top surface at z=1.0; everything that stands on the ground
+# HALF-METRE GRID. The tile was 1.0 m and everything below is that set of
+# numbers halved. The props did NOT change size with it -- that is the whole
+# point of the change: a hut that spanned 1.6 tiles now spans 3.3, so the world
+# has four times the tiles for the same ground and reads as detailed rather
+# than as a handful of enormous blocks.
+#
+# Anything that measures itself against the ground measures against TILE, never
+# against a literal 1.0.
+SIZE = 0.5        # the grid module. Nothing may overhang it.
+HEIGHT = 0.5      # top surface at z=0.5; everything that stands on the ground
                   # assumes exactly this.
-CAP = 0.30        # depth of the cap band down the side faces. Most of the top
+CAP = 0.15        # depth of the cap band down the side faces. Most of the top
                   # of this band is eaten by ROUND, so it has to be deeper than
                   # the band you want to SEE on the side.
-ROUND = 0.11      # top radius. At 0.05 a tile is a box with its corners
-                  # knocked off; at 0.15 the tops dome and a floor reads as
-                  # sofa cushions.
+ROUND = 0.055     # top radius, as a fraction of the tile unchanged from the
+                  # 1 m version -- the block silhouette is what was tuned, and
+                  # it is scale-free.
 SIDE = 0.35       # cap vertical-edge rounding as a fraction of ROUND, which is
                   # what separates one block from the next.
 
@@ -55,7 +63,7 @@ def ground_tile(tag, body_mat, cap_mat, cap=CAP, round_=ROUND, side=SIDE,
     return [body, top]
 
 
-def sunken_tile(tag, body_mat, cap_mat, drop=0.12, **kw):
+def sunken_tile(tag, body_mat, cap_mat, drop=0.06, **kw):
     """A ground block whose surface sits BELOW the grid top.
 
     Water and anything else that should read as a hollow rather than a slab.

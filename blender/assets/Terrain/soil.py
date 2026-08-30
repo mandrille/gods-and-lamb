@@ -15,7 +15,7 @@ ASSET = dict(
     family="ground",
     variant="soil",
     category=CATEGORY,
-    footprint=(1.0, 1.0),
+    footprint=(0.5, 0.5),
     anchor="floor",
     slots=(),
 )
