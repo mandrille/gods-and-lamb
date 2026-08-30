@@ -84,10 +84,10 @@ def init_materials():
     M.clear()
     M.update({
         # ---- ground
-        "grass":      flat("Grass", (0.310, 0.680, 0.240), 0.62),
-        "grass_dark": flat("GrassDark", (0.200, 0.520, 0.190), 0.62),
-        "dirt":       flat("Dirt", (0.520, 0.340, 0.190), 0.68),
-        "dirt_dark":  flat("DirtDark", (0.360, 0.230, 0.130), 0.70),
+        "grass":      flat("Grass", (0.420, 0.800, 0.170), 0.58),
+        "grass_dark": flat("GrassDark", (0.240, 0.580, 0.130), 0.60),
+        "dirt":       flat("Dirt", (0.460, 0.270, 0.130), 0.66),
+        "dirt_dark":  flat("DirtDark", (0.300, 0.170, 0.085), 0.68),
         "soil":       flat("Soil", (0.330, 0.200, 0.120), 0.74),
         "sand":       flat("Sand", (0.900, 0.800, 0.520), 0.66),
         "stone":      flat("Stone", (0.600, 0.610, 0.620), 0.60),
@@ -242,21 +242,30 @@ def soften_all(parts, width=0.06, segments=BEVEL_SEGMENTS, angle=44.0,
     return done
 
 
-def mark_bevel_weight_top(ob, weight=1.0):
-    """Set edge bevel weight on the TOP RIM only. Returns how many edges.
+def mark_bevel_weight_top(ob, weight=1.0, side=0.0, eps=1e-4):
+    """Set edge bevel weight on the top rim, and optionally the vertical edges.
 
     The selector the Bevel modifier does not have: it limits by angle or by
     weight, and "the edges at the top" is neither -- so the weight is written
     here and the modifier is told to use it.
+
+    `side` scales the vertical edges relative to the top rim, because the Bevel
+    modifier multiplies its width by the weight. Use it on the grass CAP of a
+    ground tile and not on the dirt body: the cap corners round, so a floor
+    reads as separated blocks the way the reference does, while the body stays
+    full width and there is nothing to see through. Rounding the body as well
+    would open a hole at every point where four tiles meet.
+
+    Returns (top_edges, side_edges).
     """
     me = ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
     if not bm.verts:
         bm.free()
-        return 0
+        return 0, 0
     zmax = max(v.co.z for v in bm.verts)
-    eps = 1e-4
+    zmin = min(v.co.z for v in bm.verts)
     # Blender 4.x moved bevel weight to a generic named attribute. The old
     # bm.edges.layers.bevel_weight is gone in 5.x, so the named layer is tried
     # first and the legacy one only as a fallback.
@@ -267,26 +276,31 @@ def mark_bevel_weight_top(ob, weight=1.0):
         except (ValueError, TypeError):
             lay = None
     if lay is None:
-        lay = getattr(bm.edges.layers, "bevel_weight", None)
-        lay = lay.verify() if lay is not None else None
+        legacy = getattr(bm.edges.layers, "bevel_weight", None)
+        lay = legacy.verify() if legacy is not None else None
     if lay is None:
         bm.free()
         raise SystemExit("FAIL: %s - no edge bevel-weight layer available on "
                          "this Blender. soften_top cannot mark the top rim."
                          % ob.name)
-    n = 0
+    n_top = n_side = 0
     for e in bm.edges:
-        top = (abs(e.verts[0].co.z - zmax) < eps
-               and abs(e.verts[1].co.z - zmax) < eps)
-        e[lay] = weight if top else 0.0
-        n += int(top)
+        z0, z1 = e.verts[0].co.z, e.verts[1].co.z
+        if abs(z0 - zmax) < eps and abs(z1 - zmax) < eps:
+            e[lay] = weight
+            n_top += 1
+        elif side > 0.0 and abs(z0 - z1) > eps                 and (abs(min(z0, z1) - zmin) < eps or abs(max(z0, z1) - zmax) < eps):
+            e[lay] = weight * side
+            n_side += 1
+        else:
+            e[lay] = 0.0
     bm.to_mesh(me)
     bm.free()
     me.update()
-    return n
+    return n_top, n_side
 
 
-def soften_top(ob, width=0.09, segments=3, angle=44.0):
+def soften_top(ob, width=0.09, segments=3, angle=44.0, side=0.0):
     """Round the TOP RIM only. For anything that tiles.
 
     The art direction is rounded cubes, so the obvious build is a box through
@@ -307,7 +321,7 @@ def soften_top(ob, width=0.09, segments=3, angle=44.0):
     the mesh outside the standard stack: no WN, so the normals came from
     auto-smooth alone and every large face carried a soft gradient across it.
     """
-    n = mark_bevel_weight_top(ob)
+    n_top, n_side = mark_bevel_weight_top(ob, side=side)
     bv = ob.modifiers.new("SoftenTop", "BEVEL")
     bv.width = width
     bv.segments = segments
@@ -316,7 +330,7 @@ def soften_top(ob, width=0.09, segments=3, angle=44.0):
     bv.use_clamp_overlap = True
     ob["softened"] = True
     soften(ob, angle)
-    return n
+    return n_top, n_side
 
 
 def evaluated_tris(ob):

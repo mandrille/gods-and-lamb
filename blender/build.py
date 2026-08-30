@@ -236,6 +236,65 @@ def target_ao(rest):
     print("wrote out/look/%s_ao.png" % stem)
 
 
+def target_field(rest):
+    """Render N x N of a tile, laid out on the grid. The tiling answer.
+
+    A single-tile look cannot answer the only question a ground tile has to
+    pass: does a FLOOR of them read right. Seams, gaps, and the groove between
+    blocks are all properties of the neighbourhood, not of the tile, and the
+    reference art is a picture of a neighbourhood.
+
+    Instances share mesh data, so this is cheap and it is also honest about
+    what the engine will draw -- one mesh, many transforms, exactly what
+    MultiMesh does.
+    """
+    import bpy
+    import registry
+    import shot
+    import kit
+
+    if not rest:
+        raise SystemExit("FAIL: field needs an asset id, e.g. Terrain/grass")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    n = int(kw.pop("n", 4))
+    step = float(kw.pop("step", 1.0))
+    entry = registry.resolve(aid)
+
+    _fresh_scene()
+    parts = _build_subject(entry, "FIELD", kw)
+    tile = kit.merge_many(parts, "tile")
+
+    span = (n - 1) * step * 0.5
+    out = [tile]
+    for i in range(n):
+        for j in range(n):
+            if i == 0 and j == 0:
+                tile.location = (-span, -span, 0.0)
+                continue
+            dup = tile.copy()                 # linked data: one mesh, N objects
+            dup.data = tile.data
+            dup.location = (i * step - span, j * step - span, 0.0)
+            bpy.context.scene.collection.objects.link(dup)
+            out.append(dup)
+
+    # matrix_world is CACHED. Setting .location does not update it, so every
+    # duplicate still reports the origin until the view layer is told -- the
+    # first run of this framed a 4 x 4 field as "1.00 x 1.00 x 1.00 m overall"
+    # and put the camera 2.86 m from a single tile.
+    bpy.context.view_layer.update()
+
+    size = kit.bounds(out)
+    print("field %s: %d x %d at %.2f m, %.2f x %.2f x %.2f m overall"
+          % (aid, n, n, step, size[0], size[1], size[2]))
+
+    stem = aid.replace("/", "_")
+    for name, dirv in (("field_high", (-0.80, -1.00, 0.85)),
+                       ("field_low", (-0.70, -1.00, 0.34))):
+        shot.render(os.path.join(OUT, "look", "%s_%s.png" % (stem, name)),
+                    out, res=(1400, 1000), fill=0.92, dirv=dirv)
+    print("wrote out/look/%s_field_{high,low}.png" % stem)
+
+
 def target_list(rest):
     import registry
     found = registry.discover(verbose=True)
@@ -275,6 +334,7 @@ def target_vocab(rest):
 TARGETS = {
     "look": target_look,
     "ao": target_ao,
+    "field": target_field,
     "measure": target_measure,
     "list": target_list,
     "vocab": target_vocab,
