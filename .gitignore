@@ -1,0 +1,8 @@
+out/
+shots/
+__pycache__/
+*.pyc
+.godot/
+godot/assets/library/.built.json
+builds/
+docs/index.html
