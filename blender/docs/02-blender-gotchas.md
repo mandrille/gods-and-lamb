@@ -858,3 +858,61 @@ the shots side — a timer callback cannot fail a process either.
   which now resolves to mcp 2.x; that dropped `mcp.server.fastmcp` and the server
   will not import. Pin `<2`. It also refuses to start unless Blender's
   `system.use_online_access` is True.
+
+---
+
+# Gods and Lamb additions
+
+Entries below were paid for in THIS project. The numbering continues from the
+inherited list only loosely -- what matters is that each one produced a visibly
+wrong result first.
+
+## 57. Workbench shades from `material.diffuse_color`, not the Principled node
+
+`kit.flat()` sets the Principled BSDF Base Color input and nothing else, because
+that is what Cycles, EEVEE and the glTF exporter all read. Workbench does not:
+its MATERIAL colour mode reads `material.diffuse_color`, a different channel
+entirely, which defaults to grey.
+
+So the first `-- look` render of a green-and-brown grass tile came back as a
+uniform white box. It reads as a lighting problem and it is not one -- the
+lighting was fine and the colours were simply somewhere else.
+
+`shot.sync_viewport_colours()` copies Base Color across at render time (and
+takes Emission Color instead for anything actually emitting, or a lit window
+reads as a dead lump). It runs at render time rather than inside `kit.flat()`
+because it is a display property that changes nothing about how the asset
+renders in the engine or exports.
+
+## 58. A bevel baked with `bmesh.ops.bevel` is outside the standard stack
+
+The first `soften_top()` baked its bevel directly into the mesh with
+`bmesh.ops.bevel` and then called `shade_auto_smooth()`. The geometry was
+correct and the shading was wrong: with no Bevel modifier in the stack, and
+auto-smooth adding the "Smooth by Angle" nodes modifier that Blender pins to the
+end, `weighted_normals_all()` had nothing to sit last after, so every large flat
+face carried a soft gradient across it instead of reading flat.
+
+The fix is to stay in the standard hard-surface stack -- **Bevel modifier, then
+Weighted Normal last**. To bevel only some edges, the modifier limits by ANGLE
+or by WEIGHT, so write the weight and use `limit_method="WEIGHT"`:
+`kit.mark_bevel_weight_top()` sets `bevel_weight_edge` on the top rim and
+`soften_top()` adds a weight-limited Bevel.
+
+Blender 4.x moved edge bevel weight to a generic named attribute
+(`bevel_weight_edge` on the EDGE domain); the old `bm.edges.layers.bevel_weight`
+is gone in 5.x. Try the named layer first and treat its absence as a hard
+failure -- silently skipping it ships a square tile.
+
+## 59. Rounding all edges of a tile opens gaps between tiles
+
+Bevelling the vertical edges of a ground tile pulls its four side faces inward,
+so two neighbouring tiles no longer touch and a field of grass becomes a grid of
+separate blocks with the sky showing through the cracks.
+
+Round the TOP RIM only. Side faces stay flat and full width, tiles butt
+together, and a cliff face is a clean vertical plane. The shallow groove left
+where two tops meet is correct -- the reference art shows exactly that.
+
+The machine-checkable form of this rule is `-- measure`: a 1 m tile must come
+back **exactly** 1.000 x 1.000. Anything less and it no longer tiles.

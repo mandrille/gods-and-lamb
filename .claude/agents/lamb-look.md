@@ -60,6 +60,12 @@ What replaces them:
   a part comes back wearing its neighbour colour.
 - **Two overlapping boxes must not share a face plane.** That is what z-fighting
   is, and it often shows up only once it is in Godot.
+- **Workbench shades from `material.diffuse_color`, not the Principled
+  node.** `kit.flat()` sets the BSDF Base Color and nothing else, so the
+  first look render of a green-and-brown tile came back a uniform white
+  box. It reads as a lighting problem and is a different colour channel.
+  `shot.sync_viewport_colours()` copies it across at render time; if a
+  render is suspiciously monochrome, check that first.
 - **Workbench is the look-dev engine, deliberately.** It lights the subject with
   its own fixed studio rig, so a shot cannot come back as a brightly lit wall
   with the subject in darkness in front of it — which is exactly what EEVEE

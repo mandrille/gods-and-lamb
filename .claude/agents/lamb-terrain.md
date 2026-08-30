@@ -54,6 +54,14 @@ The same applies to any tile that tiles: path, farmland, sand, water.
 
 ## Traps that have cost real time here
 
+- **The tiling rule has a machine-checkable form: `-- measure` must come
+  back EXACTLY 1.000 x 1.000.** Anything less means a bevel has pulled a
+  side face in and the tile no longer tiles. Do not eyeball this.
+- **Round the top rim with `kit.soften_top()`, never `soften_all()`.** It
+  uses a Bevel modifier limited by edge WEIGHT rather than by angle, so
+  Weighted Normal still sits last in the stack. An earlier version baked
+  the bevel with bmesh instead, which left the mesh outside the standard
+  stack and put a soft gradient across every flat face.
 - **`-- measure` before assuming a tile is 1.0 m.** A bevel widens nothing but a
   boolean can, and a tile 1.004 m wide tiles with a visible line every column.
 - **A rotated box is taller than its own z size.** If you tilt a slab for a
