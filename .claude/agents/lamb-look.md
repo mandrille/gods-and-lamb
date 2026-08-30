@@ -66,6 +66,16 @@ What replaces them:
   box. It reads as a lighting problem and is a different colour channel.
   `shot.sync_viewport_colours()` copies it across at render time; if a
   render is suspiciously monochrome, check that first.
+- **Do not verify vertex data with a picture.** Workbench VERTEX colour
+  mode did not display a FLOAT_COLOR attribute on the POINT domain, and
+  a working AO bake looked exactly like no bake at all through two
+  rounds of fixing something that was never broken.
+  `aobake.verify_written()` reads the values back and reports domain,
+  type, range and which attribute is active. That is the check.
+- **Bake AO after the merge, never on the parts.** Before merging, the
+  hut is 86 unbevelled vertices and a crease gets no sample at all;
+  merged it is 1000, because the bevel puts a vertex loop exactly where
+  the creases are.
 - **Workbench is the look-dev engine, deliberately.** It lights the subject with
   its own fixed studio rig, so a shot cannot come back as a brightly lit wall
   with the subject in darkness in front of it — which is exactly what EEVEE

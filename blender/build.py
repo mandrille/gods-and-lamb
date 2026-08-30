@@ -182,6 +182,60 @@ def target_measure(rest):
     print("  fronts -Y; +Z here is +Y in Godot")
 
 
+def target_ao(rest):
+    """Bake AO to vertex colour and render the bake ALONE, plus the material.
+
+    Rendered with Workbench in VERTEX colour mode, so the picture is the
+    occlusion map by itself rather than the occlusion multiplied into the
+    palette. That is the point: a bake that is silently flat and a bake that is
+    working look identical once a green tile is drawn over the top of it.
+
+    No ground plane here, deliberately. Rays are cast against the whole scene,
+    so a 60 m plane under the subject reads as an occluder and every
+    downward-facing vertex comes back fully dark.
+    """
+    import registry
+    import shot
+    import kit
+    import aobake
+
+    if not rest:
+        raise SystemExit("FAIL: ao needs an asset id, e.g. Buildings/hut")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    entry = registry.resolve(aid)
+
+    _fresh_scene()
+    parts = _build_subject(entry, "AO", kw)
+    # MERGE FIRST. The bake writes one value per vertex, and before the merge
+    # the parts are unbevelled boxes -- a wall is eight corners, so the whole
+    # face is an interpolation between four numbers and a crease gets nothing.
+    # merge_many() runs convert(), which bakes the Bevel modifiers, and the
+    # bevel puts a vertex loop exactly where the creases are. Same reason
+    # mark_sharp() runs on final geometry: AO on an intermediate mesh measures
+    # a shape that never ships.
+    n_parts = len(parts)
+    before = sum(len(p.data.vertices) for p in parts)
+    merged = kit.merge_many(parts, entry["decl"]["variant"] + "_mesh")
+    parts = [merged]
+    print("  merged %d part(s), %d -> %d verts"
+          % (n_parts, before, len(merged.data.vertices)))
+    stats = aobake.bake(parts)
+    print("ao %s: %d verts  min %.3f  mean %.3f  max %.3f"
+          % (aid, stats["verts"], stats["min"], stats["mean"], stats["max"]))
+    ok, lines = aobake.verify_written(parts)
+    for line in lines:
+        print("  " + line)
+    if not ok:
+        raise SystemExit("FAIL: the AO bake did not survive on the mesh. See "
+                         "the lines above.")
+
+    stem = aid.replace("/", "_")
+    path = os.path.join(OUT, "look", "%s_ao.png" % stem)
+    shot.render(path, parts, res=(1400, 1000), fill=0.90,
+                dirv=(-0.85, -1.00, 0.42), color_type="VERTEX")
+    print("wrote out/look/%s_ao.png" % stem)
+
+
 def target_list(rest):
     import registry
     found = registry.discover(verbose=True)
@@ -220,6 +274,7 @@ def target_vocab(rest):
 
 TARGETS = {
     "look": target_look,
+    "ao": target_ao,
     "measure": target_measure,
     "list": target_list,
     "vocab": target_vocab,

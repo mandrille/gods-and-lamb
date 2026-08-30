@@ -825,6 +825,46 @@ def blob(name, center, size, mat=None, tilt=(0.0, 0.0, 0.0)):
     return box(name, center, size, mat, rot=tilt)
 
 
+def roof_pitch(width, height, overhang=0.12):
+    """(run, rise, pitch_degrees, slope_length) for a gable of this size.
+
+    One place computes it so the roof slabs and the gable-end cutters cannot
+    disagree. They did, once, and the wall poked through its own roof.
+    """
+    run = width * 0.5 + overhang
+    pitch = math.degrees(math.atan2(height, run))
+    return run, height, pitch, math.hypot(run, height)
+
+
+def gable_cutters(name, center, width, depth, height, overhang=0.12,
+                  thickness=0.10, pad=0.60):
+    """Two boxes filling the space ABOVE each roof slope. Returns both.
+
+    Cut a tall wall box with these and what is left is the pentagon a gabled
+    house actually is. Without it the wall stops at the eaves, the gable ends
+    are open triangles, and you see straight through the building -- which is
+    how the first hut rendered.
+
+    The cutter lower face is placed on the slope UNDERSIDE, not its centreline,
+    so the roof seats on the wall instead of sinking half its thickness in.
+    """
+    cx, cy, cz = center
+    run, rise, pitch, slope = roof_pitch(width, height, overhang)
+    rad = math.radians(pitch)
+    out = []
+    for sign, side in ((-1, "L"), (1, "R")):
+        # The slab local +Z after a rot of (0, sign*pitch, 0): R_y maps
+        # (0,0,1) to (sin t, 0, cos t).
+        nx, nz = math.sin(sign * rad), math.cos(rad)
+        off = pad * 0.5 - thickness * 0.5
+        out.append(box("%s_Cut%s" % (name, side),
+                       (cx + sign * run * 0.5 + nx * off, cy,
+                        cz + rise * 0.5 + nz * off),
+                       (slope * 1.6, depth * 3.0, pad),
+                       None, rot=(0.0, sign * pitch, 0.0)))
+    return out
+
+
 def gable_roof(name, center, width, depth, height, mat, overhang=0.12,
                thickness=0.10):
     """Two sloped slabs meeting at a ridge. Returns both.
@@ -834,18 +874,17 @@ def gable_roof(name, center, width, depth, height, mat, overhang=0.12,
     slopes spring FROM (the eaves line), not the ridge.
     """
     cx, cy, cz = center
-    run = width * 0.5 + overhang
-    rise = height
-    pitch = math.degrees(math.atan2(rise, run))
-    slope = math.hypot(run, rise)
+    run, rise, pitch, slope = roof_pitch(width, height, overhang)
     out = []
     for sign, side in ((-1, "L"), (1, "R")):
-        # Rotated about Y, so the slab leans the right way for its side. The
-        # sign flips both the offset and the pitch, or both slopes lean the
-        # same way and the roof reads as a folded card.
+        # Rotated about Y. The sign is +sign, and getting it wrong is not
+        # subtle: R_y maps +X toward +Z for a NEGATIVE angle, so -sign*pitch
+        # tilts the right-hand slab UP as it goes right. Both slopes then fly
+        # outward and upward and meet nowhere -- which is exactly how the first
+        # hut rendered, a pair of wings over an open box.
         ob = box("%s_Slope%s" % (name, side),
                  (cx + sign * run * 0.5, cy, cz + rise * 0.5),
                  (slope, depth + overhang * 2.0, thickness),
-                 mat, rot=(0.0, -sign * pitch, 0.0))
+                 mat, rot=(0.0, sign * pitch, 0.0))
         out.append(ob)
     return out

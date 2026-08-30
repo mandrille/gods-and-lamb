@@ -46,6 +46,17 @@ first render.
 
 ## Traps that have cost real time here
 
+- **`join()` cutters ONLY when they do not overlap.** join concatenates,
+  it does not union, so two overlapping cutters joined into one object
+  are self-intersecting and EXACT resolves that by deleting the whole
+  target. The first hut with gable ends rendered as a roof on four posts
+  with no building under it, silently. Cutters that touch get one
+  boolean each.
+- **A gable roof needs the wall built TALL and cut back to the roof
+  line.** Stopping the wall at the eaves leaves the gable ends as open
+  triangles and you see through the building. `kit.gable_cutters()` does
+  the cut; `kit.roof_pitch()` is shared by the slabs and the cutters so
+  they cannot disagree.
 - **A bar through the centre renders as two arms.** Fence rails, well frames and
   roof beams have each shipped doubled in the parent project because a box
   centred at the origin and rotated N times draws 2N spokes. Offset it radially

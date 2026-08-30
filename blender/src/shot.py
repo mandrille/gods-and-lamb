@@ -167,7 +167,7 @@ def sync_viewport_colours():
     return n
 
 
-def use_workbench(sc, direction=None):
+def use_workbench(sc, direction=None, color_type="MATERIAL"):
     """Viewport shading, headless, lit from where the CAMERA is.
 
     `scene.display.light_direction` is the whole of it. Leaving it alone is why
@@ -198,7 +198,7 @@ def use_workbench(sc, direction=None):
             pass
     for holder, attr, value in ((sc.display, "render_aa", "8"),
                                 (sc.display.shading, "light", "STUDIO"),
-                                (sc.display.shading, "color_type", "MATERIAL"),
+                                (sc.display.shading, "color_type", color_type),
                                 (sc.display.shading, "show_cavity", True),
                                 (sc.display.shading, "cavity_type", "BOTH"),
                                 (sc.display.shading, "show_shadows", True),
@@ -242,7 +242,7 @@ def photometrics(path):
 
 
 def render(path, subjects, res=(1400, 1000), fill=0.90, dirv=(-0.85, -1.0, 0.42),
-           min_span=0.30):
+           min_span=0.30, color_type="MATERIAL"):
     """Frame a list of objects and render them. Returns a metrics dict.
 
     Does NOT gate -- `-- look` is the cheap answer to a shape question and a
@@ -274,7 +274,7 @@ def render(path, subjects, res=(1400, 1000), fill=0.90, dirv=(-0.85, -1.0, 0.42)
     cam = bpy.data.objects.new("ShotCam", cam_d)
     sc.collection.objects.link(cam)
     sc.camera = cam
-    use_workbench(sc, direction)
+    use_workbench(sc, direction, color_type)
     sync_viewport_colours()
 
     chosen, d, span, box, tried = None, 0.0, 0.0, None, []

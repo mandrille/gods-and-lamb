@@ -916,3 +916,61 @@ where two tops meet is correct -- the reference art shows exactly that.
 
 The machine-checkable form of this rule is `-- measure`: a 1 m tile must come
 back **exactly** 1.000 x 1.000. Anything less and it no longer tiles.
+
+## 60. `join()` is not a union, and EXACT deletes everything when you pretend
+
+The rule inherited from the parent project is "join cutters first, so a hole
+pattern costs one boolean, not N". It has a precondition nobody wrote down: the
+cutters must not overlap each other.
+
+`join()` concatenates meshes. It does not union them. Two overlapping cutters
+joined into one object are a single self-intersecting solid with no coherent
+inside, and the EXACT solver resolved that by removing the entire target: the
+first hut with gable ends rendered as a roof floating over four posts, with no
+building under it at all. No error, no warning.
+
+Cutters that touch get **one boolean each**. Cutters that are genuinely
+disjoint -- a bolt circle, a row of vent slots -- can still be joined.
+
+## 61. Bake AO on the MERGED geometry, not on the parts
+
+Vertex AO writes one value per vertex, so its resolution is the vertex count.
+Before the merge, the hut is nine unbevelled boxes totalling **86** vertices --
+a wall is eight corners, so a whole face is an interpolation between four
+numbers and a crease under the eaves gets nothing at all.
+
+`merge_many()` runs `convert()`, which bakes the Bevel modifiers, and the bevel
+puts a vertex loop exactly where the creases are. The same hut merged is
+**1000** vertices and the mean occlusion drops from 0.846 to 0.784 -- the
+difference is entirely creases that were previously unsampled.
+
+Same rule as `mark_sharp()`: anything that measures shape runs on the geometry
+that ships, never on an intermediate.
+
+## 62. Workbench VERTEX colour mode will not show you a FLOAT_COLOR attribute
+
+`color_type="VERTEX"` did not display an `AO` attribute on the POINT domain with
+type FLOAT_COLOR -- the render came back indistinguishable from a flat shade,
+through two rounds of "fixing" a bake that was working the whole time.
+
+Do not verify vertex data with a picture. `aobake.verify_written()` reads the
+values back off the mesh and reports domain, type, count, range and which
+attribute is active. That is the check; the render is decoration.
+
+Related: setting `color_attributes.active_color` inside a bare `try/except pass`
+made this worse, because a silently dead setting and a flat bake look identical.
+It is a hard failure now.
+
+## 63. A gable roof needs the wall built TALL and cut back
+
+Stopping the wall box at the eaves leaves the two gable ends as open triangles
+and you see straight through the building. Build the wall up to the ridge and
+cut it with the roof cutters instead: what survives is the pentagonal prism a
+gabled house actually is, and the gable ends come for free.
+
+`kit.roof_pitch()` exists so the slabs and the cutters cannot disagree about the
+pitch. They did once, and the wall poked through its own roof.
+
+Watch the rotation sign. `R_y` maps +X toward +Z for a NEGATIVE angle, so
+rotating the right-hand slab by `-pitch` tilts it UP as it goes right. Both
+slopes then fly outward and meet nowhere.
