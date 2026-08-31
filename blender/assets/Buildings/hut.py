@@ -32,7 +32,12 @@ ASSET = dict(
     # arithmetic suggests. The village reserves ground from this declaration, so
     # understating it gets a neighbour placed inside the eaves. Tile
     # reservation is ceil() of this: 2 x 2.
-    footprint=(1.67, 1.40),
+    #
+    # Y was 1.40 here and `-- measure` says 1.440: the ridge beam is D + 0.34
+    # long and reaches 2 cm past the roof at each gable, which the wall-box
+    # arithmetic does not see. Understated by exactly the 4 cm the comment above
+    # warns about.
+    footprint=(1.67, 1.44),
     anchor="floor",
     slots=(),
 )

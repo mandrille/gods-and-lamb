@@ -4,6 +4,7 @@
 
 Targets:
     look <asset_id> [k=v ...]     three Workbench angles into out/look/   (cheap)
+    lit <asset_id> [k=v ...]      the same three under the GAME light rig, out/lit/
     measure <asset_id> [k=v ...]  the real AABB per axis                  (cheapest)
     list                          every asset the registry can see
     vocab                         regenerate src/vocab.py from the tree
@@ -241,6 +242,51 @@ def target_ao(rest):
     print("wrote out/look/%s_ao.png" % stem)
 
 
+def target_lit(rest):
+    """Three angles under the GAME light rig: EEVEE, one warm sun, a sky.
+
+    The other half of `-- look`, not a replacement for it. Workbench answers
+    "what shape is it" and CANNOT answer "does it work lit", because its studio
+    rig follows the camera, has no sky and casts no real shadow -- none of
+    which is true of the light the game has. This target is that light: one
+    SUN, a gradient sky, Standard view transform, and nothing Godot's GL
+    Compatibility renderer lacks. See src/lit.py.
+
+    Measured at 0.2-0.7 s a frame, against Workbench's 0.7 s. It is not the
+    cheap loop anyway, because it has to merge and bake AO first.
+    """
+    import registry
+    import kit
+    import lit
+
+    if not rest:
+        raise SystemExit("FAIL: lit needs an asset id, e.g. Buildings/hut")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    entry = registry.resolve(aid)
+
+    _fresh_scene()
+    parts = _build_subject(entry, "LIT", kw)
+    # Merge, then bake, then ground, in that order and no other. The bake needs
+    # the vertex loops the merge bakes out of the Bevel modifiers (gotcha #61),
+    # and it ray-casts against the whole scene -- so a ground plane laid down
+    # first reads as an occluder and every downward-facing vertex comes back
+    # fully dark.
+    n_parts = len(parts)
+    merged = kit.merge_many(parts, entry["decl"]["variant"] + "_mesh")
+    print("lit %s: merged %d part(s) -> %d verts"
+          % (aid, n_parts, len(merged.data.vertices)))
+    lit.bake_isolated([merged])
+    lit.ground()
+
+    stem = aid.replace("/", "_")
+    for name, dirv in (("front", (-1.00, -0.55, 0.30)),
+                       ("three_quarter", (-0.85, -1.00, 0.42)),
+                       ("along", (-0.25, -1.00, 0.18))):
+        lit.render(os.path.join(OUT, "lit", "%s_%s.png" % (stem, name)),
+                   [merged], res=(1200, 800), fill=0.90, dirv=dirv)
+    print("wrote out/lit/%s_{front,three_quarter,along}.png" % stem)
+
+
 def target_field(rest):
     """Render N x N of a tile, laid out on the grid. The tiling answer.
 
@@ -310,6 +356,7 @@ def target_scene(rest):
     import shot
     import kit
     import island
+    import lit
 
     _fresh_scene()
     placed = island.build()
@@ -320,12 +367,156 @@ def target_scene(rest):
           "%.1f x %.1f x %.1f m"
           % (len(placed), meshes, tris, size[0], size[1], size[2]))
 
-    for name, dirv, fill in (("hero", (-0.80, -1.00, 0.62), 0.92),
-                             ("high", (-0.55, -1.00, 1.05), 0.94),
-                             ("low", (-0.90, -1.00, 0.30), 0.92)):
+    views = (("hero", (-0.80, -1.00, 0.62), 0.92),
+             ("high", (-0.55, -1.00, 1.05), 0.94),
+             ("low", (-0.90, -1.00, 0.30), 0.92))
+    for name, dirv, fill in views:
         shot.render(os.path.join(OUT, "look", "island_%s.png" % name),
                     placed, res=(1600, 1000), fill=fill, dirv=dirv)
     print("wrote out/look/island_{hero,high,low}.png")
+
+    # The same three angles at the same resolution under the game rig. Both,
+    # not one: a Workbench frame and a lit frame of the same scene held side by
+    # side is the only thing that says whether a judgement made in the cheap
+    # loop survives contact with the light that ships.
+    #
+    # The lit pass runs SECOND, always. lit.bake_isolated() ends in
+    # aobake.wire_all(), which rewires every material in the file -- a
+    # Workbench render taken after that is no longer the render `-- look`
+    # produces, and the cheap loop is what everything else depends on.
+    lit.bake_isolated(placed)
+    for name, dirv, fill in views:
+        lit.render(os.path.join(OUT, "lit", "island_%s.png" % name),
+                   placed, res=(1600, 1000), fill=fill, dirv=dirv)
+    print("wrote out/lit/island_{hero,high,low}.png")
+
+
+def target_asset(rest):
+    """THE GATE for one asset. Build it, finish it, and refuse it if it is wrong.
+
+    Until this existed, an asset was "verified" by a human opening a PNG. That
+    catches a bad shape and nothing else -- not a blown triangle cap, not a
+    footprint that lies to the placement solver, not the ngon debris an EXACT
+    boolean leaves behind. Six buildings were authored under that regime and
+    the agent that wrote them said so plainly in its report, which is the only
+    reason it is being fixed now.
+
+    Checks run in a COLLECT-ALL pass. A build is seconds and the checks are
+    milliseconds, so failing fast just means finding one fault per run when you
+    could have had all of them.
+    """
+    import registry
+    import kit
+
+    if not rest:
+        raise SystemExit("FAIL: asset needs an id, e.g. Terrain/grass")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    entry = registry.resolve(aid)
+    decl = entry["decl"]
+
+    _fresh_scene()
+    # _build_subject already fails on soften coverage and adds Weighted Normal.
+    parts = _build_subject(entry, "GATE", kw)
+    n_parts = len(parts)
+    merged = kit.merge_many(parts, decl["variant"] + "_mesh")
+
+    faults = []
+
+    tris = kit.evaluated_tris(merged)
+    cap = registry.tri_cap(decl)
+    if tris > cap:
+        faults.append("triangles: %d against a cap of %d for cls=%s. Fix the "
+                      "geometry -- cut bevel segments, cut primitive "
+                      "resolution, or cut a part that did not earn its place. "
+                      "Never raise the cap."
+                      % (tris, cap, decl["cls"]))
+
+    lo, hi = kit.bounds_lohi([merged])
+    mx, my = hi[0] - lo[0], hi[1] - lo[1]
+    dx, dy = decl["footprint"]
+    # 2 cm. An audit of the parent project found 17 of 39 assets understating
+    # themselves, the worst by 3.69 m -- and the village reserves ground from
+    # the DECLARATION, so an understated footprint gets a neighbour placed
+    # inside this asset.
+    if mx - dx > 0.02 or my - dy > 0.02:
+        faults.append("footprint: declared (%.3f, %.3f) but measures "
+                      "(%.3f, %.3f). The village reserves ground from the "
+                      "declaration, so this asset will get a neighbour placed "
+                      "inside it. Declare (%.2f, %.2f)."
+                      % (dx, dy, mx, my, mx + 0.005, my + 0.005))
+
+    # Anchor contract: floor-standing means the origin is the point it stands
+    # on, so the mesh must sit ON z=0 rather than through it or above it.
+    if decl.get("anchor") == "floor" and abs(lo[2]) > 0.005:
+        faults.append("anchor: declares anchor='floor' but its lowest vertex is "
+                      "at z=%.4f. Build at the origin, standing on z=0."
+                      % lo[2])
+
+    d = kit.mesh_defects(merged)
+    dirty = {k: v for k, v in d.items()
+             if v and k in ("ngons", "degenerate", "zero_edges", "loose")}
+    if dirty:
+        faults.append("mesh: %s. An EXACT boolean is topologically correct and "
+                      "cosmetically filthy; ngons triangulate differently in "
+                      "Blender and in the engine, which is the classic 'it "
+                      "looked fine in Blender' artifact."
+                      % ", ".join("%s=%d" % kv for kv in sorted(dirty.items())))
+
+    print("%s  (%s.%s.%s)" % (aid, decl["cls"], decl["family"], decl["variant"]))
+    print("  parts %d -> 1 mesh   tris %d / %d   %.3f x %.3f x %.3f m"
+          % (n_parts, tris, cap, mx, my, hi[2] - lo[2]))
+    print("  nonmanifold %d (reported, not failed: 3-4 face T-junctions are "
+          "normal for a welded assembly; 1 face would be a hole)"
+          % d.get("nonmanifold", 0))
+
+    if faults:
+        sep = chr(10) + "  - "
+        raise SystemExit("FAIL: %s did not pass the gate - %d fault(s), "
+                         "every one listed:%s%s"
+                         % (aid, len(faults), sep, sep.join(faults)))
+    print("  [GATE] ok")
+
+
+def target_assets(rest):
+    """Every asset through the gate, ONE PROCESS EACH, collect-all.
+
+    One process each because kit.M, kit.STATS and kit.SCHEMES are mutable
+    module globals and cross-contamination presents as a GEOMETRY bug -- you
+    would not suspect the build system.
+
+    Collect-all because a sweep that stops at the first fault makes you pay for
+    a whole run per fault. Every failure is listed, then the sweep fails once.
+    """
+    import subprocess
+    import registry
+
+    found = registry.discover()
+    order = sorted(found)
+    print("sweep: %d asset(s)" % len(order))
+
+    failed = []
+    for aid in order:
+        cmd = [sys.argv[0], "--background", "--factory-startup",
+               "--python", os.path.abspath(__file__), "--", "asset", aid]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        ok = r.returncode == 0
+        print("  %-24s %s" % (aid, "ok" if ok else "FAIL"))
+        if not ok:
+            body = (r.stdout or "") + (r.stderr or "")
+            keep = [ln for ln in body.splitlines()
+                    if ln.startswith("FAIL") or ln.startswith("  - ")]
+            joiner = chr(10) + "    "
+            failed.append((aid, joiner.join(keep)
+                           or body.strip()[-400:]))
+
+    if failed:
+        gap = chr(10) + chr(10)
+        body = gap.join("  %s%s    %s" % (a, chr(10), why)
+                        for a, why in failed)
+        raise SystemExit("FAIL: %d of %d asset(s) did not pass the "
+                         "gate:%s%s" % (len(failed), len(order),
+                                        gap, body))
+    print("[SWEEP] all %d assets ok" % len(order))
 
 
 def target_list(rest):
@@ -366,9 +557,12 @@ def target_vocab(rest):
 
 TARGETS = {
     "look": target_look,
+    "lit": target_lit,
     "ao": target_ao,
     "field": target_field,
     "scene": target_scene,
+    "asset": target_asset,
+    "assets": target_assets,
     "measure": target_measure,
     "list": target_list,
     "vocab": target_vocab,
@@ -377,7 +571,7 @@ TARGETS = {
 # Named here rather than falling through to "unknown target", so the message
 # says "not built yet" rather than "no such thing". They are different problems
 # and only one of them is a typo.
-PLANNED = ("asset", "assets", "library", "export", "guards")
+PLANNED = ("library", "export", "guards")
 
 
 def main():

@@ -57,14 +57,34 @@ question with a *full sweep*.
 
 | what you want to know | command | cost |
 |---|---|---|
-| what does it look like | `build.py -- look <asset_id>` | TBM (~40 s expected) |
-| how big is it, exactly | `build.py -- measure <asset_id> [k=v]` | TBM (~10 s expected) |
-| does it pass the gate | `build.py -- asset <asset_id>` | TBM (~30 s expected) |
-| does everything still build | `build.py -- assets` | minutes |
+| how big is it, exactly | `build.py -- measure <asset_id> [k=v]` | **~2 s** |
+| what does it look like | `build.py -- look <asset_id>` | **~2-5 s** (3 angles) |
+| what does it look like LIT | `build.py -- lit <asset_id>` | **~3.5 s** (bake + 3 angles) |
+| does a floor of it tile | `build.py -- field <asset_id> n=4` | **~5 s** |
+| does the whole village hold together | `build.py -- scene` | **~30 s** (renders BOTH ways) |
+| does it pass the gate | `build.py -- asset <asset_id>` | NOT BUILT YET |
 
-"TBM" is to-be-measured. The expectations are Robotin's numbers, carried over
-as a guess. Replace each one with our own the first time you run it — a cost
-table nobody has measured is a rumour.
+Measured on this machine, not inherited. The numbers carried over from the
+parent project (~10 s / ~40 s) were far too pessimistic: this project has no
+level build, so even the expensive command is half a minute.
+
+That changes the advice rather than removing it. Nothing here is expensive
+enough to avoid, so **look at more things, not fewer** -- the failure mode in
+this project is not a slow command, it is judging an asset from its triangle
+count. The scene render is the one that keeps catching real problems, because
+a relationship between two pieces is invisible in a picture of one.
+
+**EEVEE is not the expensive one.** The received wisdom that a lit render costs
+40-70x a Workbench one is about *Cycles*. Measured on the island at a matched
+1600x1000, three Workbench frames took **2.0 s** and three EEVEE frames took
+**2.3 s**, plus **0.4 s** for the AO bake. `-- look` is the shape loop because
+it skips the merge and the bake, not because its renderer is cheaper.
+
+**`-- asset` does not exist yet.** It is named in `build.py`'s PLANNED tuple
+and exits saying so. Until it lands there is no `verify.py`, no soften/mesh
+gate beyond the coverage check inside `_build_subject`, and no export
+read-back. Assets are currently verified by `-- measure` plus `-- look` and a
+human opening the PNG. Do not describe an asset as "gated".
 
 Run from `C:\Goliath\Gods and lamb\blender`:
 
@@ -112,10 +132,32 @@ ambient occlusion pass to separate two objects that touch. So:
 
 ## 6. Your working copy
 
-Agents that write code are dispatched into **their own git worktree**. Work
-there freely and commit narrowly with a real message. The orchestrator merges,
-runs the gate and lands it. Do not merge to the main branch, do not rebase
-other people's work, and do not `git push`.
+**A git worktree when one is available, a directory partition when it is not.**
+
+Worktree isolation requires the SESSION to be running inside a git repository,
+and it frequently is not -- Claude Code is often started somewhere else and
+pointed at this project by path. When that happens the fallback is a directory
+partition: each agent is told which folder it may write to, and it writes
+nowhere else. Reading anything is always fine.
+
+The partition is not a territory. Rule 1 still stands: nobody owns a file, and
+the partition exists only so three agents writing at the same minute do not
+tread on each other. It lasts for one dispatch and then it is gone.
+
+Two things make the partition safe, and a dispatch that skips them is asking
+for trouble:
+
+- **New files in distinct folders.** Two agents adding assets under different
+  categories cannot collide. Two agents both editing `src/kit.py` can.
+- **One writer for the shared files.** `build.py`, `src/` and the palette get
+  exactly one agent per dispatch, and that agent is told the others are running
+  `build.py` concurrently, so its edits there are single atomic writes made
+  late.
+
+In a worktree: commit narrowly with a real message and report the branch. In a
+partition: do NOT commit. The orchestrator reviews everything together, runs
+the gate, and lands one commit. Never merge to main, never rebase other
+people's work, never `git push`.
 
 Read a file before you edit it. Prefer editing an existing builder over adding
 a parallel one.

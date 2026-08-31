@@ -23,6 +23,31 @@ STATS = {"bool": 0, "obj": 0}
 
 
 # ------------------------------------------------------------------ materials
+def srgb(r, g, b):
+    """An sRGB colour, as LINEAR, which is the only thing bpy accepts.
+
+    The palette is AUTHORED and JUDGED in sRGB -- that is what a colour picker
+    reports, what a reference image contains and what a monitor shows -- while
+    every value handed to a shader node is linear. Writing the sRGB number
+    straight in is a silent brightening of roughly 0.45 in gamma, and it is why
+    the first EEVEE render of this palette came back chalky: "saturated grass"
+    at 0.42/0.80/0.17 read as linear DISPLAYS as sRGB 0.68/0.91/0.45, a pale
+    sage. Workbench hid it because its studio rig lands well under 1.0 on most
+    faces, so everything was proportionally dim and nothing looked wrong.
+
+    Author in sRGB. Convert here. Once.
+    """
+    return tuple(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                 for c in (r, g, b))
+
+
+def linear_to_srgb(r, g, b):
+    """The inverse, for reading a value back out to compare against a picker
+    or to paste into Godot -- which takes sRGB in the inspector."""
+    return tuple(c * 12.92 if c <= 0.0031308
+                 else 1.055 * (c ** (1.0 / 2.4)) - 0.055 for c in (r, g, b))
+
+
 def flat(name, rgb, rough=0.42, metal=0.0):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -80,59 +105,95 @@ def init_materials():
     are spread out and values kept in a narrow band. Two neutrals of different
     brightness read as ONE object under a single key light, which is how the
     parent project lost `plate` against `dark`.
+
+    EVERY VALUE HERE IS sRGB, through srgb(). Read its docstring before adding
+    a colour: writing a raw triple into flat() is a silent gamma brightening
+    and the whole palette went pale the one time it happened.
+
+    Retuned under the EEVEE game rig (src/lit.py), which is where the palette
+    is now judged. It was previously tuned under the Workbench studio rig,
+    whose light lands well below 1.0 on most faces -- so everything was
+    proportionally dim, nothing looked hot, and the top end of the palette had
+    nowhere to go once a real sun put a surface at full albedo. What moved:
+    the brights came DOWN (sand, plaster, wool, crop_ripe, petal_gold, skin all
+    clipped to white on a sun-facing face), and the mid-value earths went UP in
+    chroma, because a warm key desaturates a brown toward its own colour and
+    dirt against grass had stopped being a hue difference at all.
     """
     M.clear()
     M.update({
         # ---- ground
-        "grass":      flat("Grass", (0.420, 0.800, 0.170), 0.58),
-        "grass_dark": flat("GrassDark", (0.240, 0.580, 0.130), 0.60),
-        "dirt":       flat("Dirt", (0.460, 0.270, 0.130), 0.66),
-        "dirt_dark":  flat("DirtDark", (0.300, 0.170, 0.085), 0.68),
-        "soil":       flat("Soil", (0.330, 0.200, 0.120), 0.74),
-        "sand":       flat("Sand", (0.910, 0.760, 0.400), 0.66),
-        "stone":      flat("Stone", (0.640, 0.618, 0.575), 0.60),
-        "stone_dark": flat("StoneDark", (0.450, 0.430, 0.400), 0.62),
+        # Grass is the single biggest area in any shot, so it sets the key of
+        # the whole picture. Deeper and slightly cooler than the Workbench
+        # tuning: under a warm sun the old value went acid-yellow.
+        "grass":      flat("Grass", srgb(0.380, 0.740, 0.220), 0.58),
+        "grass_dark": flat("GrassDark", srgb(0.215, 0.535, 0.165), 0.60),
+        # The cliff face. Against grass this has to hold a HUE difference, not
+        # just a value one, and a warm key pushes both toward each other -- so
+        # the dirt is redder than a photograph would justify.
+        "dirt":       flat("Dirt", srgb(0.530, 0.310, 0.155), 0.66),
+        "dirt_dark":  flat("DirtDark", srgb(0.345, 0.195, 0.100), 0.68),
+        "soil":       flat("Soil", srgb(0.375, 0.225, 0.135), 0.74),
+        # Was 0.91 and clipped: a sunlit beach tile came back as paper.
+        "sand":       flat("Sand", srgb(0.845, 0.720, 0.435), 0.66),
+        # Warmed and pulled down. Stone is the only fully neutral thing in the
+        # palette, so it takes the colour of whatever fills it -- and the fill
+        # here is a blue sky. At the old value a rock in sun read as white
+        # concrete and the same rock in shade read as blue plastic. A warm bias
+        # in the albedo is what stops a neutral becoming the sky's colour.
+        "stone":      flat("Stone", srgb(0.575, 0.558, 0.522), 0.60),
+        "stone_dark": flat("StoneDark", srgb(0.400, 0.386, 0.358), 0.62),
         # Water is OPAQUE. A transparent surface over a modelled bed costs a
         # second draw and an alpha sort on a mobile GPU, for a pond seen from
         # forty degrees. Colour does the job.
-        "water":      flat("Water", (0.180, 0.520, 0.820), 0.18),
-        "water_deep": flat("WaterDeep", (0.100, 0.340, 0.660), 0.18),
+        "water":      flat("Water", srgb(0.145, 0.510, 0.830), 0.18),
+        "water_deep": flat("WaterDeep", srgb(0.075, 0.320, 0.640), 0.18),
         # ---- built
-        "wood":       flat("Wood", (0.620, 0.400, 0.210), 0.58),
-        "wood_dark":  flat("WoodDark", (0.380, 0.240, 0.130), 0.60),
-        "plaster":    flat("Plaster", (0.930, 0.890, 0.790), 0.66),
-        "thatch":     flat("Thatch", (0.800, 0.640, 0.300), 0.72),
-        "terracotta": flat("Terracotta", (0.820, 0.360, 0.220), 0.58),
-        "slate":      flat("Slate", (0.300, 0.430, 0.620), 0.52),
-        "gold":       flat("Gold", (0.900, 0.720, 0.230), 0.34, metal=0.6),
-        "iron":       flat("Iron", (0.380, 0.390, 0.420), 0.44, metal=0.5),
+        "wood":       flat("Wood", srgb(0.640, 0.410, 0.205), 0.58),
+        "wood_dark":  flat("WoodDark", srgb(0.390, 0.240, 0.125), 0.60),
+        # Was 0.93/0.89/0.79 -- a white wall in full sun with nowhere to go.
+        # Warm off-white instead, which also stops it reading as the same
+        # material as `wool` and `stone`.
+        "plaster":    flat("Plaster", srgb(0.865, 0.820, 0.720), 0.66),
+        "thatch":     flat("Thatch", srgb(0.760, 0.585, 0.265), 0.72),
+        "terracotta": flat("Terracotta", srgb(0.835, 0.345, 0.195), 0.58),
+        "slate":      flat("Slate", srgb(0.285, 0.415, 0.615), 0.52),
+        "gold":       flat("Gold", srgb(0.880, 0.700, 0.215), 0.34, metal=0.6),
+        "iron":       flat("Iron", srgb(0.370, 0.380, 0.410), 0.44, metal=0.5),
         # A door or a window is a HOLE, and a hole is this colour. Cut the
         # opening, floor it with `hollow`, and stop -- at 15 px a modelled
         # handle is noise costing 200 triangles.
-        "hollow":     flat("Hollow", (0.090, 0.075, 0.080), 0.90),
-        "warmglow":   emit("WarmGlow", (1.00, 0.78, 0.42), 3.0),
+        #
+        # Lifted off near-black: with a cool sky as the only fill, the old
+        # value went to a flat 0 in the shadow of its own doorway and the
+        # opening read as a hole punched through the render, not through a wall.
+        "hollow":     flat("Hollow", srgb(0.150, 0.120, 0.125), 0.90),
+        "warmglow":   emit("WarmGlow", srgb(1.00, 0.78, 0.42), 3.0),
         # ---- growing
-        "leaf":       flat("Leaf", (0.260, 0.600, 0.230), 0.66),
-        "leaf_dark":  flat("LeafDark", (0.150, 0.420, 0.180), 0.66),
-        "leaf_light": flat("LeafLight", (0.440, 0.760, 0.290), 0.66),
-        "trunk":      flat("Trunk", (0.450, 0.290, 0.170), 0.68),
-        "crop":       flat("Crop", (0.560, 0.740, 0.250), 0.64),
-        "crop_ripe":  flat("CropRipe", (0.900, 0.740, 0.240), 0.62),
-        "pumpkin":    flat("Pumpkin", (0.930, 0.520, 0.130), 0.56),
-        "petal_red":  flat("PetalRed", (0.900, 0.250, 0.280), 0.54),
-        "petal_pink": flat("PetalPink", (0.960, 0.560, 0.720), 0.54),
-        "petal_blue": flat("PetalBlue", (0.420, 0.520, 0.930), 0.54),
-        "petal_gold": flat("PetalGold", (0.980, 0.820, 0.260), 0.54),
+        # Foliage sits ON grass, so it has to differ from it. Leaf is pushed
+        # cooler and darker than the ground green rather than brighter: a
+        # canopy lighter than the field it stands in reads as fog.
+        "leaf":       flat("Leaf", srgb(0.230, 0.545, 0.235), 0.66),
+        "leaf_dark":  flat("LeafDark", srgb(0.130, 0.375, 0.180), 0.66),
+        "leaf_light": flat("LeafLight", srgb(0.395, 0.700, 0.290), 0.66),
+        "trunk":      flat("Trunk", srgb(0.465, 0.295, 0.165), 0.68),
+        "crop":       flat("Crop", srgb(0.545, 0.700, 0.245), 0.64),
+        "crop_ripe":  flat("CropRipe", srgb(0.865, 0.700, 0.230), 0.62),
+        "pumpkin":    flat("Pumpkin", srgb(0.930, 0.510, 0.125), 0.56),
+        "petal_red":  flat("PetalRed", srgb(0.895, 0.240, 0.275), 0.54),
+        "petal_pink": flat("PetalPink", srgb(0.945, 0.545, 0.705), 0.54),
+        "petal_blue": flat("PetalBlue", srgb(0.410, 0.505, 0.920), 0.54),
+        "petal_gold": flat("PetalGold", srgb(0.945, 0.790, 0.245), 0.54),
         # ---- folk
-        "skin":       flat("Skin", (0.960, 0.780, 0.620), 0.64),
-        "skin_warm":  flat("SkinWarm", (0.780, 0.560, 0.380), 0.64),
-        "wool":       flat("Wool", (0.960, 0.940, 0.900), 0.78),
-        "hair_dark":  flat("HairDark", (0.200, 0.140, 0.110), 0.70),
-        "hair_warm":  flat("HairWarm", (0.640, 0.360, 0.150), 0.70),
-        "cloth_red":  flat("ClothRed", (0.820, 0.250, 0.230), 0.70),
-        "cloth_blue": flat("ClothBlue", (0.230, 0.430, 0.780), 0.70),
-        "cloth_teal": flat("ClothTeal", (0.150, 0.620, 0.590), 0.70),
-        "cloth_plum": flat("ClothPlum", (0.560, 0.270, 0.560), 0.70),
+        "skin":       flat("Skin", srgb(0.925, 0.750, 0.595), 0.64),
+        "skin_warm":  flat("SkinWarm", srgb(0.775, 0.550, 0.370), 0.64),
+        "wool":       flat("Wool", srgb(0.905, 0.885, 0.850), 0.78),
+        "hair_dark":  flat("HairDark", srgb(0.215, 0.155, 0.125), 0.70),
+        "hair_warm":  flat("HairWarm", srgb(0.645, 0.360, 0.145), 0.70),
+        "cloth_red":  flat("ClothRed", srgb(0.830, 0.240, 0.220), 0.70),
+        "cloth_blue": flat("ClothBlue", srgb(0.215, 0.420, 0.785), 0.70),
+        "cloth_teal": flat("ClothTeal", srgb(0.130, 0.605, 0.575), 0.70),
+        "cloth_plum": flat("ClothPlum", srgb(0.560, 0.265, 0.560), 0.70),
     })
     # Colourways, keyed by NAME. In the parent project these were a list
     # selected by `idx % 6`, so adding a seventh silently repainted every
@@ -673,6 +734,69 @@ def group(name, objs, location, rot_z=0.0, scale=1.0):
     root.rotation_euler = (0, 0, math.radians(rot_z))
     root.scale = (scale, scale, scale)
     return root
+
+
+def bounds_lohi_evaluated(parts):
+    """World-space vertex bounds through the MODIFIER STACK, or (None, None).
+
+    bounds_lohi() reads the base mesh and is blind to an unapplied Bevel, which
+    is fine for a footprint (a bevel pulls a face IN, it does not push it out)
+    and wrong for anything that has to touch the ground. A bevel removes the
+    corner of a tilted box, and that corner was the lowest point.
+    """
+    dg = bpy.context.evaluated_depsgraph_get()
+    lo = [1e18, 1e18, 1e18]
+    hi = [-1e18, -1e18, -1e18]
+    found = False
+    for ob in parts:
+        if getattr(ob, "type", None) != "MESH":
+            continue
+        ev = ob.evaluated_get(dg)
+        try:
+            me = ev.to_mesh()
+        except RuntimeError:
+            continue
+        mw = ob.matrix_world
+        for v in me.vertices:
+            w = mw @ v.co
+            for i in range(3):
+                lo[i] = min(lo[i], w[i])
+                hi[i] = max(hi[i], w[i])
+            found = True
+        ev.to_mesh_clear()
+    return (lo, hi) if found else (None, None)
+
+
+def seat(parts):
+    """Translate a part list so its lowest vertex sits exactly on z=0.
+
+    Every asset declares anchor="floor" and the contract is that the origin is
+    the point it stands on. That is easy to satisfy for a box and hard to
+    satisfy by arithmetic the moment anything is TILTED: a blob rotated a few
+    degrees about X and Y drops a corner below wherever you thought its base
+    was. `rock` sat 31 mm into the ground and `log` floated 5 mm above it, and
+    neither is visible in a render -- the gate caught both.
+
+    So measure it rather than deriving it, which is the house rule anyway --
+    and measure the EVALUATED mesh, not the base one. The first version of this
+    used base vertices and left `rock` floating 7.7 mm: the lowest point of a
+    tilted box is a CORNER, and the bevel cuts that corner off, so the geometry
+    that ships sits higher than the geometry that was authored. Same lesson as
+    evaluated_tris -- measure what renders.
+
+    Returns the offset applied, so a builder can report it if it is surprising.
+    """
+    lo, _hi = bounds_lohi_evaluated(parts)
+    if lo is None:
+        return 0.0
+    dz = -lo[2]
+    if abs(dz) < 1e-6:
+        return 0.0
+    for ob in parts:
+        if getattr(ob, "type", None) == "MESH":
+            ob.location.z += dz
+    bpy.context.view_layer.update()
+    return dz
 
 
 def bounds(objs):

@@ -974,3 +974,95 @@ pitch. They did once, and the wall poked through its own roof.
 Watch the rotation sign. `R_y` maps +X toward +Z for a NEGATIVE angle, so
 rotating the right-hand slab by `-pitch` tilts it UP as it goes right. Both
 slopes then fly outward and meet nowhere.
+
+## 64. A wired vertex-colour material renders BLACK on a mesh without the layer
+
+`aobake.wire_all()` puts a Vertex Color node into **every** material, so every
+material now multiplies its albedo by the `AO` attribute. A `ShaderNodeVertexColor`
+pointing at a layer the mesh does not have does **not** fall back to white — it
+evaluates to **black**, and the multiply annihilates the albedo.
+
+The first lit render of a hut on a ground plane came back with the hut correct
+and the ground gone: frame luma **0.255** against **0.582** for the same shot
+without the bake. It reads as a lighting bug and it is a missing attribute.
+
+`aobake.ensure_neutral(scene.objects)` fills a flat white `AO` layer on any mesh
+that has none, and `lit.render()` calls it immediately before every render. A
+mesh that misses the bake now renders unshaded instead of invisible.
+
+## 65. The palette was sRGB written into a linear socket
+
+Every colour handed to a shader node is **linear**, and the palette in `kit.py`
+was authored as **sRGB** — which is what a colour picker reports and what a
+reference image contains. Writing the sRGB number straight in is a silent
+brightening of about 0.45 in gamma:
+
+```
+"saturated grass" (0.42, 0.80, 0.17) as linear  ->  displays as sRGB (0.68, 0.91, 0.45)
+```
+
+a pale sage, not grass. Workbench hid it for months because its studio rig lands
+well under 1.0 on most faces, so everything was proportionally dim and nothing
+looked wrong until a real sun put a surface at full albedo and half the palette
+clipped to white.
+
+`kit.srgb()` converts; `kit.linear_to_srgb()` goes back, which is what you want
+when pasting a value into Godot's inspector. **Author in sRGB, convert once.**
+
+## 66. `Geometry.Incoming` points at the camera, not along the ray
+
+Driving a world gradient off the Z of `Incoming` puts the sky upside down. A ray
+heading for the zenith arrives with `Incoming.Z = -1`, because Incoming points
+from the shading point back **toward** the viewer. `lit.build_sky()` inverts the
+Map Range for exactly this reason.
+
+Measured, not reasoned: a 160x120 probe render with a red-at-0 / blue-at-1 ramp
+came back with the blue at the BOTTOM of the frame.
+
+Related, and more useful than it looks: EEVEE Next **does** honour
+`ShaderNodeLightPath.Is Camera Ray` in a world shader. That is what lets one sky
+carry two brightnesses — the background you see and the ambient it throws —
+which is how Godot models it (`background_energy_multiplier` versus
+`ambient_light_energy`) and not how a single Background node does. Verified by
+changing only the ambient side: the sky pixel stayed at (0.5765, 0.6980, 0.7922)
+while the lit surface moved from (0.894, 0.890, 0.847) to (0.831, 0.800, 0.726).
+
+## 67. Seat an asset on the EVALUATED mesh, not the authored one
+
+Every asset declares `anchor="floor"` and the contract is that the origin is
+the point it stands on. Easy for a box; hard the moment anything is tilted. A
+`blob` rotated a few degrees about X and Y drops a corner below wherever you
+thought its base was: `rock` sat 31 mm INTO the ground and `log` floated 5 mm
+above it, and neither is visible in a render.
+
+`kit.seat()` measures it instead of deriving it. But the first version measured
+`bounds_lohi()`, which reads BASE vertices, and left `rock` floating 7.7 mm --
+because the lowest point of a tilted box is a CORNER, and the bevel cuts that
+corner off. The geometry that ships sits higher than the geometry that was
+authored.
+
+`kit.bounds_lohi_evaluated()` walks the modifier stack. Same lesson as
+`evaluated_tris`: anything that measures shape measures what RENDERS.
+
+Note the asymmetry, because it decides which function to call. A footprint is
+safe on base vertices -- a bevel pulls a face IN, never out, so the base bound
+is conservative. A ground contact is not, because a bevel moves the lowest
+point UP.
+
+## 68. A declared footprint that nothing checks is decoration
+
+Footprints were audited for honesty by the asset gate and then ignored at
+placement time. The first populated island put a shrine, a market stall and a
+hut in the same four tiles -- 35 overlapping pairs in total -- and it looked
+fine in every per-asset render, because an overlap is a relationship and a
+relationship is invisible in a picture of one asset.
+
+`island._check_overlaps()` is an AABB test on the declared footprints and it is
+deliberately crude: it ignores yaw, so a rotated building reserves more ground
+than it uses. That is conservative, which is the right direction for a guard
+whose only job is to stop two houses sharing a wall. The parent project needed
+a full separating-axis test because it packed props into rooms; an open village
+does not.
+
+Small scatter is exempt from small scatter -- flowers beside tall grass is
+dressing, not a collision, and forbidding it makes the island bare.

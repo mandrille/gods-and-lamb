@@ -174,6 +174,38 @@ def verify_written(objects, expect_min=0.999):
     return ok, lines
 
 
+def ensure_neutral(objects, layer=ATTR):
+    """Give every mesh with no ATTR layer a flat white one. Returns the count.
+
+    Once wire_all() has run, EVERY material multiplies by the ATTR colour --
+    including on meshes that were never baked. A Vertex Color node pointing at
+    a layer the mesh does not have does not fall back to white, it evaluates to
+    BLACK, and the multiply annihilates the albedo. A lit hut on a ground plane
+    came back with the hut correct and the ground a black void: frame luma
+    0.255 against 0.582, which reads exactly like a lighting bug and is a
+    missing attribute.
+
+    Run it over the whole scene immediately before rendering. This is the guard
+    version of "remember to bake the ground too": a mesh that misses the bake
+    renders unshaded instead of invisible, and verify_written() on the meshes
+    that WERE baked still catches a bake that did nothing.
+    """
+    n = 0
+    for ob in objects:
+        if getattr(ob, "type", None) != "MESH" or not len(ob.data.vertices):
+            continue
+        me = ob.data
+        if me.color_attributes.get(layer) is not None:
+            continue
+        attr = me.color_attributes.new(name=layer, type="FLOAT_COLOR",
+                                       domain="POINT")
+        for i in range(len(attr.data)):
+            attr.data[i].color = (1.0, 1.0, 1.0, 1.0)
+        me.color_attributes.active_color = attr
+        n += 1
+    return n
+
+
 def wire_vertex_colour(mat, layer=ATTR):
     """Multiply the ATTR colour into a material base colour.
 

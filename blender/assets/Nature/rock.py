@@ -6,7 +6,7 @@ built on a 45-degree grid reads as a machined part.
 """
 import os
 
-from kit import M, blob, soften_all
+from kit import M, blob, soften_all, seat
 
 CATEGORY = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,4 +31,7 @@ def build(tag="ROCK", **kw):
              M["stone"], tilt=(8, 6, 52)),
     ]
     soften_all(P, width=0.055, segments=2)
+    # Three masses at odd tilts, so the true low point is not the number
+    # in any of them. Measured: this was sitting 31 mm INTO the ground.
+    seat(P)
     return P

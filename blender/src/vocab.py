@@ -13,12 +13,19 @@ it.
 """
 
 FAMILIES = frozenset({
+    'bridge',
     'bush',
     'crop',
+    'fence',
+    'flower',
+    'grass',
     'ground',
     'house',
     'rock',
+    'shrine',
+    'stall',
     'tree',
+    'well',
 })
 
 # Floor for the selftest ratchet: the number of negative controls that must

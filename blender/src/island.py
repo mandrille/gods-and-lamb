@@ -92,30 +92,65 @@ FILL = "Terrain/dirt"
 # Coordinates are TILE indices, so they doubled with the grid.
 # (asset, col, row, yaw, scale)
 PROPS = [
-    ("Buildings/hut", 8, 6, 0.0, 1.0),
-    # On the plateau, framing the hut.
-    ("Nature/tree", 6, 5, 24.0, 1.0),
-    ("Nature/tree", 10, 9, -37.0, 0.88),
-    ("Nature/bush", 6, 10, -48.0, 0.95),
-    ("Nature/bush", 10, 4, 80.0, 1.05),
-    # On the shore, below the cliff.
-    ("Nature/tree", 4, 12, 61.0, 0.92),
-    ("Nature/tree", 15, 3, -18.0, 0.84),
-    ("Nature/tree", 3, 7, 128.0, 0.95),
-    ("Nature/bush", 12, 12, 15.0, 1.0),
-    ("Nature/bush", 2, 9, 122.0, 0.85),
-    ("Nature/bush", 16, 8, -60.0, 0.9),
-    ("Nature/rock", 17, 11, 33.0, 1.0),
-    ("Nature/rock", 2, 5, -12.0, 0.8),
-    ("Nature/rock", 12, 2, 71.0, 0.7),
-    ("Nature/rock", 5, 14, 12.0, 0.75),
-    # The field, on the flat below the plateau.
-    ("Nature/crop_row", 5, 11, 0.0, 1.0),
-    ("Nature/crop_row", 6, 11, 0.0, 1.0),
-    ("Nature/crop_row", 7, 11, 0.0, 1.0),
-    ("Nature/crop_row", 5, 12, 0.0, 1.0),
-    ("Nature/crop_row", 6, 12, 0.0, 1.0),
+    # Coordinates were SOLVED once against the footprint overlap
+    # guard below, not hand-placed. Hand placement put a shrine, a
+    # market stall and a hut in the same four tiles -- 35 overlaps in
+    # all -- because a declared footprint that nothing checks is
+    # decoration. Edit these freely; the guard will tell you.
+    # (asset, col, row, yaw, scale)
+    ("Buildings/bridge", 13, 7, 0.0, 1.00),
+    ("Buildings/bridge", 14, 7, 0.0, 1.00),
+    ("Buildings/bridge", 15, 7, 0.0, 1.00),
+    ("Buildings/cottage", 4, 5, 18.0, 1.00),  # moved from 5,5
+    ("Buildings/fence", 5, 11, 0.0, 1.00),
+    ("Buildings/fence", 6, 11, 0.0, 1.00),
+    ("Buildings/fence", 7, 11, 0.0, 1.00),
+    ("Buildings/fence", 9, 11, 0.0, 1.00),
+    ("Buildings/fence", 10, 11, 0.0, 1.00),
+    ("Buildings/hut", 10, 10, -24.0, 1.00),  # moved from 10,9
+    ("Buildings/market_stall", 11, 5, 200.0, 1.00),  # moved from 10,5
+    ("Buildings/shrine", 8, 7, 0.0, 1.00),
+    ("Buildings/well", 5, 9, 0.0, 1.00),  # moved from 6,9
+    ("Nature/bush", 2, 11, 122.0, 0.85),  # moved from 2,9
+    ("Nature/bush", 12, 1, 15.0, 1.00),  # moved from 12,3
+    ("Nature/bush", 17, 11, -60.0, 0.90),  # moved from 17,10
+    ("Nature/crop_row", 5, 11, 0.0, 1.00),  # moved from 5,12
+    ("Nature/crop_row", 7, 10, 0.0, 1.00),  # moved from 7,12
+    ("Nature/crop_row", 7, 12, 0.0, 1.00),  # moved from 6,12
+    ("Nature/crop_row", 8, 15, 0.0, 1.00),  # moved from 6,13
+    ("Nature/crop_row", 9, 13, 0.0, 1.00),  # moved from 8,12
+    ("Nature/crop_row", 10, 15, 0.0, 1.00),  # moved from 7,13
+    ("Nature/flowers", 4, 6, 15.0, 1.00),
+    ("Nature/flowers", 6, 13, 70.0, 1.00),
+    ("Nature/flowers", 9, 4, -40.0, 1.00),
+    ("Nature/flowers", 15, 11, -15.0, 1.00),
+    ("Nature/lily_pad", 13, 9, 110.0, 0.95),
+    ("Nature/lily_pad", 14, 3, 20.0, 1.00),  # moved from 14,6
+    ("Nature/lily_pad", 15, 9, -55.0, 0.90),  # moved from 15,8
+    ("Nature/log", 14, 14, -25.0, 1.00),  # moved from 14,13
+    ("Nature/pine", 2, 9, 24.0, 1.00),  # moved from 5,7
+    ("Nature/pine", 14, 5, -37.0, 0.88),  # moved from 11,6
+    ("Nature/reeds", 11, 7, -30.0, 1.00),  # moved from 12,10
+    ("Nature/reeds", 12, 3, 0.0, 1.00),  # moved from 12,5
+    ("Nature/reeds", 17, 9, 65.0, 0.90),  # moved from 16,9
+    ("Nature/rock", 1, 4, -12.0, 0.80),  # moved from 2,4
+    ("Nature/rock", 14, 1, 71.0, 0.70),  # moved from 13,2
+    ("Nature/rock", 15, 12, 33.0, 1.00),  # moved from 16,12
+    ("Nature/stump", 6, 14, 12.0, 1.00),  # moved from 5,14
+    ("Nature/tall_grass", 2, 6, 100.0, 1.00),
+    ("Nature/tall_grass", 3, 10, 25.0, 1.00),
+    ("Nature/tall_grass", 11, 13, -60.0, 1.00),
+    ("Nature/tall_grass", 17, 7, 45.0, 1.00),
+    ("Nature/tree", 0, 6, 128.0, 0.95),  # moved from 3,8
+    ("Nature/tree", 4, 13, 61.0, 0.92),
+    ("Nature/tree", 13, 12, 40.0, 0.90),
+    ("Nature/tree", 17, 4, -18.0, 0.84),  # moved from 16,4
 ]
+
+# Below this footprint area a prop is scatter, and scatter may sit wherever it
+# likes. A tile is 0.25 m2, so this exempts anything smaller than one tile.
+MIN_RESERVE_AREA = 0.25
+OVERLAP_TOL = 0.02        # 2 cm of touching is contact, not collision
 
 TILE = 0.5        # must match tilekit.SIZE
 LIFT = 0.5        # one block of height, = tilekit.HEIGHT
@@ -167,6 +202,40 @@ def _place(proto, location, yaw=0.0, scale=1.0):
     return dup
 
 
+def _check_overlaps(entries):
+    """Fail if two sizeable props are placed inside each other.
+
+    The declared footprint was being used for nothing. It is checked for honesty
+    by the asset gate and then ignored at placement time, which meant the first
+    populated island had a shrine, a market stall and a hut occupying the same
+    four tiles -- obvious in the render, and obvious only in the render.
+
+    This is an AABB test on the declared footprints and it is deliberately
+    crude. It ignores yaw, so a rotated building reserves more ground than it
+    uses; that makes it conservative, which is the right direction for a guard
+    whose job is to stop two houses sharing a wall. The parent project needed a
+    full separating-axis test because it packed props into rooms; an open
+    village does not.
+
+    Small scatter is exempt from small scatter. Flowers beside tall grass is
+    dressing, not a collision, and forbidding it would make the island bare.
+    """
+    big = [e for e in entries if e[3] * e[4] >= MIN_RESERVE_AREA]
+    clashes = []
+    for i in range(len(big)):
+        aid_a, ax, ay, aw, ad = big[i]
+        for j in range(i + 1, len(big)):
+            aid_b, bx, by, bw, bd = big[j]
+            gap_x = abs(ax - bx) - (aw + bw) * 0.5
+            gap_y = abs(ay - by) - (ad + bd) * 0.5
+            if gap_x < -OVERLAP_TOL and gap_y < -OVERLAP_TOL:
+                clashes.append("%s and %s overlap by %.2f x %.2f m"
+                               % (aid_a, aid_b, -gap_x, -gap_y))
+    if clashes:
+        raise SystemExit("FAIL: %d prop placement(s) overlap:%s  %s"
+                         % (len(clashes), chr(10), (chr(10) + "  ").join(clashes)))
+
+
 def build():
     """Assemble the island. Returns the list of placed objects."""
     cache = {}
@@ -208,6 +277,19 @@ def build():
             placed.append(_place(_prototype(FILL, cache), (x, y, LIFT * block)))
         placed.append(_place(_prototype(CODE[ch], cache),
                              (x, y, LIFT * UPPER_BLOCKS)))
+
+    # Footprints, in world space, BEFORE anything is built -- a placement fault
+    # should cost a second, not a whole island build.
+    import registry as _reg
+    boxes = []
+    for aid, col, row, yaw, scale in PROPS:
+        if (col, row) not in lower and (col, row) not in upper:
+            raise SystemExit("FAIL: prop %s is at (%d, %d), which is not land."
+                             % (aid, col, row))
+        fx, fy = _reg.discover()[aid]["decl"]["footprint"]
+        x, y = world(col, row)
+        boxes.append((aid, x, y, fx * scale, fy * scale))
+    _check_overlaps(boxes)
 
     # Props sit on whichever layer is topmost under them. A tile TOP is its
     # base plus one block, so a prop on the shore stands at LIFT and one on the
