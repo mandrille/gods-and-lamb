@@ -154,6 +154,9 @@ FILL = "Terrain/dirt"        # what a cliff is made of under its grass cap
 TILE = 0.5                   # must match tilekit.SIZE
 LIFT = 0.5                   # one block of height, = tilekit.HEIGHT
 UPPER_BLOCKS = 2             # blocks the hill stands above the vale floor
+# How far a water tile surface sits below the grid top. Must match the drop
+# in Terrain/water, or a lily pad floats above its own pond.
+WATER_DROP = 0.06
 
 # The camera aims at THIS, not at the whole scene, which is what lets the
 # landscape run off the frame instead of being fitted inside it.
@@ -289,6 +292,13 @@ def _prototype(aid, cache):
                          % (aid, len(missing), ", ".join(missing)))
     kit.weighted_normals_all(meshes)
     proto = kit.merge_many(meshes, aid.replace("/", "_") + "_proto")
+    # The origin has to be the floor contact point or placement buries the
+    # asset by however tall its first part happens to be. See kit.floor_origin.
+    kit.floor_origin(proto)
+    lo = min(v.co.z for v in proto.data.vertices)
+    if abs(lo) > 1e-4:
+        raise SystemExit("FAIL: %s prototype sits at local z=%.4f after "
+                         "floor_origin; placement would bury it." % (aid, lo))
     proto.hide_render = True
     cache[aid] = proto
     return proto
@@ -357,6 +367,35 @@ def _check_ground(entries, tiles):
                          % (len(bad), chr(10), (chr(10) + "  ").join(bad)))
 
 
+def _check_seating(placed_props):
+    """Every prop must stand ON the ground under it, not in it or above it.
+
+    The fault this exists for was invisible for four scene renders: a merged
+    prototype inherits the origin of its first part, so placing it at the tile
+    top buried it by that part's half-height. The cottage was 0.84 m under, the
+    ground tiles were 0.175 m out, and the whole scene sat on a datum nobody
+    had checked because every PER-ASSET measurement is taken where the asset was
+    built, and a thing measured where it was built is always right.
+
+    So the check is on the assembled scene and it compares world space against
+    the expected ground height, which is the only place the fault can show.
+    """
+    bad = []
+    for aid, ob, expect_z in placed_props:
+        lo = min((ob.matrix_world @ v.co).z for v in ob.data.vertices)
+        if abs(lo - expect_z) > 0.01:
+            bad.append("%s base at z=%.3f, ground at z=%.3f (%s by %.3f m)"
+                       % (aid, lo, expect_z,
+                          "sunk" if lo < expect_z else "floating",
+                          abs(lo - expect_z)))
+    if bad:
+        shown = bad[:8]
+        more = ("" if len(bad) <= 8
+                else "%s  ... and %d more" % (chr(10), len(bad) - 8))
+        raise SystemExit("FAIL: %d prop(s) not seated on the ground:%s  %s%s"
+                         % (len(bad), chr(10), (chr(10) + "  ").join(shown), more))
+
+
 def build():
     """Assemble the vale. Returns (placed objects, framing box)."""
     cache = {}
@@ -413,12 +452,23 @@ def build():
         placed.append(_place(_prototype(CODE[ch], cache),
                              (x, y, LIFT * UPPER_BLOCKS)))
 
-    # Props, on whichever layer is topmost under them.
+    # Props, on whichever layer is topmost under them. A tile TOP is its base
+    # plus one block, so a prop on the vale floor stands at LIFT and one on the
+    # hill stands at LIFT * (UPPER_BLOCKS + 1). Water sits a little lower, and
+    # anything on it is seated to the water surface rather than the bank.
+    seated = []
     for aid, col, row, yaw, scale in props:
-        blocks = UPPER_BLOCKS + 1 if (col, row) in upper else 1
+        on_hill = (col, row) in upper
+        blocks = UPPER_BLOCKS + 1 if on_hill else 1
+        z = LIFT * blocks
+        if not on_hill and lower.get((col, row)) == "W":
+            z -= WATER_DROP
         x, y = world(col, row)
-        placed.append(_place(_prototype(aid, cache), (x, y, LIFT * blocks),
-                             yaw, scale))
+        ob = _place(_prototype(aid, cache), (x, y, z), yaw, scale)
+        placed.append(ob)
+        seated.append((aid, ob, z))
+    bpy.context.view_layer.update()
+    _check_seating(seated)
 
     # The framing box. Hidden from the render, and the ONLY thing the camera
     # solver is given -- so it frames this region and lets the landscape run

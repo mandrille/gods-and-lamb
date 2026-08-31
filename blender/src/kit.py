@@ -618,6 +618,55 @@ def mesh_defects(ob, dist=1e-5):
 
 
 # ------------------------------------------------------------------- assembly
+def floor_origin(ob):
+    """Move an object ORIGIN to the point it stands on, keeping it in place.
+
+    `join()` keeps the ACTIVE object origin and discards the rest, so a merged
+    asset inherits the origin of whichever part happened to be first -- for the
+    hut that is the wall box, whose origin is its own centre at z=0.65, and for
+    the cottage z=0.84. The mesh then sits from -0.84 to +1.20 in LOCAL space.
+
+    Placement assumes the origin is the floor contact point, so every prop in
+    the scene was buried by however much its first part happened to be tall:
+    the cottage stood 0.84 m into the ground and the ground tiles themselves
+    were 0.175 m out, which put the whole scene on an inconsistent datum. It is
+    invisible per-asset, because a prototype measured where it was built is
+    always correct -- the fault only appears once something is MOVED.
+
+    Origin goes to (bbox centre x, bbox centre y, min z): centred in plan so
+    yaw spins the asset about itself, and at the bottom so `location.z` means
+    "the height of the ground under it".
+
+    Vertices move and the object location compensates, so the asset does not
+    shift. Assumes no rotation on the object, which is true of a prototype and
+    asserted rather than hoped.
+    """
+    if ob.type != "MESH" or not len(ob.data.vertices):
+        return (0.0, 0.0, 0.0)
+    rot = ob.rotation_euler
+    if max(abs(rot.x), abs(rot.y), abs(rot.z)) > 1e-6:
+        raise SystemExit("FAIL: floor_origin(%s) needs an unrotated object; "
+                         "moving vertices under a rotation would shift it."
+                         % ob.name)
+    xs = [v.co.x for v in ob.data.vertices]
+    ys = [v.co.y for v in ob.data.vertices]
+    zs = [v.co.z for v in ob.data.vertices]
+    dx = (min(xs) + max(xs)) * 0.5
+    dy = (min(ys) + max(ys)) * 0.5
+    dz = min(zs)
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9 and abs(dz) < 1e-9:
+        return (0.0, 0.0, 0.0)
+    for v in ob.data.vertices:
+        v.co.x -= dx
+        v.co.y -= dy
+        v.co.z -= dz
+    ob.data.update()
+    ob.location.x += dx * ob.scale.x
+    ob.location.y += dy * ob.scale.y
+    ob.location.z += dz * ob.scale.z
+    return (dx, dy, dz)
+
+
 def merge_group(root, name=None, keep_empties=True):
     """Collapse every mesh under `root` into ONE object.
 

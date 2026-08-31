@@ -1104,3 +1104,32 @@ the island.
 Runs are INTENT: they are placed by hand FIRST, seeded into the solver as fixed
 obstacles, and everything else is fitted around them. Solving first and dropping
 the runs on top afterwards put a fence through a cottage wall.
+
+## 72. `join()` keeps the active object ORIGIN, and placement assumes it is the floor
+
+A merged asset inherits the origin of whichever part happened to be first in
+the list. For the hut that is the wall box, whose origin is its own centre at
+z=0.65; for the cottage, z=0.84. The mesh then runs from -0.84 to +1.20 in
+LOCAL space with the origin floating in the middle of it.
+
+Placement assumes the origin is the point the asset stands on. So every prop in
+the scene was buried by however tall its first part happened to be: the cottage
+stood 0.84 m into the ground, the ground tiles themselves were 0.175 m out, and
+the whole scene sat on a datum that had never been checked.
+
+**It survived four scene renders**, and the reason is worth understanding. Every
+per-asset check measures the asset WHERE IT WAS BUILT -- and a thing measured
+where it was built is always correctly seated, because nothing has moved it.
+`-- measure`, `-- look` and the `anchor="floor"` gate all passed, honestly. The
+fault only exists once an asset is MOVED, so only an assembled scene can show
+it.
+
+`kit.floor_origin()` puts the origin at (bbox centre x, bbox centre y, min z):
+centred in plan so yaw spins the asset about itself, at the bottom so
+`location.z` means the height of the ground under it. Vertices move and the
+object location compensates, so nothing shifts.
+
+`vale._check_seating()` is the guard, and it compares world-space base against
+expected ground height on the ASSEMBLED scene, because that is the only place
+the fault can appear. Note the general rule this belongs to: a check that runs
+in the same frame of reference the value was authored in cannot fail.
