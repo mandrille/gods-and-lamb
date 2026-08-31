@@ -1066,3 +1066,41 @@ does not.
 
 Small scatter is exempt from small scatter -- flowers beside tall grass is
 dressing, not a collision, and forbidding it makes the island bare.
+
+## 69. Not overlapping is a very low bar for architecture
+
+The footprint guard stopped buildings intersecting and the island still read as
+packed, because five houses standing 20 cm apart pass an overlap test and look
+like a terrace. Overlap and CROWDING are different faults and need different
+numbers: `BUILDING_CLEARANCE` is ground reserved beyond the footprint, and it is
+most of what makes a village read as a village.
+
+Clearance applies to a PAIR, not to a prop. Inflating a house against a fence
+rejected ten good placements and would have pushed every fence a metre off the
+thing it is supposed to enclose. A fence along a cottage wall is a garden.
+
+## 70. A tile being land says nothing about a building centred on it
+
+The placement guard checked spacing and nothing else, so a 2.15 m cottage whose
+CENTRE tile was land could overhang the coast by most of its width. Two huts
+ended up on the beach ring with the ground falling away behind them, and each
+rendered as a tan plane floating over the sea.
+
+Two fixes, and the first one alone was not enough:
+
+- sample the footprint across the tile grid and require every cell to exist.
+  Use **ceil**, not int: a 1.67 m building spans more than three 0.5 m tiles and
+  rounding down let it hang a third of itself over the water.
+- give buildings their own pool of buildable ground. Not the beach, not the
+  water. Villages are not built on sand, and the rim is exactly where the
+  containment maths is most marginal.
+
+## 71. A solver that only knows "somewhere it fits" scatters a fence into confetti
+
+A fence is a line and a bridge is a crossing. Both were fed to the placement
+solver with everything else and came back as isolated sections dotted around
+the island.
+
+Runs are INTENT: they are placed by hand FIRST, seeded into the solver as fixed
+obstacles, and everything else is fitted around them. Solving first and dropping
+the runs on top afterwards put a fence through a cottage wall.
