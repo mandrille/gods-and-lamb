@@ -347,48 +347,49 @@ def target_field(rest):
 
 
 def target_scene(rest):
-    """Build the demo island and render it. The look-dev shot.
+    """Build the Vale and render it, Workbench and lit.
 
-    This is the only picture that can answer whether the pieces belong to the
-    same world. A per-asset render tells you an asset is correct; only a scene
-    tells you the cliff, the bank and the canopy agree with each other.
+    The only picture that can answer whether the pieces belong to the same
+    world. A per-asset render tells you an asset is correct; only a scene tells
+    you the cliff, the bank and the canopy agree with each other -- and only a
+    scene shows a fence running through a cottage.
     """
     import shot
     import kit
-    import island
-    import lit
+    import vale
 
     _fresh_scene()
-    placed = island.build()
+    placed, frame = vale.build()
     size = kit.bounds(placed)
     tris = sum(kit.evaluated_tris(o) for o in placed)
     meshes = len({o.data.name for o in placed})
-    print("island: %d object(s), %d unique mesh(es), %d tris, "
-          "%.1f x %.1f x %.1f m"
+    print("vale: %d object(s), %d unique mesh(es), %d tris, %.1f x %.1f x %.1f m"
           % (len(placed), meshes, tris, size[0], size[1], size[2]))
 
-    views = (("hero", (-0.80, -1.00, 0.62), 0.92),
-             ("high", (-0.55, -1.00, 1.05), 0.94),
-             ("low", (-0.90, -1.00, 0.30), 0.92))
-    for name, dirv, fill in views:
-        shot.render(os.path.join(OUT, "look", "island_%s.png" % name),
-                    placed, res=(1600, 1000), fill=fill, dirv=dirv)
-    print("wrote out/look/island_{hero,high,low}.png")
+    # The camera is given the FRAMING BOX and nothing else, so it aims at a
+    # region and the landscape runs off every edge. Handing it the whole scene
+    # is what made three earlier versions read as a diorama: the frame had to
+    # contain the map, so the map got squeezed to fit the frame.
+    for name, dirv, fill in (("hero", (-0.72, -1.00, 0.88), 1.00),
+                             ("high", (-0.55, -1.00, 1.00), 1.00),
+                             ("low", (-0.85, -1.00, 0.66), 1.00)):
+        shot.render(os.path.join(OUT, "look", "vale_%s.png" % name),
+                    [frame], res=(1600, 1000), fill=fill, dirv=dirv,
+                    min_span=0.10)
+    print("wrote out/look/vale_{hero,high,low}.png")
 
-    # The same three angles at the same resolution under the game rig. Both,
-    # not one: a Workbench frame and a lit frame of the same scene held side by
-    # side is the only thing that says whether a judgement made in the cheap
-    # loop survives contact with the light that ships.
-    #
+    import lit
     # The lit pass runs SECOND, always. lit.bake_isolated() ends in
     # aobake.wire_all(), which rewires every material in the file -- a
-    # Workbench render taken after that is no longer the render `-- look`
-    # produces, and the cheap loop is what everything else depends on.
+    # Workbench render taken after that is no longer the render -- look gives.
     lit.bake_isolated(placed)
-    for name, dirv, fill in views:
-        lit.render(os.path.join(OUT, "lit", "island_%s.png" % name),
-                   placed, res=(1600, 1000), fill=fill, dirv=dirv)
-    print("wrote out/lit/island_{hero,high,low}.png")
+    for name, dirv in (("hero", (-0.72, -1.00, 0.88)),
+                       ("high", (-0.55, -1.00, 1.00)),
+                       ("low", (-0.85, -1.00, 0.66))):
+        lit.render(os.path.join(OUT, "lit", "vale_%s.png" % name),
+                   [frame], res=(1600, 1000), fill=1.00, dirv=dirv,
+                   min_span=0.10)
+    print("wrote out/lit/vale_{hero,high,low}.png")
 
 
 def target_asset(rest):
