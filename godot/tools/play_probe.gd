@@ -73,7 +73,7 @@ func _hover_and_click() -> void:
 	# overhead layer resolve it -- the same path a real hover takes.
 	var head: Vector3 = who.position + Vector3(0, Overhead.HEAD_HEIGHT, 0)
 	var at: Vector2 = _root.rig.cam.unproject_position(head)
-	var hit = _root.overhead._under(at)
+	var hit = _root.overhead.under(at)
 	print("[PLAY] hover at %s -> %s" % [str(at.round()),
 		"nothing" if hit == null else String(hit.brain.name)])
 	if hit != who:
@@ -131,13 +131,22 @@ func _cards() -> void:
 	for i in 3:
 		_root.divinity.draw_card()
 	var hand: int = _root.divinity.hand.size()
-	var buttons: int = _root.hud._cards.size()
-	print("[PLAY] hand %d cards, HUD shows %d buttons" % [hand, buttons])
+	# The hand is DRAWN now, so what has to line up is the geometry the HUD
+	# hit-tests against -- one rect per card, on screen. A card the player can
+	# see but not click, or a rect over a card that is no longer there, is the
+	# whole failure mode of hand-rolled hit testing.
+	var rects: Array = _root.hud._hand_rects()
+	print("[PLAY] hand %d cards, HUD lays out %d rects" % [hand, rects.size()])
 	if hand == 0:
 		_faults.append("no cards were drawn")
-	if buttons != hand:
-		_faults.append("HUD shows %d card buttons for a hand of %d"
-			% [buttons, hand])
+	if rects.size() != hand:
+		_faults.append("HUD laid out %d card rects for a hand of %d"
+			% [rects.size(), hand])
+	var vp: Vector2 = Vector2(_root.get_viewport().get_visible_rect().size)
+	for i in rects.size():
+		var r: Rect2 = rects[i]
+		if r.position.x < 0.0 or r.end.x > vp.x or r.end.y > vp.y:
+			_faults.append("card %d is off screen at %s" % [i, str(r)])
 
 
 func _cast_ground_card() -> void:
@@ -160,8 +169,8 @@ func _cast_ground_card() -> void:
 		   pop_before, _root.folk.size()])
 	if not ok:
 		_faults.append("casting '%s' failed" % name)
-	if _root.hud._cards.size() != _root.divinity.hand.size():
-		_faults.append("the HUD did not rebuild the hand after a cast")
+	if _root.hud._hand_rects().size() != _root.divinity.hand.size():
+		_faults.append("the HUD did not relayout the hand after a cast")
 
 
 func _smite() -> void:

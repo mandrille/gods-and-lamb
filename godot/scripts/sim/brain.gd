@@ -68,7 +68,11 @@ const ACTIONS := {
 				"seconds": 3.5, "anim": "idle", "refill": 0.70,
 				"morality": 0.0, "verb": "idling"},
 
-	"forage":  {"need": "", "sources": ["Nature/bush"],
+	# Apple heaps are what the Feast miracle leaves behind, and they are
+	# CONSUMED when foraged -- see ValeRoot._wire_follower. That closes the
+	# loop: the god drops food, a villager walks over and picks it up, and the
+	# food is gone. A heap that stays forever is a permanent free lunch.
+	"forage":  {"need": "", "sources": ["Nature/apples", "Nature/bush"],
 				"seconds": 3.0, "anim": "pickup", "refill": 0.0,
 				"gives": {"food": 2}, "morality": 0.01, "verb": "foraging"},
 	"harvest": {"need": "", "sources": ["Nature/crop_row"],

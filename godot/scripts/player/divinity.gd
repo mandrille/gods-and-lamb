@@ -41,26 +41,30 @@ const SMITE_COST := 14.0
 const DRAW_SECONDS := 10.0
 const HAND_MAX := 5
 
-## The deck. `target` says what the card needs before it can be played:
+## The deck. `icon` names a glyph in scripts/ui/icons.gd -- NOT an emoji:
+## Godot's default font has none, so an emoji card renders as a hollow box on
+## any machine without an emoji font installed.
+##
+## `target` says what the card needs before it can be played:
 ##   "none"    cast immediately, affects the whole village
 ##   "ground"  the player picks a spot
 ##   "folk"    the player picks a villager
 const DECK := [
-	{"id": "grove", "name": "Grove", "icon": "🌳", "target": "ground",
+	{"id": "grove", "name": "Grove", "icon": "tree", "target": "ground",
 	 "desc": "Trees rise from bare ground."},
-	{"id": "bounty", "name": "Bounty", "icon": "🌾", "target": "none",
+	{"id": "bounty", "name": "Bounty", "icon": "wheat", "target": "none",
 	 "desc": "The granary fills."},
-	{"id": "rain", "name": "Rain", "icon": "🌧", "target": "none",
+	{"id": "rain", "name": "Rain", "icon": "rain", "target": "none",
 	 "desc": "Everyone is washed clean, and the crops drink."},
-	{"id": "feast", "name": "Feast", "icon": "🍎", "target": "none",
+	{"id": "feast", "name": "Feast", "icon": "apple", "target": "none",
 	 "desc": "Nobody goes hungry tonight."},
-	{"id": "mend", "name": "Mend", "icon": "💚", "target": "folk",
+	{"id": "mend", "name": "Mend", "icon": "heart", "target": "folk",
 	 "desc": "Health and vigour restored."},
-	{"id": "fertility", "name": "Fertility", "icon": "👶", "target": "none",
+	{"id": "fertility", "name": "Fertility", "icon": "sprout", "target": "none",
 	 "desc": "A new villager, if there is room."},
-	{"id": "revel", "name": "Revel", "icon": "🎉", "target": "none",
+	{"id": "revel", "name": "Revel", "icon": "confetti", "target": "none",
 	 "desc": "Spirits lift across the island."},
-	{"id": "calm", "name": "Calm", "icon": "🕊", "target": "none",
+	{"id": "calm", "name": "Calm", "icon": "dove", "target": "none",
 	 "desc": "Grudges soften. Old wounds cool."},
 ]
 
@@ -173,8 +177,14 @@ func _cast(id: String, at: Vector3, who) -> bool:
 				f.brain.stats["hunger"] = 1.0
 				f.brain.stats["fun"] = minf(1.0,
 					float(f.brain.stats["fun"]) + 0.3)
+			# And it LEAVES something. A miracle that only plays a particle
+			# burst is one the player has to take on trust; heaps of fruit on
+			# the grass, which villagers then walk over and pick up, is one
+			# they can watch work.
+			var heaps := _scatter_prop("Nature/apples", at, 5)
 			_remember_all("We ate until we could not.", 0.7)
-			notice.emit("A feast.")
+			notice.emit("A feast. %d baskets left over." % heaps
+						if heaps > 0 else "A feast.")
 		"mend":
 			who.brain.stats["health"] = 1.0
 			who.brain.stats["energy"] = 1.0
@@ -305,6 +315,30 @@ func smite(at: Vector3, radius := 2.5) -> bool:
 	# flattened cottage opens seven by seven of them.
 	host.rebuild_grid()
 	return true
+
+
+## Drop `count` of something onto open ground near `at`. Returns how many
+## landed, which may be fewer -- the caller says so rather than pretending.
+func _scatter_prop(aid: String, at: Vector3, count: int) -> int:
+	var origin: Vector3 = at
+	if origin == Vector3.ZERO and host.folk.size() > 0:
+		origin = host.folk[0].position
+	var cell: Vector2i = grid.cell_of(origin)
+	var made := 0
+	for attempt in count * 20:
+		if made >= count:
+			break
+		var c: Vector2i = cell + Vector2i(rng.randi_range(-5, 5),
+										  rng.randi_range(-5, 5))
+		if not grid.is_walkable(c):
+			continue
+		if builder.add_prop(aid, c.x, c.y, rng.randf_range(0.0, 360.0)):
+			made += 1
+	if made > 0:
+		# Grid rebuild, so the new heaps are indexed and villagers can find
+		# them. Skipping it leaves fruit nobody is able to notice.
+		host.rebuild_grid()
+	return made
 
 
 func _grow_trees(at: Vector3, count: int) -> int:

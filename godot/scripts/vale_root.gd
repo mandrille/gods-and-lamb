@@ -304,9 +304,10 @@ func _wire_feedback() -> void:
 		if destroyed == 0:
 			sfx.play("deny"))
 
+	# Each miracle plays its OWN effect; the mapping lives in FXEvents so the
+	# rules layer never names a particle system.
 	divinity.miracle_cast.connect(func(id, at):
-		fxe.burst("grow" if id == "grove" else "miracle",
-			at if at != Vector3.ZERO else _village_centre())
+		fxe.miracle(id, at if at != Vector3.ZERO else _village_centre())
 		sfx.play("miracle"))
 
 	divinity.island_bought.connect(func(_slot): sfx.play("coin"))

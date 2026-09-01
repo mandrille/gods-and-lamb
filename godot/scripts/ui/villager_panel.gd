@@ -17,10 +17,10 @@ signal bless_pressed(who)
 signal punish_pressed(who)
 signal closed()
 
-const W := 300.0
-const PAD := 12.0
-const ROW := 19.0
-const BAR_H := 9.0
+const W := 340.0
+const PAD := 16.0
+const ROW := 26.0
+const BAR_H := 12.0
 
 const GOOD := Color(0.36, 0.78, 0.42)
 const MID := Color(0.93, 0.76, 0.26)
@@ -106,14 +106,18 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), BACK, true)
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.10), false, 1.0)
 
-	# Name and who they are.
-	draw_string(_font, Vector2(PAD, y + 13), String(b.name),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 17, INK)
-	y += 22
-	draw_string(_font, Vector2(PAD, y + 10),
+	# Header: the same face the world shows over their head, so the panel and
+	# the villager you clicked are obviously the same person.
+	var face := String(b.mood_face())
+	var tint := GOOD if face == "happy" else (BAD if face == "sad" else MID)
+	draw_circle(Vector2(PAD + 17, y + 16), 17.0, tint)
+	_mouth(Vector2(PAD + 17, y + 16), face)
+	draw_string(_font, Vector2(PAD + 44, y + 14), String(b.name),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 19, INK)
+	draw_string(_font, Vector2(PAD + 44, y + 30),
 				"%s  -  %s" % [b.personality.describe(), b.morality_label()],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DIM)
-	y += 20
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DIM)
+	y += 42
 
 	# Devil <-> saint (item 4). A marker on a two-colour track, with the ends
 	# labelled, because a bare bar does not say which direction is which.
@@ -131,7 +135,8 @@ func _draw() -> void:
 
 	# The bars (item 2).
 	for k in Brain.STAT_ORDER:
-		y = _stat_row(y, String(Brain.STAT_LABEL[k]), float(b.stats[k]))
+		y = _stat_row(y, String(k), String(Brain.STAT_LABEL[k]),
+					  float(b.stats[k]))
 	y += 6
 
 	# Thoughts (item 3).
@@ -189,16 +194,42 @@ func _draw() -> void:
 		custom_minimum_size.y = wanted
 
 
-func _stat_row(y: float, label: String, v: float) -> float:
-	draw_string(_font, Vector2(PAD, y + 9), label,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DIM)
-	var x := PAD + 66.0
-	var w := W - x - PAD - 34.0
+func _stat_row(y: float, key: String, label: String, v: float) -> float:
+	Icons.draw_icon(self, key, Vector2(PAD + 9, y + BAR_H * 0.5), 18.0)
+	draw_string(_font, Vector2(PAD + 22, y + 11), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DIM)
+	var x := PAD + 88.0
+	var w := W - x - PAD - 40.0
+	# Rounded track and fill, and a subtle inner line at the top of the fill:
+	# a flat rectangle reads as a progress bar in a settings dialog, and these
+	# are the thing the player looks at most.
 	draw_rect(Rect2(x, y, w, BAR_H), TRACK, true)
-	draw_rect(Rect2(x, y, w * clampf(v, 0.0, 1.0), BAR_H), _tint(v), true)
-	draw_string(_font, Vector2(x + w + 6.0, y + 9), "%d%%" % int(round(v * 100.0)),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 10, DIM)
+	var fill := w * clampf(v, 0.0, 1.0)
+	if fill > 1.0:
+		var c := _tint(v)
+		draw_rect(Rect2(x, y, fill, BAR_H), c, true)
+		draw_rect(Rect2(x, y, fill, BAR_H * 0.42), c.lightened(0.22), true)
+	draw_rect(Rect2(x, y, w, BAR_H), Color(0, 0, 0, 0.25), false, 1.0)
+	draw_string(_font, Vector2(x + w + 8.0, y + 11),
+				"%d%%" % int(round(v * 100.0)),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DIM)
 	return y + ROW
+
+
+## The same three mouths the overhead icon draws, so the two agree.
+func _mouth(at: Vector2, kind: String) -> void:
+	var ink := Color(0.16, 0.17, 0.20)
+	draw_circle(at + Vector2(-5.6, -4.2), 2.4, ink)
+	draw_circle(at + Vector2(5.6, -4.2), 2.4, ink)
+	match kind:
+		"happy":
+			draw_arc(at + Vector2(0, -1.0), 8.0, deg_to_rad(25),
+					 deg_to_rad(155), 18, ink, 2.4)
+		"sad":
+			draw_arc(at + Vector2(0, 9.0), 8.0, deg_to_rad(205),
+					 deg_to_rad(335), 18, ink, 2.4)
+		_:
+			draw_line(at + Vector2(-6.0, 4.2), at + Vector2(6.0, 4.2), ink, 2.4)
 
 
 ## Full is green, middling is yellow, low is red (item 2). Thresholds, not a
@@ -213,12 +244,11 @@ func _tint(v: float) -> Color:
 
 
 func _morality(y: float, m: float) -> float:
-	var x := PAD + 22.0
-	var w := W - PAD * 2 - 44.0
-	draw_string(_font, Vector2(PAD, y + 10), "D", HORIZONTAL_ALIGNMENT_LEFT,
-				-1, 13, DEVIL)
-	draw_string(_font, Vector2(W - PAD - 14.0, y + 10), "S",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, SAINT)
+	var x := PAD + 24.0
+	var w := W - PAD * 2 - 48.0
+	Icons.draw_icon(self, "devil", Vector2(PAD + 9, y + BAR_H * 0.5 + 2.0), 20.0)
+	Icons.draw_icon(self, "saint", Vector2(W - PAD - 9, y + BAR_H * 0.5 + 2.0),
+					20.0)
 	draw_rect(Rect2(x, y + 2.0, w, BAR_H), TRACK, true)
 	# Two halves growing out from the centre, so the bar reads as an AXIS
 	# rather than as a meter that happens to start in the middle.

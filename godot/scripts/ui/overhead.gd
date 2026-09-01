@@ -18,7 +18,16 @@ class_name Overhead
 signal follower_hovered(who)            ## null when nothing is under the cursor
 signal follower_clicked(who)
 
-const PICK_RADIUS := 34.0               ## screen pixels around a head
+## Screen pixels around a head that count as "on this villager".
+##
+## Generous, and it has to be. A villager is about 40 px tall at the play
+## camera and MOVING, so a tight radius means the player chases them with the
+## cursor and misses -- which was the complaint. This is a soft target the size
+## of a fingertip, which is also what makes it work on a phone at all.
+##
+## The radius is measured from the HEAD, and the body hangs below it, so the
+## effective target covers the whole figure rather than a disc floating above.
+const PICK_RADIUS := 52.0
 const HEAD_HEIGHT := 1.05               ## metres above the follower's origin
 
 const HAPPY := Color(0.36, 0.80, 0.40)
@@ -49,7 +58,7 @@ func _process(_delta: float) -> void:
 		return
 	_mouse = get_viewport().get_mouse_position()
 	var was = hovered
-	hovered = _under(_mouse)
+	hovered = under(_mouse)
 	if hovered != was:
 		follower_hovered.emit(hovered)
 	queue_redraw()
@@ -61,7 +70,7 @@ func _process(_delta: float) -> void:
 ## ray the player misses. A generous screen-space radius is what makes clicking
 ## a villager feel like clicking a villager. Nearest-to-cursor wins so a crowd
 ## does not become a lottery.
-func _under(at: Vector2):
+func under(at: Vector2):
 	var best = null
 	var best_d := PICK_RADIUS
 	for f in host.folk:
@@ -87,7 +96,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 		return
-	var hit = _under(mb.position)
+	var hit = under(mb.position)
 	if hit == null:
 		return
 	selected = hit
@@ -112,7 +121,25 @@ func _draw() -> void:
 		# The mood face is a hover affordance (item 1), plus a permanent one on
 		# whoever is selected so the open panel and the world agree.
 		if f == hovered or f == selected:
+			_ground_ring(f, f == selected)
 			_face(p, f.brain.mood_face(), f == selected)
+
+
+## A ring on the ground at the villager's feet, projected from four points of
+## a circle in WORLD space so it sits flat in perspective. A screen-space
+## circle under the feet reads as a sticker on the lens.
+func _ground_ring(f, strong: bool) -> void:
+	var pts := PackedVector2Array()
+	var r := 0.34
+	for i in 20:
+		var a := TAU * float(i) / 20.0
+		var w: Vector3 = f.position + Vector3(cos(a) * r, 0.03, sin(a) * r)
+		if rig.cam.is_position_behind(w):
+			return
+		pts.append(rig.cam.unproject_position(w))
+	pts.append(pts[0])
+	draw_polyline(pts, Color(1, 1, 1, 0.85 if strong else 0.45),
+				  2.5 if strong else 1.8)
 
 
 func _face(at: Vector2, kind: String, ring: bool) -> void:
