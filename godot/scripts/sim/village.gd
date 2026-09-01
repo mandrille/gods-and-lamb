@@ -16,8 +16,21 @@ signal depleted(res: String)
 
 ## What a full store looks like, per resident. Capacity scales with population
 ## so a bigger village is not permanently starving on the same granary.
-const PER_HEAD := {"food": 6, "wood": 5}
-const START := {"food": 8, "wood": 4}
+const PER_HEAD := {"food": 6, "wood": 8, "stone": 5}
+## What two people wash up on a bare plot with. Deliberately thin: the first
+## hut has to be EARNED, because watching them earn it is the whole opening.
+const START := {"food": 3, "wood": 0, "stone": 0}
+
+## How many of each structure the settlement wants, given its size. This is
+## what stops a village raising a third well and what makes the first hut
+## urgent -- `shortage` is about resources, this is about buildings.
+const WANTED := {
+	"Buildings/hut": {"per_head": 0.5, "min": 1},
+	"Buildings/well": {"per_head": 0.0, "min": 1},
+	"Buildings/market_stall": {"per_head": 0.0, "min": 1},
+	"Buildings/shrine": {"per_head": 0.0, "min": 1},
+	"Nature/crop_row": {"per_head": 3.0, "min": 4},
+}
 
 var stores: Dictionary = {}
 var population := 0
@@ -26,6 +39,11 @@ var pop_cap := 5
 ## Cumulative, for the chronicle and for scoring how the village is doing.
 var total_gathered := 0
 var total_eaten := 0
+
+## asset id -> how many are standing. Kept as a count the builder refreshes
+## rather than recomputed by walking the prop list on every decision: every
+## villager asks this several times a second.
+var structures: Dictionary = {}
 
 
 func _init() -> void:
@@ -82,11 +100,39 @@ func give(gain: Dictionary) -> void:
 	changed.emit()
 
 
+## Refresh the structure census from what is actually standing. Called by the
+## host whenever props change -- built, destroyed, or a new plot bought.
+func census(placed_props: Array) -> void:
+	structures.clear()
+	for e in placed_props:
+		var aid := String(e.get("id", ""))
+		structures[aid] = int(structures.get(aid, 0)) + 1
+
+
+func count_of(aid: String) -> int:
+	return int(structures.get(aid, 0))
+
+
+## 0 = we have enough, 1 = we have none and want one. Drives whether building
+## is worth a villager's time at all.
+func wants(aid: String) -> float:
+	if not WANTED.has(aid):
+		return 0.0
+	var spec: Dictionary = WANTED[aid]
+	var target: float = maxf(float(spec["min"]),
+							 float(spec["per_head"]) * float(maxi(1, population)))
+	var have := float(count_of(aid))
+	if have >= target:
+		return 0.0
+	return clampf((target - have) / target, 0.0, 1.0)
+
+
 func has_room() -> bool:
 	return population < pop_cap
 
 
 func summary() -> String:
-	return "food %d/%d  wood %d/%d  pop %d/%d" % [
+	return "food %d/%d  wood %d/%d  stone %d/%d  pop %d/%d" % [
 		amount("food"), capacity("food"),
-		amount("wood"), capacity("wood"), population, pop_cap]
+		amount("wood"), capacity("wood"),
+		amount("stone"), capacity("stone"), population, pop_cap]

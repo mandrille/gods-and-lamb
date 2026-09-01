@@ -37,43 +37,86 @@ const URGENT := 0.45
 ## Below this the follower will drop work entirely.
 const DESPERATE := 0.20
 
-## The catalogue. `need` names the stat an action refills; work actions have
-## none and are chosen by favour instead. `sources` are asset ids the follower
-## has to stand beside. `gives`/`takes` move village stores.
+## The catalogue.
+##
+## `need` names the stat an action refills; work actions have none and are
+## chosen by favour instead. `sources` are asset ids the follower must stand
+## beside. `anywhere` means it can be done on open ground when no source
+## exists -- eating comes out of the shared store and needs no building, and a
+## villager with no hut sleeps on the grass rather than never sleeping.
+## `builds` places a structure on completion, which is the only way any
+## building enters this world.
 const ACTIONS := {
-	"eat":     {"need": "hunger", "sources": ["Buildings/market_stall",
-											  "Buildings/hut",
-											  "Buildings/cottage"],
-				"seconds": 3.0, "anim": "pickup", "refill": 0.85,
+	"eat":     {"need": "hunger", "sources": [], "anywhere": true,
+				"seconds": 2.5, "anim": "pickup", "refill": 0.85,
 				"takes": {"food": 1}, "morality": 0.0, "verb": "eating"},
-	"sleep":   {"need": "energy", "sources": ["Buildings/hut",
+	"rest":    {"need": "energy", "sources": ["Buildings/hut",
 											  "Buildings/cottage"],
+				"anywhere": true,
 				"seconds": 5.0, "anim": "idle", "refill": 0.90,
-				"morality": 0.0, "verb": "sleeping"},
+				"morality": 0.0, "verb": "resting"},
+	"wash":    {"need": "hygiene", "sources": ["Buildings/well"],
+				"anywhere": true,
+				"seconds": 3.0, "anim": "pickup", "refill": 0.85,
+				"morality": 0.0, "verb": "washing"},
 	"pray":    {"need": "faith", "sources": ["Buildings/shrine"],
 				"seconds": 4.0, "anim": "idle", "refill": 0.80,
 				"morality": 0.03, "verb": "praying"},
-	"wash":    {"need": "hygiene", "sources": ["Buildings/well"],
-				"seconds": 3.0, "anim": "pickup", "refill": 0.85,
-				"morality": 0.0, "verb": "washing"},
-	"play":    {"need": "fun", "sources": ["Buildings/market_stall",
-										   "Nature/flowers"],
+	"play":    {"need": "fun", "sources": ["Nature/flowers",
+										   "Buildings/market_stall"],
+				"anywhere": true,
 				"seconds": 3.5, "anim": "idle", "refill": 0.70,
 				"morality": 0.0, "verb": "idling"},
-	"harvest": {"need": "", "sources": ["Nature/crop_row"],
-				"seconds": 4.0, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 2}, "morality": 0.02, "verb": "harvesting"},
-	"chop":    {"need": "", "sources": ["Nature/tree", "Nature/pine"],
-				"seconds": 5.0, "anim": "chop", "refill": 0.0,
-				"gives": {"wood": 2}, "morality": 0.0, "verb": "chopping"},
+
 	"forage":  {"need": "", "sources": ["Nature/bush"],
 				"seconds": 3.0, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 1}, "morality": 0.01, "verb": "foraging"},
+				"gives": {"food": 2}, "morality": 0.01, "verb": "foraging"},
+	"harvest": {"need": "", "sources": ["Nature/crop_row"],
+				"seconds": 3.5, "anim": "pickup", "refill": 0.0,
+				"gives": {"food": 3}, "morality": 0.02, "verb": "harvesting"},
+	"chop":    {"need": "", "sources": ["Nature/tree", "Nature/pine"],
+				"seconds": 5.0, "anim": "chop", "refill": 0.0,
+				"gives": {"wood": 4}, "morality": 0.0, "verb": "chopping"},
+	"quarry":  {"need": "", "sources": ["Nature/rock"],
+				"seconds": 5.0, "anim": "chop", "refill": 0.0,
+				"gives": {"stone": 2}, "morality": 0.0, "verb": "quarrying"},
+
+	# Building. `wants` names the structure the village is short of, and the
+	# village decides that -- a villager will not put up a third well.
+	"build_hut":   {"need": "", "sources": [], "anywhere": true,
+					"seconds": 7.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 6}, "builds": "Buildings/hut",
+					"wants": "Buildings/hut", "clear": 2.6,
+					"morality": 0.05, "verb": "building a hut"},
+	"build_well":  {"need": "", "sources": [], "anywhere": true,
+					"seconds": 6.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 4, "stone": 3},
+					"builds": "Buildings/well", "wants": "Buildings/well",
+					"clear": 2.0, "morality": 0.05, "verb": "digging a well"},
+	"build_stall": {"need": "", "sources": [], "anywhere": true,
+					"seconds": 6.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 6},
+					"builds": "Buildings/market_stall",
+					"wants": "Buildings/market_stall",
+					"clear": 2.2, "morality": 0.04, "verb": "raising a stall"},
+	"build_shrine":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 5, "stone": 5},
+					"builds": "Buildings/shrine", "wants": "Buildings/shrine",
+					"clear": 2.4, "morality": 0.10,
+					"verb": "raising a shrine"},
+	"sow":         {"need": "", "sources": [], "anywhere": true,
+					"seconds": 4.0, "anim": "pickup", "refill": 0.0,
+					"takes": {"food": 1}, "builds": "Nature/crop_row",
+					"wants": "Nature/crop_row", "clear": 0.7,
+					"morality": 0.02, "verb": "sowing"},
 }
 
 ## Work the village does for itself rather than to fill a bar. These are the
 ## ones favour steers, and the only ones blessing can encourage.
-const WORK := ["harvest", "chop", "forage"]
+const WORK := ["forage", "harvest", "chop", "quarry",
+			   "build_hut", "build_well", "build_stall", "build_shrine",
+			   "sow"]
 
 var name := "Someone"
 var stats: Dictionary = {}
@@ -92,6 +135,10 @@ var favour: Dictionary = {}
 var action := ""
 var action_left := 0.0
 var target_id := ""
+## Where the current errand is headed. Read by the host when a `builds` action
+## finishes, because the BUILDER places the structure -- the brain has no
+## business holding a reference to the scene.
+var target_cell := Vector2i(-1, -1)
 
 var thought := ""
 var thought_log: Array[String] = []
@@ -302,50 +349,151 @@ func _action_for_need(key: String) -> String:
 	return ""
 
 
-## How much the village wants this work done. Keeps the economy honest: with a
-## full granary, harvesting is nearly pointless and the followers drift to
-## something else on their own.
+## How much the village wants this work done.
+##
+## Two different questions behind one number. For gathering it is "are we short
+## of the stuff this produces"; for building it is "are we short of this
+## STRUCTURE, and can we pay for it". Building something the village already
+## has, or cannot afford, must score zero -- otherwise villagers queue up to
+## start a hut nobody can finish.
 func _demand(a: String) -> float:
 	if village == null:
 		return 1.0
-	var gives: Dictionary = ACTIONS[a].get("gives", {})
+	var spec: Dictionary = ACTIONS[a]
+
+	var wants := String(spec.get("wants", ""))
+	if wants != "":
+		var need: float = village.wants(wants)
+		if need <= 0.0:
+			return 0.0
+		# Affordable NOW, from the shared store. A villager who cannot pay
+		# walks to the site, fails, and wanders -- which reads as them
+		# dithering and is really an accounting error.
+		if not village.can_take(spec.get("takes", {})):
+			return 0.0
+		# Wanted structures outrank ordinary gathering: a village with no hut
+		# should build one rather than keep stacking wood.
+		return 0.6 + need * 2.2
+
+	var gives: Dictionary = spec.get("gives", {})
 	var want := 0.0
 	for res in gives:
 		want = maxf(want, village.shortage(String(res)))
+		# Gathering pulls TOWARD what the village is trying to build. Without
+		# this, wanting a hut makes hut-building attractive and does nothing
+		# about the wood -- so two villagers stand around at six wood, needing
+		# eight, with chopping no more appealing than it was before anyone
+		# wanted a hut. Villagers who gather with a purpose read as villagers.
+		want += _needed_for_projects(String(res)) * 1.4
 	return 0.15 + want
 
 
+## How badly some structure we lack, and cannot yet afford, wants `res`.
+func _needed_for_projects(res: String) -> float:
+	var worst := 0.0
+	for a in WORK:
+		var spec: Dictionary = ACTIONS[a]
+		var wants := String(spec.get("wants", ""))
+		if wants == "":
+			continue
+		var takes: Dictionary = spec.get("takes", {})
+		if not takes.has(res):
+			continue
+		var need: float = village.wants(wants)
+		if need <= 0.0 or village.can_take(takes):
+			continue                 # not wanted, or already affordable
+		var have := float(village.amount(res))
+		var cost := float(takes[res])
+		worst = maxf(worst, need * clampf(1.0 - have / maxf(cost, 1.0), 0.0, 1.0))
+	return worst
+
+
 ## Where to go for `act`, as a walkable cell, or (-1,-1) if there is nowhere.
+##
+## Three shapes of destination, in order:
+##   a BUILD SITE -- open ground with room around it, near the settlement
+##   a SOURCE     -- stand beside one of the named assets
+##   ANYWHERE     -- a few steps from here, for things needing no place at all
 func destination_for(grid, from: Vector2i, act: String) -> Vector2i:
 	if not ACTIONS.has(act):
 		return grid.random_cell(rng)
-	var sources: Array = ACTIONS[act]["sources"]
+	var spec: Dictionary = ACTIONS[act]
+
+	if String(spec.get("builds", "")) != "":
+		var spot: Vector2i = _open_spot(grid, from, float(spec.get("clear", 2.0)))
+		target_cell = spot
+		return spot
+
+	var sources: Array = spec.get("sources", [])
 	var ranked: Array = []
 	for aid in sources:
 		for c in grid.cells_of(String(aid)):
 			var cell: Vector2i = c
 			ranked.append([absi(cell.x - from.x) + absi(cell.y - from.y), cell,
 						   String(aid)])
-	if ranked.is_empty():
-		return Vector2i(-1, -1)
-	ranked.sort_custom(func(a, b): return a[0] < b[0])
+	if not ranked.is_empty():
+		ranked.sort_custom(func(a, b): return a[0] < b[0])
+		# Among the nearest few, not the single nearest: two villagers who
+		# share a doorstep must not pick the same tree every time, forever.
+		var span: int = mini(5, ranked.size())
+		for i in span:
+			var pick: int = rng.randi_range(0, mini(span, ranked.size()) - 1)
+			var stand: Vector2i = grid.beside(ranked[pick][1], rng)
+			if stand.x >= 0:
+				target_id = String(ranked[pick][2])
+				target_cell = stand
+				return stand
+			ranked.remove_at(pick)
+			if ranked.is_empty():
+				break
 
-	# Among the nearest few, not the single nearest: two followers who share a
-	# doorstep must not pick the same tree every time, forever.
-	var span: int = mini(5, ranked.size())
-	for i in span:
-		var pick: int = rng.randi_range(0, mini(span, ranked.size()) - 1)
-		var stand: Vector2i = grid.beside(ranked[pick][1], rng)
-		if stand.x >= 0:
-			target_id = String(ranked[pick][2])
-			return stand
-		ranked.remove_at(pick)
-		if ranked.is_empty():
-			break
+	if bool(spec.get("anywhere", false)):
+		# No source in the world, and none needed. Eating comes out of the
+		# shared store; a villager with no hut sleeps on the grass. Without
+		# this the opening -- a bare plot with no buildings at all -- would
+		# have nobody able to eat or sleep until the first hut went up.
+		target_cell = _near(grid, from, 5)
+		return target_cell
 	return Vector2i(-1, -1)
 
 
-## Kept for the movement layer, which only wants somewhere to walk.
+## Open ground with `clear` metres of room, biased toward where the village
+## already is so a settlement grows as a settlement instead of scattering one
+## building per corner of the plot.
+func _open_spot(grid, from: Vector2i, clear: float) -> Vector2i:
+	var radius: int = maxi(1, int(ceil(clear / grid.tile / 2.0)))
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	for attempt in 90:
+		var c: Vector2i = _near(grid, from, 14)
+		if c.x < 0 or not _has_room(grid, c, radius):
+			continue
+		var d: int = absi(c.x - from.x) + absi(c.y - from.y)
+		if d < best_d:
+			best_d = d
+			best = c
+	return best
+
+
+func _has_room(grid, centre: Vector2i, radius: int) -> bool:
+	for i in range(-radius, radius + 1):
+		for j in range(-radius, radius + 1):
+			if not grid.is_walkable(centre + Vector2i(i, j)):
+				return false
+	return true
+
+
+## A walkable cell within `span` tiles of `from`.
+func _near(grid, from: Vector2i, span: int) -> Vector2i:
+	for attempt in 40:
+		var c: Vector2i = from + Vector2i(rng.randi_range(-span, span),
+										  rng.randi_range(-span, span))
+		if grid.is_walkable(c):
+			return c
+	return from if grid.is_walkable(from) else grid.random_cell(rng)
+
+
+## Kept for the movement layer## Kept for the movement layer, which only wants somewhere to walk.
 func destination(grid, from: Vector2i) -> Vector2i:
 	var act := choose_action()
 	if act == "" or act == "talk":

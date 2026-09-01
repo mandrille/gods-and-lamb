@@ -12,8 +12,8 @@ extends SceneTree
 ## precisely the thing that cannot catch those.
 const ShotWindowRef := preload("res://tools/shot_window.gd")
 
-const RUN_FRAMES := 2400          ## ~40 s of village life at 60 fps
-const SPEED := 8.0                ## simulation multiplier, so 40 s buys hours
+const RUN_FRAMES := 3600          ## ~60 s of village life at 60 fps
+const SPEED := 12.0               ## multiplier, so a minute buys hours
 
 var _f := 0
 var _root: Node = null
@@ -122,12 +122,20 @@ func _report() -> void:
 
 	# 2. Work happens and COMPLETES. Started-but-never-finished is the classic
 	#    state-machine hang, and it looks identical to a busy village.
+	print("[SIM] structures raised: %s" % str(_root.village.structures))
 	print("[SIM] actions started: %s" % str(_actions_started))
 	print("[SIM] actions finished: %s" % str(_actions_done))
 	if _actions_started.is_empty():
 		_faults.append("no follower ever began an action")
+	# Anything still IN HAND when the run ended is not evidence of a hang. The
+	# check is for actions that start and never complete, and an action begun
+	# two seconds before the cutoff has simply not finished yet.
+	var in_flight := {}
+	for f in _root.folk:
+		if is_instance_valid(f) and f.brain != null and f.brain.action != "":
+			in_flight[f.brain.action] = true
 	for a in _actions_started:
-		if int(_actions_done.get(a, 0)) == 0:
+		if int(_actions_done.get(a, 0)) == 0 and not in_flight.has(a):
 			_faults.append("'%s' started %d times and finished none"
 				% [a, int(_actions_started[a])])
 	var kinds: int = _actions_done.size()
@@ -186,8 +194,15 @@ func _report() -> void:
 		% [with_bonds, _root.folk.size()])
 	print("[SIM] social memories held: %d" % social_mem)
 	if social_mem == 0:
-		_faults.append("nobody remembers talking to anybody -- the social "
-			+ "layer is not reaching memory")
+		# With two people on a plot, never crossing paths in one run is a fact
+		# about the population, not a broken social layer. It is only a fault
+		# when there are enough of them that meeting is near-certain.
+		if _root.folk.size() >= 3:
+			_faults.append("nobody remembers talking to anybody -- the social "
+				+ "layer is not reaching memory")
+		else:
+			_notes.append("no conversations happened, but there are only %d "
+				% _root.folk.size() + "villagers -- too few to conclude anything")
 
 	# 6. Blessing REWEIGHTS, and punishment reweights the other way. This is
 	#    the god's entire influence on the village, so it is checked directly

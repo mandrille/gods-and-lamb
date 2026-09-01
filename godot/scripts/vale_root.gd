@@ -22,9 +22,13 @@ const FX_PATH := "res://scripts/fx.gd"
 const SETTINGS_PATH := "res://scripts/settings.gd"
 const DEBUG_PATH := "res://scripts/debug_menu.gd"
 
-## How many villagers the island opens with. Below the cap on purpose: a
-## village with room to grow is the hook the population mechanic hangs on.
-const START_FOLK := 4
+## How many villagers the plot opens with.
+##
+## Two. The first plot has no buildings, no wood and three days of food, so the
+## opening is two people on bare ground deciding what to do about it -- and the
+## first hut is something the player watches get earned rather than something
+## the world came with.
+const START_FOLK := 2
 
 ## Walk speed multiplier. The authored stride is 0.46 m per cycle, which at 1.0
 ## is 0.46 m/s -- and on a 12.5 m island that is 27 seconds to cross, so
@@ -59,6 +63,7 @@ var panel: VillagerPanel
 var hud: HUD
 var fxe: FXEvents
 var sfx: SFX
+var plots: PlotMarkers
 
 ## Every follower with a mind, scene residents and stress-spawns alike. The
 ## social layer needs ONE list to match pairs from; keeping two and iterating
@@ -91,6 +96,10 @@ func _ready() -> void:
 	# Centred on the home island, which is the middle slot of the grid.
 	var home_mid: int = Islands.MARGIN + (Islands.GRID / 2) * Islands.PITCH 						+ Islands.SPAN / 2
 	rig.focus = builder.world_of(home_mid, home_mid)
+	# Framed on ONE plot, not on the whole archipelago. The plot is 10.5 m
+	# across and the default 30 m pull-back was set for a 48 m landscape, which
+	# left the village a postage stamp in a field of blue.
+	rig.dist = 17.0
 	# Clamp panning to the ground, with a margin so the edge can be inspected
 	# but not left behind entirely.
 	var pad := 4.0
@@ -108,6 +117,7 @@ func _ready() -> void:
 
 	village = Village.new()
 	village.pop_cap = islands.pop_cap()
+	village.census(builder.placed_props)
 	social = Social.new(20260901)
 
 	divinity = Divinity.new()
@@ -313,11 +323,44 @@ func _wire_follower(f: Node) -> void:
 			sfx.play("pick"))
 	f.finished.connect(func(act):
 		var at: Vector3 = f.position + Vector3(0, 0.6, 0)
-		if act == "chop":
+		var spec: Dictionary = Brain.ACTIONS.get(act, {})
+		var raises := String(spec.get("builds", ""))
+		if raises != "":
+			_raise_structure(f, act, raises, spec)
+			return
+		if act == "chop" or act == "quarry":
 			fxe.burst("chips", at)
 			sfx.play("chop", 0.85)
 		elif act in ["harvest", "forage"]:
-			fxe.burst("chips", at, 0.5))
+			fxe.burst("chips", at, 0.5)
+			sfx.play("pick", 1.1))
+
+
+## A villager finished building something. THE BUILDER places it, not the
+## brain: the brain chose the spot and paid for it, and holding a reference to
+## the scene from inside the simulation is how a headless probe stops working.
+##
+## The cost was already taken when the action completed, so a placement that
+## fails has to REFUND -- otherwise a villager can spend eight wood on a hut
+## that never appears, and the village slowly starves of materials for reasons
+## nothing reports.
+func _raise_structure(f: Node, act: String, aid: String,
+					  spec: Dictionary) -> void:
+	var cell: Vector2i = f.brain.target_cell
+	var ok := false
+	if cell.x >= 0:
+		ok = builder.add_prop(aid, cell.x, cell.y, _rng.randf_range(0.0, 360.0))
+	if not ok:
+		village.give(spec.get("takes", {}))
+		return
+	var at := builder.world_of(cell.x, cell.y) + Vector3(0, builder.lift, 0)
+	rebuild_grid()
+	village.census(builder.placed_props)
+	fxe.burst("grow", at + Vector3(0, 0.6, 0))
+	sfx.play("coin", 0.8)
+	f.brain.memories.add(Memories.KIND_WORK,
+		"I built that with my own hands.", 0.6)
+	f.brain.think_aloud()
 
 
 ## Somewhere sensible to put an effect that has no place of its own -- a
@@ -355,6 +398,17 @@ func _add_ui() -> void:
 	panel.position = Vector2(16, 96)
 	ui.add_child(panel)
 
+	plots = PlotMarkers.new()
+	plots.name = "Plots"
+	plots.islands = islands
+	plots.divinity = divinity
+	plots.rig = rig
+	add_child(plots)
+	plots.plot_clicked.connect(func(slot): divinity.buy_island(slot))
+	divinity.island_bought.connect(func(_s): plots.rebuild())
+	divinity.faith_changed.connect(func(_a): plots._repaint())
+	plots.rebuild()
+
 	hud = HUD.new()
 	hud.name = "HUD"
 	hud.host = self
@@ -381,7 +435,9 @@ func rebuild_grid() -> void:
 		if is_instance_valid(f):
 			f.grid = grid
 	# The prop set changed too -- that is WHY the grid is being rebuilt -- so
-	# the picker's cached AABBs are stale in exactly the same way.
+	# the picker's cached AABBs are stale in exactly the same way, and the
+	# structure census is what tells villagers whether to build another.
+	village.census(builder.placed_props)
 	if pick != null:
 		pick.setup(rig, builder, builder.placed_props)
 
@@ -389,12 +445,15 @@ func rebuild_grid() -> void:
 ## A bought island: regenerate the terrain, then everything derived from it.
 func rebuild_world() -> void:
 	builder.rebuild(islands.build_doc())
+	if plots != null:
+		plots.rebuild()
 	grid = WALKGRID.new()
 	grid.build(builder.doc)
 	divinity.grid = grid
 	for f in folk:
 		if is_instance_valid(f):
 			f.grid = grid
+	village.census(builder.placed_props)
 	if pick != null:
 		# setup(), not a direct assignment. The picker builds a WORLD AABB per
 		# prop and stores it beside the node; handing it the builder's raw
