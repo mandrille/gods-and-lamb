@@ -59,6 +59,8 @@ func _process(_d: float) -> bool:
 		12: _shoot("play_4_island")
 		13: _check_island()
 		14: _check_clips()
+		15: _check_targeting()
+		16: _check_children()
 		_:
 			_report()
 			return true
@@ -302,6 +304,89 @@ func _check_clips() -> void:
 		if anim != "" and not f._clips.has(anim):
 			_faults.append("action '%s' wants clip '%s', which no folk mesh has"
 				% [a, anim])
+
+
+## Can you actually hit a villager?
+##
+## The complaint was that clicking them is "super hard", so this samples the
+## whole FIGURE, not just the head: a point-to-head test leaves a hole over the
+## body, which is exactly where people aim. It also checks that the target does
+## not swallow the entire screen, because a fix that makes everything hit the
+## nearest villager is not a fix.
+func _check_targeting() -> void:
+	var who = _root.folk[0]
+	var cam = _root.rig.cam
+	var feet: Vector2 = cam.unproject_position(who.position)
+	var head: Vector2 = cam.unproject_position(
+		who.position + Vector3(0, Overhead.HEAD_HEIGHT, 0))
+	var tall: float = feet.distance_to(head)
+	var hits := 0
+	var tried := 0
+	for i in 5:
+		# Along the body from feet to head, and a little to each side.
+		var along: Vector2 = feet.lerp(head, float(i) / 4.0)
+		for dx in [-10.0, 0.0, 10.0]:
+			tried += 1
+			if _root.overhead.under(along + Vector2(dx, 0)) == who:
+				hits += 1
+	print("[PLAY] villager is %.0f px tall; %d of %d body points hit"
+		% [tall, hits, tried])
+	if hits < tried:
+		_faults.append("only %d of %d points ON the villager selected them"
+			% [hits, tried])
+	# And a point well clear of everyone must select nobody.
+	var far: Vector2 = feet + Vector2(420.0, 0.0)
+	if _root.overhead.under(far) != null:
+		_faults.append("a point 420 px away still selected a villager -- the "
+			+ "target is too big to be a target")
+
+
+## Children are born small and grow up.
+func _check_children() -> void:
+	var before: int = _root.folk.size()
+	var a = _root.folk[0]
+	var b = _root.folk[1]
+	# Put both in a state to parent, then ask the host directly -- the social
+	# layer's dice are not what is under test here.
+	for who in [a, b]:
+		for k in Brain.STAT_ORDER:
+			who.brain.stats[k] = 1.0
+		who.brain.adult = true
+		who.brain.age = Brain.ADULT_AT
+		if not who.brain.can_parent():
+			_faults.append("%s is fed, well and content but cannot parent"
+				% who.brain.name)
+	_root.village.pop_cap = 99
+	_root._on_child_wanted(a, b)
+	if _root.folk.size() != before + 1:
+		_faults.append("no child was born (%d -> %d)"
+			% [before, _root.folk.size()])
+		return
+	var kid = _root.folk[_root.folk.size() - 1]
+	kid._apply_growth()
+	var small: float = kid._shown_scale
+	print("[PLAY] child %s born at scale %.2f, adult=%s"
+		% [kid.brain.name, small, str(kid.brain.adult)])
+	if not kid.is_child():
+		_faults.append("the newborn is not a child")
+	if small > 0.8:
+		_faults.append("the newborn is %.2f scale -- not visibly a child" % small)
+	# Grow them up and check the body follows.
+	kid.brain.age = Brain.ADULT_AT
+	kid.brain.adult = true
+	kid._apply_growth()
+	print("[PLAY] grown to scale %.2f" % kid._shown_scale)
+	if kid._shown_scale < 0.98:
+		_faults.append("a grown child stayed at %.2f scale" % kid._shown_scale)
+	# And a child must not be sent to chop trees.
+	kid.brain.adult = false
+	var picks := {}
+	for i in 60:
+		picks[kid.brain.choose_action()] = true
+	for banned in ["chop", "quarry", "build_hut", "build_shrine"]:
+		if picks.has(banned):
+			_faults.append("a child chose '%s'" % banned)
+	print("[PLAY] child chooses among: %s" % str(picks.keys()))
 
 
 ## --- helpers ----------------------------------------------------------------

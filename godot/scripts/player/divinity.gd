@@ -41,7 +41,15 @@ const SMITE_COST := 14.0
 const DRAW_SECONDS := 10.0
 const HAND_MAX := 5
 
-## The deck. `icon` names a glyph in scripts/ui/icons.gd -- NOT an emoji:
+## The deck.
+##
+## THERE IS NO FERTILITY CARD. New villagers are not something the god buys:
+## they are born to two people who are fed, well and fond of each other, or
+## they arrive on their own when the village is worth joining. Both of those
+## are things the player causes INDIRECTLY, which is the same rule that says
+## the god cannot order a hut built.
+##
+## `icon` names a glyph in scripts/ui/icons.gd -- NOT an emoji:
 ## Godot's default font has none, so an emoji card renders as a hollow box on
 ## any machine without an emoji font installed.
 ##
@@ -60,8 +68,6 @@ const DECK := [
 	 "desc": "Nobody goes hungry tonight."},
 	{"id": "mend", "name": "Mend", "icon": "heart", "target": "folk",
 	 "desc": "Health and vigour restored."},
-	{"id": "fertility", "name": "Fertility", "icon": "sprout", "target": "none",
-	 "desc": "A new villager, if there is room."},
 	{"id": "revel", "name": "Revel", "icon": "confetti", "target": "none",
 	 "desc": "Spirits lift across the island."},
 	{"id": "calm", "name": "Calm", "icon": "dove", "target": "none",
@@ -192,15 +198,6 @@ func _cast(id: String, at: Vector3, who) -> bool:
 				"I was made whole again.", 0.9, "", 1.4)
 			who.brain.think_aloud()
 			notice.emit("%s is mended." % who.brain.name)
-		"fertility":
-			if not village.has_room():
-				notice.emit("There is no room for another villager.")
-				return false
-			if not host.spawn_villager():
-				notice.emit("Nowhere for them to stand.")
-				return false
-			_remember_all("A new face among us.", 0.6)
-			notice.emit("A villager is born.")
 		"revel":
 			for f in host.folk:
 				f.brain.stats["fun"] = 1.0

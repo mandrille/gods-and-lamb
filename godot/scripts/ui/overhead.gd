@@ -42,6 +42,10 @@ var rig = null                          ## CameraRig
 var hovered = null
 var selected = null
 
+## Set while a villager-only miracle is armed: every villager gets a ring, so
+## the player can see who the valid targets ARE rather than hunting for them.
+var highlight_all := false
+
 var _mouse := Vector2(-1000, -1000)
 
 
@@ -72,19 +76,43 @@ func _process(_delta: float) -> void:
 ## does not become a lottery.
 func under(at: Vector2):
 	var best = null
-	var best_d := PICK_RADIUS
+	var best_score := 1.0
 	for f in host.folk:
 		if not is_instance_valid(f):
 			continue
-		var head: Vector3 = f.position + Vector3(0, HEAD_HEIGHT, 0)
-		if rig.cam.is_position_behind(head):
+		var feet: Vector3 = f.position
+		var head: Vector3 = feet + Vector3(0, HEAD_HEIGHT, 0)
+		if rig.cam.is_position_behind(head) or rig.cam.is_position_behind(feet):
 			continue
-		var p: Vector2 = rig.cam.unproject_position(head)
-		var d: float = p.distance_to(at)
-		if d < best_d:
-			best_d = d
+		var ph: Vector2 = rig.cam.unproject_position(head)
+		var pf: Vector2 = rig.cam.unproject_position(feet)
+		# The target is a CAPSULE from feet to head, widened, not a disc around
+		# the head. Zoomed in, a fixed disc covers the hat and misses the body;
+		# zoomed out it is larger than the villager. Measuring the figure on
+		# screen makes the target the right size at every distance.
+		var tall: float = maxf(ph.distance_to(pf), 8.0)
+		var radius: float = maxf(PICK_RADIUS, tall * 0.62)
+		var d: float = _to_segment(at, pf, ph)
+		# Normalised, so the NEAREST villager wins even when their targets are
+		# different sizes -- comparing raw distances would favour whoever
+		# happens to be closest to the camera.
+		var score := d / radius
+		if score < 1.0 and score < best_score:
+			best_score = score
 			best = f
 	return best
+
+
+## Distance from a point to a line segment. Villagers are tall and thin on
+## screen, and a point-to-point test against either end leaves a gap in the
+## middle of the body -- which is exactly where people aim.
+static func _to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var len2 := ab.length_squared()
+	if len2 < 0.0001:
+		return p.distance_to(a)
+	var t := clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
 
 
 ## Input is taken from _unhandled_input rather than _gui_input so the camera
@@ -120,6 +148,8 @@ func _draw() -> void:
 			continue
 		# The mood face is a hover affordance (item 1), plus a permanent one on
 		# whoever is selected so the open panel and the world agree.
+		if highlight_all and f != hovered and f != selected:
+			_ground_ring(f, false)
 		if f == hovered or f == selected:
 			_ground_ring(f, f == selected)
 			_face(p, f.brain.mood_face(), f == selected)

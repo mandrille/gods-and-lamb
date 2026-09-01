@@ -62,8 +62,7 @@ const ACTIONS := {
 	"pray":    {"need": "faith", "sources": ["Buildings/shrine"],
 				"seconds": 4.0, "anim": "idle", "refill": 0.80,
 				"morality": 0.03, "verb": "praying"},
-	"play":    {"need": "fun", "sources": ["Nature/flowers",
-										   "Buildings/market_stall"],
+	"play":    {"need": "fun", "sources": ["Buildings/market_stall"],
 				"anywhere": true,
 				"seconds": 3.5, "anim": "idle", "refill": 0.70,
 				"morality": 0.0, "verb": "idling"},
@@ -74,16 +73,30 @@ const ACTIONS := {
 	# food is gone. A heap that stays forever is a permanent free lunch.
 	"forage":  {"need": "", "sources": ["Nature/apples", "Nature/bush"],
 				"seconds": 3.0, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 2}, "morality": 0.01, "verb": "foraging"},
+				"gives": {"food": 2}, "morality": 0.01, "verb": "foraging",
+				# Only the apple heap is used up. A bush picked bare would
+				# leave the village one bad afternoon from no food at all.
+				"consumes_only": ["Nature/apples"]},
 	"harvest": {"need": "", "sources": ["Nature/crop_row"],
 				"seconds": 3.5, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 3}, "morality": 0.02, "verb": "harvesting"},
+				"gives": {"food": 3}, "morality": 0.02, "verb": "harvesting",
+				"consumes": true},
+	# `consumes` removes what was worked on; `leaves` puts something in its
+	# place. This is what makes the world change under the villagers rather
+	# than them miming at scenery that never moves -- a forest that is still
+	# a forest after an hour of chopping is a backdrop, not a resource.
 	"chop":    {"need": "", "sources": ["Nature/tree", "Nature/pine"],
 				"seconds": 5.0, "anim": "chop", "refill": 0.0,
-				"gives": {"wood": 4}, "morality": 0.0, "verb": "chopping"},
+				"gives": {"wood": 4}, "morality": 0.0, "verb": "chopping",
+				"consumes": true, "leaves": "Nature/stump"},
 	"quarry":  {"need": "", "sources": ["Nature/rock"],
 				"seconds": 5.0, "anim": "chop", "refill": 0.0,
-				"gives": {"stone": 2}, "morality": 0.0, "verb": "quarrying"},
+				"gives": {"stone": 2}, "morality": 0.0, "verb": "quarrying",
+				"consumes": true},
+	"pick":    {"need": "fun", "sources": ["Nature/flowers"],
+				"seconds": 2.5, "anim": "pickup", "refill": 0.45,
+				"morality": 0.0, "verb": "picking flowers",
+				"consumes": true},
 
 	# Building. `wants` names the structure the village is short of, and the
 	# village decides that -- a villager will not put up a third well.
@@ -122,7 +135,19 @@ const WORK := ["forage", "harvest", "chop", "quarry",
 			   "build_hut", "build_well", "build_stall", "build_shrine",
 			   "sow"]
 
+## How long a child takes to grow up, in seconds of village time. Long enough
+## that watching one grow is a thing that happens over a session, short enough
+## that a village is not permanently half toddlers.
+const ADULT_AT := 240.0
+
+## What a child is allowed to do. They eat, sleep, wash, play and talk; they do
+## not fell trees or raise buildings. Without this a newborn walks off with an
+## axe, which is funny once.
+const CHILD_ACTIONS := ["eat", "rest", "wash", "play", "pick"]
+
 var name := "Someone"
+var age := 0.0
+var adult := true
 var stats: Dictionary = {}
 var personality: Personality
 var memories: Memories
@@ -194,6 +219,11 @@ func tick(delta: float) -> void:
 		stats["health"] = maxf(0.0, float(stats["health"]) - strain * delta)
 	elif float(stats["hunger"]) > 0.5 and float(stats["energy"]) > 0.4:
 		stats["health"] = minf(1.0, float(stats["health"]) + 0.012 * delta)
+
+	age += delta
+	if not adult and age >= ADULT_AT:
+		adult = true
+		think_aloud()
 
 	memories.tick(delta)
 
@@ -292,7 +322,7 @@ func choose_action() -> String:
 	var level: float = pair[1]
 	if level < DESPERATE:
 		var forced := _action_for_need(key)
-		if forced != "":
+		if forced != "" and (adult or CHILD_ACTIONS.has(forced)):
 			return forced
 
 	# Social is answered by the social layer -- by being NEAR someone -- so it
@@ -310,8 +340,13 @@ func choose_action() -> String:
 
 	if level < URGENT:
 		var want := _action_for_need(key)
-		if want != "" and rng.randf() < 0.85:
+		if (want != "" and (adult or CHILD_ACTIONS.has(want))
+				and rng.randf() < 0.85):
 			return want
+
+	if not adult:
+		# A child with nothing pressing plays. They are not idle labour.
+		return "play" if rng.randf() < 0.7 else ""
 
 	# Work. Weighted by favour (the god's influence) times village demand, so
 	# a blessed woodcutter chops more AND the village still eats.
@@ -609,6 +644,16 @@ func favoured_action() -> String:
 			top = float(favour[a])
 			best = String(a)
 	return best
+
+
+## Are they in a state to raise a child? Fed, well and not miserable. Checked
+## on BOTH parents, so a village that is barely coping does not grow itself
+## into a famine.
+func can_parent() -> bool:
+	return (adult and age > ADULT_AT * 0.25
+			and float(stats["hunger"]) > 0.5
+			and float(stats["health"]) > 0.6
+			and mood() > -0.1)
 
 
 func describe() -> String:

@@ -50,6 +50,13 @@ var _anim: AnimationPlayer = null
 var _clips: Dictionary = {}        ## logical name -> clip name in the GLB
 var _walk_scale := 1.0
 var _pending := ""                 ## the action to start once we arrive
+## How small a newborn is, and how big they end up. Applied to the GLB CHILD
+## node rather than to the Follower itself, because the Follower's own
+## transform is what the movement code writes every frame -- scaling it there
+## would be overwritten, silently, and children would grow up instantly.
+const CHILD_SCALE := 0.52
+var _body: Node3D = null
+var _shown_scale := -1.0
 ## A hand-authored patrol LOOPS; a brain-chosen errand ENDS. One flag, set at
 ## the two entry points, rather than inferring it from whether `brain` is null
 ## -- the perf harness gives followers a brain AND a fixed path.
@@ -67,6 +74,7 @@ func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0,
 	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * walk_speed_scale
 	_walk_scale = walk_speed_scale
 	_loop = false
+	_body = get_child(0) as Node3D if get_child_count() > 0 else null
 	_index_clips()
 	_replan()
 
@@ -142,6 +150,38 @@ func _wait() -> void:
 	path.clear()
 	_play("idle")
 	_idle = 0.5 + (brain.rng.randf() * 1.6 if brain != null else 1.0)
+
+
+## Born rather than arrived: start small, and grow over ADULT_AT seconds.
+func become_child() -> void:
+	if brain == null:
+		return
+	brain.adult = false
+	brain.age = 0.0
+	# Children walk shorter strides. Left at the adult speed a toddler skates,
+	# because the clip and the ground speed are tied together.
+	speed *= 0.72
+	_walk_scale *= 0.72
+	_apply_growth()
+
+
+## Scale follows age, so a child visibly becomes an adult instead of popping.
+func _apply_growth() -> void:
+	if _body == null or brain == null:
+		return
+	var t: float = 1.0 if brain.adult else clampf(
+		brain.age / Brain.ADULT_AT, 0.0, 1.0)
+	var want := lerpf(CHILD_SCALE, 1.0, t)
+	# Only written when it actually moved. Assigning a scale every frame to
+	# every follower dirties a transform that has not changed.
+	if absf(want - _shown_scale) < 0.004:
+		return
+	_shown_scale = want
+	_body.scale = Vector3(want, want, want)
+
+
+func is_child() -> bool:
+	return brain != null and not brain.adult
 
 
 ## --- the social layer drives these ------------------------------------------
@@ -226,6 +266,8 @@ func _process(delta: float) -> void:
 		return
 	var was := brain.action
 	brain.tick(delta)
+	if not brain.adult or _shown_scale < 1.0:
+		_apply_growth()
 	# The brain owns the job timer, so the body learns the job is done by
 	# watching it clear. One clock, not two, or the animation and the payout
 	# drift apart.

@@ -19,10 +19,16 @@ class_name Islands
 ## they cut, which is the whole point of a god who cannot give orders: you
 ## cannot place a hut, you can only make hut-building worth their while.
 
-const SPAN := 21          ## tiles across one plot, sand border included
+## Tiles across one plot, sand border included.
+##
+## Big enough to hold a LANDSCAPE and not just a lawn: a path crossing both
+## ways, a stream with banks, a raised shelf and room to scatter between them.
+## At 21 the path and the stream used the same tiles and the plot read as a
+## board game.
+const SPAN := 27
 const GAP := 5            ## tiles of water between neighbours
 const PITCH := SPAN + GAP
-const GRID := 5           ## GRID x GRID plots
+const GRID := 4           ## GRID x GRID plots
 const MARGIN := 3         ## water border around the whole archipelago
 const SAND := 2           ## width of the beach ring, in tiles
 
@@ -145,8 +151,18 @@ func build_doc() -> Dictionary:
 		flat.append(blank)
 
 	var props: Array = []
+	var spans: Array = []
 	for s in unlocked:
-		_carve(ground, s)
+		for cell in _carve(ground, flat, s):
+			spans.append(cell)
+	# Bridges over a plot's OWN stream, where its road crosses. Yaw follows the
+	# road direction for the same reason the inter-plot spans do.
+	for cell in spans:
+		var c: Vector2i = cell
+		var vertical := _char_at(ground, c.x, c.y - 1) == "W" 			or _char_at(ground, c.x, c.y + 1) == "W"
+		props.append({"id": "Buildings/bridge", "col": c.x, "row": c.y,
+					  "yaw": 90.0 if vertical else 0.0, "scale": 1.0,
+					  "fp": [0.5, 0.68]})
 	# Bridges after all the land exists, or a span would be laid toward a coast
 	# that has not been carved yet.
 	for s in unlocked:
@@ -166,17 +182,99 @@ func build_doc() -> Dictionary:
 	}
 
 
-## A square of grass inside a border of sand. The corners are notched by one
-## tile so the plot reads as a piece of land rather than as a tile in a grid --
-## one notch is enough, and it costs four characters.
-func _carve(ground: Array, slot: Vector2i) -> void:
+## One plot's terrain: beach, grass, a stone path both ways, sometimes a stream
+## with sand banks, sometimes a raised shelf.
+##
+## The plot is still a SQUARE -- you can see where it ends and which side to
+## buy -- but the inside is a landscape rather than a lawn. A flat green square
+## with props dropped on it reads as a board, and that is what the report
+## meant by wanting the old look back: the old map had roads, water, banks and
+## a cliff, and those are what make it read as a place.
+##
+## Returns the cells where the path crosses water and therefore needs a bridge.
+func _carve(ground: Array, upper: Array, slot: Vector2i) -> Array:
 	var o := origin(slot)
+	var r := RandomNumberGenerator.new()
+	r.seed = _seed + slot.x * 7919 + slot.y * 104729
+
+	# 1. Beach ring, grass interior, notched corners.
 	for j in SPAN:
 		for i in SPAN:
 			var edge: int = mini(mini(i, j), mini(SPAN - 1 - i, SPAN - 1 - j))
 			if edge == 0 and (i == j or i == SPAN - 1 - j):
 				continue                      # the four corner notches
 			_put(ground, o.x + i, o.y + j, "A" if edge < SAND else "G")
+
+	# 2. A stream, on about half the plots -- but ALWAYS on the starting one.
+	#    The first plot is the only one most players will look at closely, and
+	#    a home plot that rolled a bare lawn teaches them the world is a lawn.
+	#    Laid BEFORE the paths so the paths can bridge it; the other order has
+	#    water erasing road.
+	var home_plot := slot == home()
+	var has_stream := home_plot or r.randf() < 0.5
+	var stream_vertical := r.randf() < 0.5
+	var stream_at := SPAN / 2 + (5 if r.randf() < 0.5 else -5)
+	if has_stream:
+		var wobble := r.randf_range(0.0, TAU)
+		for t in SPAN:
+			# A meander, so the stream is not a canal. Two tiles wide plus a
+			# bank each side, which is what makes water read as a river rather
+			# than as blue floor.
+			var drift := int(round(sin(float(t) * 0.30 + wobble) * 2.0))
+			var mid := stream_at + drift
+			for k in range(-3, 4):
+				var pos := mid + k
+				if pos < SAND or pos >= SPAN - SAND:
+					continue
+				var ch := "W" if absi(k) <= 1 else "A"
+				var col := (o.x + pos) if stream_vertical else (o.x + t)
+				var row := (o.y + t) if stream_vertical else (o.y + pos)
+				# Never eat the beach: the coast has to stay a clean square.
+				if _char_at(ground, col, row) == "G":
+					_put(ground, col, row, ch)
+
+	# 3. Paths, both ways through the middle, two tiles wide. They run to the
+	#    EDGE MIDPOINTS, which is exactly where the inter-plot bridges land, so
+	#    the road network joins up across the archipelago on its own.
+	var need_bridge: Array = []
+	var mid_i := SPAN / 2
+	for t in SPAN:
+		# `for w in 2`, not `for w in [0, 1]`: a bare array literal yields
+		# Variant elements and every bit of arithmetic off one is untyped.
+		for w in 2:
+			for axis in 2:
+				var col: int = (o.x + mid_i - 1 + w) if axis == 0 else (o.x + t)
+				var row: int = (o.y + t) if axis == 0 else (o.y + mid_i - 1 + w)
+				var ch := _char_at(ground, col, row)
+				if ch == "W":
+					need_bridge.append(Vector2i(col, row))
+				elif ch == "G" or ch == "A":
+					# Sand stays sand where the path crosses the beach -- a
+					# stone road running into the sea looks like a pier.
+					if ch == "G":
+						_put(ground, col, row, "P")
+
+	# 4. A raised shelf on some plots, in whichever corner the paths do not
+	#    use. This is the cliff from the old map: `upper` carries the top and
+	#    the builder fills the blocks beneath it, so the edge is a real drop.
+	if home_plot or r.randf() < 0.45:
+		var qx: int = 0 if r.randf() < 0.5 else 1
+		var qy: int = 0 if r.randf() < 0.5 else 1
+		var lo_i := SAND + 1 + qx * (mid_i + 1)
+		var lo_j := SAND + 1 + qy * (mid_i + 1)
+		var size := mini(mid_i - SAND - 3, 8)
+		for j in size:
+			for i in size:
+				# Rounded corner, so the shelf is not a second square inside
+				# the first.
+				if i + j < 2 or (size - 1 - i) + (size - 1 - j) < 2:
+					continue
+				var col := o.x + lo_i + i
+				var row := o.y + lo_j + j
+				if _char_at(ground, col, row) != "G":
+					continue
+				_put(upper, col, row, "G")
+	return need_bridge
 
 
 func _put(ground: Array, col: int, row: int, ch: String) -> void:

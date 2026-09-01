@@ -72,6 +72,10 @@ var folk: Array = []
 
 var _spawned: Array = []
 var _next_seed := 1
+## How often the village is checked for a newcomer, in seconds. Long: an
+## arrival should feel like an event, not a spawn timer.
+const NEWCOMER_SECONDS := 75.0
+var _newcomer_timer := NEWCOMER_SECONDS
 var _rng := RandomNumberGenerator.new()
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
@@ -99,7 +103,7 @@ func _ready() -> void:
 	# Framed on ONE plot, not on the whole archipelago. The plot is 10.5 m
 	# across and the default 30 m pull-back was set for a 48 m landscape, which
 	# left the village a postage stamp in a field of blue.
-	rig.dist = 17.0
+	rig.dist = 23.0
 	# Clamp panning to the ground, with a margin so the edge can be inspected
 	# but not left behind entirely.
 	var pad := 4.0
@@ -313,6 +317,7 @@ func _wire_feedback() -> void:
 	divinity.island_bought.connect(func(_slot): sfx.play("coin"))
 	social.chat_started.connect(func(a, _b): sfx.play("chat",
 		1.0 + a.brain.rng.randf_range(-0.1, 0.1)))
+	social.child_wanted.connect(_on_child_wanted)
 
 
 ## Per-follower feedback, connected as each one is made.
@@ -329,12 +334,53 @@ func _wire_follower(f: Node) -> void:
 		if raises != "":
 			_raise_structure(f, act, raises, spec)
 			return
+		_consume_target(f, spec, at)
 		if act == "chop" or act == "quarry":
 			fxe.burst("chips", at)
 			sfx.play("chop", 0.85)
-		elif act in ["harvest", "forage"]:
+		elif act in ["harvest", "forage", "pick"]:
 			fxe.burst("chips", at, 0.5)
 			sfx.play("pick", 1.1))
+
+
+## Take away what was just worked on, and leave behind whatever replaces it.
+##
+## The prop is found by SEARCHING near the villager for one of the right kind,
+## not by holding a reference from when the errand was planned. Between
+## choosing a tree and reaching it, a miracle may have grown a grove over it,
+## wrath may have levelled it, or another villager may have felled it first --
+## a stored reference would be to a freed node, and a stored index would be to
+## whatever slid into that slot.
+func _consume_target(f: Node, spec: Dictionary, at: Vector3) -> void:
+	if not bool(spec.get("consumes", false)) 			and spec.get("consumes_only", []).is_empty():
+		return
+	var only: Array = spec.get("consumes_only", [])
+	var want := String(f.brain.target_id)
+	if want == "" or (not only.is_empty() and not only.has(want)):
+		return
+
+	var best: Dictionary = {}
+	var best_d := 2.2                       ## metres; arm's reach plus a tile
+	for e in builder.placed_props:
+		if String(e["id"]) != want:
+			continue
+		var node = e.get("node")
+		if not is_instance_valid(node):
+			continue
+		var d: float = node.position.distance_to(f.position)
+		if d < best_d:
+			best_d = d
+			best = e
+	if best.is_empty():
+		return
+
+	var col := int(best.get("col", -1))
+	var row := int(best.get("row", -1))
+	builder.remove_prop(best)
+	var leaves := String(spec.get("leaves", ""))
+	if leaves != "" and col >= 0:
+		builder.add_prop(leaves, col, row, _rng.randf_range(0.0, 360.0))
+	rebuild_grid()
 
 
 ## A villager finished building something. THE BUILDER places it, not the
@@ -423,6 +469,63 @@ func _add_ui() -> void:
 	panel.closed.connect(func(): overhead.selected = null)
 
 
+## A child is born to two villagers.
+##
+## The social layer decided they WANT one; whether there is room and where the
+## child stands are questions about the map, and belong here.
+func _on_child_wanted(a: Node, b: Node) -> void:
+	if not village.has_room():
+		return
+	var at: Vector3 = (a.position + b.position) * 0.5
+	var cell := grid.cell_of(at)
+	if not grid.is_walkable(cell):
+		cell = grid.beside(cell, _rng)
+		if cell.x < 0:
+			return
+	var asset := "Folk/villager" if folk.size() % 3 else "Folk/adventurer"
+	var f := _spawn_thinker(asset, grid.world_of(cell),
+							_rng.randf_range(WALK_MIN, WALK_MAX))
+	if f == null:
+		return
+	f.become_child()
+	village.population = folk.size()
+	fxe.burst("birth", grid.world_of(cell) + Vector3(0, 0.7, 0))
+	sfx.play("coin", 1.25)
+	divinity.notice.emit("%s and %s have a child: %s."
+		% [a.brain.name, b.brain.name, f.brain.name])
+	for p in [a, b]:
+		p.brain.memories.add(Memories.KIND_SOCIAL,
+			"We have a child, %s." % f.brain.name, 0.9, f.brain.name, 1.5)
+		p.brain.think_aloud()
+
+
+## Somebody heard the village was worth joining and walked in.
+##
+## The other half of item 5, and the one that keeps a village from stalling: a
+## settlement of two who never get on would otherwise never grow at all. It is
+## earned, not free -- a village nobody is happy in attracts nobody.
+func _maybe_newcomer(delta: float) -> void:
+	if not village.has_room() or folk.is_empty():
+		return
+	var mood := 0.0
+	for f in folk:
+		mood += f.brain.mood()
+	mood /= float(folk.size())
+	if mood < 0.15 or village.amount("food") < 3:
+		_newcomer_timer = NEWCOMER_SECONDS
+		return
+	_newcomer_timer -= delta
+	if _newcomer_timer > 0.0:
+		return
+	_newcomer_timer = NEWCOMER_SECONDS
+	if not spawn_villager():
+		return
+	var who = folk[folk.size() - 1]
+	fxe.burst("bless", who.position + Vector3(0, 0.8, 0))
+	sfx.play("coin")
+	divinity.notice.emit("You have a new follower: %s." % who.brain.name)
+
+
 ## Rebuild the walk grid from what is STANDING, not from the document.
 ##
 ## Called whenever the world changes under the villagers -- a miracle grows a
@@ -498,6 +601,7 @@ func _process(delta: float) -> void:
 			live.append(f)
 	folk = live
 	social.tick(delta, folk)
+	_maybe_newcomer(delta)
 
 
 func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:

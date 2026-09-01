@@ -15,11 +15,19 @@ class_name Social
 ## matchmaker per frame owns the decision and hands each pair the same verdict.
 
 signal chat_started(a, b)
+## Two villagers who are well, fed and fond of each other. The HOST decides
+## whether there is room and where the child stands -- the social layer knows
+## about people, not about the map.
+signal child_wanted(a, b)
 signal chat_ended(a, b, verdict: String)
 
 const RANGE := 2.2               ## metres; roughly two tiles
 const DURATION := 4.5
 const COOLDOWN := 9.0            ## before the same follower will chat again
+## Per good conversation between two willing parents. Low: this fires often
+## enough to matter over a session and rarely enough that a happy village does
+## not double in a minute.
+const BIRTH_CHANCE := 0.18
 
 ## A conversation goes one of three ways, and which one is not random -- it is
 ## the two personalities plus their history. That is the whole point: a cruel
@@ -146,6 +154,13 @@ func _resolve(p: Dictionary) -> void:
 	a.resume()
 	b.resume()
 	chat_ended.emit(a, b, verdict)
+	# A child comes out of a GOOD conversation between two people in a state to
+	# raise one. This is the only way the population grows from inside, and it
+	# is deliberately downstream of everything else: a hungry, miserable or
+	# lonely village does not have children, so growth is a SYMPTOM of the
+	# player looking after them rather than a button.
+	if verdict == GOOD and a.brain.can_parent() and b.brain.can_parent() 			and rng.randf() < BIRTH_CHANCE:
+		child_wanted.emit(a, b)
 
 
 func _apply(me, them, verdict: String) -> void:

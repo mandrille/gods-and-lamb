@@ -105,6 +105,12 @@ func _process(delta: float) -> void:
 			_hot = i
 			break
 	_hot_wrath = _wrath_rect().has_point(m)
+	# Show WHO can be targeted, for as long as a villager-only aim is live.
+	var folk_aim := false
+	if _aiming >= 0 and _aiming < divinity.hand.size():
+		folk_aim = String(divinity.hand[_aiming]["target"]) == "folk"
+	if host != null and host.overhead != null:
+		host.overhead.highlight_all = folk_aim
 	queue_redraw()
 
 
@@ -134,25 +140,39 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Otherwise, a click in the WORLD resolves whatever is being aimed.
 	if _aiming < 0 and not _smiting:
 		return
+
+	if _smiting:
+		var ground: Variant = rig.ground_at(mb.position)
+		if ground == null:
+			return
+		divinity.smite(ground)
+		_smiting = false
+		get_viewport().set_input_as_handled()
+		return
+
+	var card: Dictionary = {}
+	if _aiming < divinity.hand.size():
+		card = divinity.hand[_aiming]
+	if not card.is_empty() and String(card["target"]) == "folk":
+		# VILLAGERS ONLY, and the aim STAYS ARMED on a miss rather than being
+		# spent on empty grass. Losing a miracle to a slightly-off click is the
+		# worst thing this screen could do.
+		var who = host.overhead.under(mb.position)
+		if who == null:
+			_say("Aim at a villager.", 2.0)
+			get_viewport().set_input_as_handled()
+			return
+		host.overhead.selected = who
+		divinity.play(_aiming, who.position, who)
+		_aiming = -1
+		get_viewport().set_input_as_handled()
+		return
+
 	var hit: Variant = rig.ground_at(mb.position)
 	if hit == null:
 		return
-	var at: Vector3 = hit
-	if _smiting:
-		divinity.smite(at)
-		_smiting = false
-	else:
-		var card: Dictionary = divinity.hand[_aiming] if \
-			_aiming < divinity.hand.size() else {}
-		var who = null
-		if not card.is_empty() and String(card["target"]) == "folk":
-			who = host.overhead.under(mb.position)
-			if who == null:
-				_say("No villager there.", 2.5)
-				get_viewport().set_input_as_handled()
-				return
-		divinity.play(_aiming, at, who)
-		_aiming = -1
+	divinity.play(_aiming, hit, null)
+	_aiming = -1
 	get_viewport().set_input_as_handled()
 
 
@@ -164,6 +184,14 @@ func _play_card(index: int) -> void:
 	if kind == "none":
 		divinity.play(index)
 		return
+	# A villager is already CHOSEN, so use it on them. Making the player pick
+	# again, on someone they have open on screen with a ring at their feet, is
+	# a second click that answers a question already answered.
+	if kind == "folk":
+		var chosen = host.overhead.selected
+		if chosen != null and is_instance_valid(chosen):
+			divinity.play(index, chosen.position, chosen)
+			return
 	_aiming = index
 	_smiting = false
 	_say("Pick a %s for %s. Escape to cancel." % [
