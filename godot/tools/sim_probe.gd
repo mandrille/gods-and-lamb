@@ -135,6 +135,24 @@ func _report() -> void:
 		_notes.append("only %d kind(s) of action completed; the village may be "
 			% kinds + "too comfortable to work, or sources are missing")
 
+	# EVERY need with an action attached must eventually be answered. This is
+	# the check that catches a need which is unreachable for a reason nothing
+	# reports: a source building missing from the island, a `beside()` that
+	# cannot see past a footprint, or -- the one that actually happened -- a
+	# branch above it in choose_action() that pre-empts it forever. All three
+	# look identical from outside: a bar that sits at zero while the villager
+	# cheerfully does something else.
+	var never: Array[String] = []
+	for a in Brain.ACTIONS:
+		if String(Brain.ACTIONS[a].get("need", "")) == "":
+			continue
+		if int(_actions_done.get(a, 0)) == 0:
+			never.append(String(a))
+	if not never.is_empty():
+		_notes.append("need-actions never performed: %s -- check the island "
+			% ", ".join(never) + "has a source, and that nothing outranks them "
+			+ "in choose_action()")
+
 	# 3. The economy moves. Stores that never change mean gives/takes are not
 	#    reaching the ledger.
 	for res in ["food", "wood"]:

@@ -26,6 +26,19 @@ const DEBUG_PATH := "res://scripts/debug_menu.gd"
 ## village with room to grow is the hook the population mechanic hangs on.
 const START_FOLK := 4
 
+## Walk speed multiplier. The authored stride is 0.46 m per cycle, which at 1.0
+## is 0.46 m/s -- and on a 12.5 m island that is 27 seconds to cross, so
+## villagers spent nearly all of their lives in transit and completed about
+## five errands each in a simulated hour. The slower-draining needs (Faith
+## especially) were then almost never the most urgent thing at the moment
+## anyone re-planned, so praying essentially never happened and the shrine
+## looked broken when the problem was pace.
+##
+## The animation follows this: `_play` sets the clip's speed_scale to the same
+## number, so the feet still match the ground at any value here.
+const WALK_MIN := 1.6
+const WALK_MAX := 2.1
+
 
 var builder: ValeBuilder
 var light: Node3D
@@ -239,7 +252,7 @@ func _add_followers() -> void:
 			continue
 		var asset := "Folk/adventurer" if made % 3 == 2 else "Folk/villager"
 		var at := grid.world_of(cell)
-		if _spawn_thinker(asset, at, _rng.randf_range(0.9, 1.1)) != null:
+		if _spawn_thinker(asset, at, _rng.randf_range(WALK_MIN, WALK_MAX)) != null:
 			made += 1
 	village.population = made
 	print("[VALE] followers: %d of %d cap, %s"
@@ -407,7 +420,7 @@ func spawn_villager() -> bool:
 			continue
 		var asset := "Folk/villager" if folk.size() % 3 else "Folk/adventurer"
 		var f := _spawn_thinker(asset, grid.world_of(cell),
-								_rng.randf_range(0.9, 1.1))
+								_rng.randf_range(WALK_MIN, WALK_MAX))
 		if f != null:
 			village.population = folk.size()
 			return true

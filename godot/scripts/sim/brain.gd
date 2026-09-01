@@ -244,8 +244,17 @@ func choose_action() -> String:
 		if forced != "":
 			return forced
 
-	# Social is answered by the social layer, not by walking to a building.
-	if float(stats["social"]) < URGENT and rng.randf() < 0.6:
+	# Social is answered by the social layer -- by being NEAR someone -- so it
+	# has no destination and cannot go through the branch below.
+	#
+	# It has to COMPETE, though, rather than pre-empt. Checked first, this
+	# branch fired whenever Social was merely below URGENT, and since Social
+	# drains fast and only refills when another villager happens to wander
+	# past, a lonely villager wandered permanently and never got round to
+	# sleeping, washing or praying. Now it wins only when loneliness is
+	# genuinely the worst thing in their life.
+	var lonely: float = float(stats["social"])
+	if lonely < URGENT and lonely <= level and rng.randf() < 0.7:
 		return "talk"
 
 	if level < URGENT:

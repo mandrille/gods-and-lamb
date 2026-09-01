@@ -266,7 +266,12 @@ func _scatter(props: Array, ground: Array, slot: Vector2i) -> void:
 	# like being handed a second village.
 	var plan: Array = []
 	if home:
+		# The shrine is not decoration: `pray` is the ONLY action that refills
+		# Faith, and Faith is what the god's whole income is scaled by. Without
+		# one on the island the stat drains to zero and never recovers, which
+		# reads as a balance problem and is actually a missing building.
 		plan = [["Buildings/hut", 2, 3.0], ["Buildings/cottage", 1, 3.2],
+				["Buildings/shrine", 1, 2.6],
 				["Buildings/market_stall", 1, 2.6], ["Buildings/well", 1, 2.2],
 				["Nature/crop_row", 18, 0.55], ["Nature/tree", 6, 1.4],
 				["Nature/bush", 5, 1.0], ["Nature/rock", 4, 1.0],
