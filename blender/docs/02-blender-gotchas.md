@@ -1133,3 +1133,68 @@ object location compensates, so nothing shifts.
 expected ground height on the ASSEMBLED scene, because that is the only place
 the fault can appear. Note the general rule this belongs to: a check that runs
 in the same frame of reference the value was authored in cannot fail.
+
+## 73. `mark_sharp` on the base cage creases every bevel it was meant to smooth
+
+`weighted_normals_all()` runs while the Bevel modifier is still LIVE, so
+`mark_sharp()` sees the base cage. On an unbevelled cube that is 12 of 12 edges
+flagged -- correctly, they are all 90 degrees. Then Bevel **propagates those
+flags onto both sides of the strip it builds**, and Weighted Normal with
+`keep_sharp=True` dutifully preserves them.
+
+Measured on the villager's head: 12/12 sharp on the base mesh, **24 of 108 on
+the evaluated mesh**. So a 2-segment bevel shaded as a chamfer between two hard
+creases instead of as a rounded edge, on every bevelled part in the project.
+
+It hid well, because everything about it looks right from the outside. The
+modifier is present, it is last in the stack, `weighted_normal_coverage()`
+returns 1.00, and the merged mesh carries a real `custom_normal` layer whose
+corner normals genuinely vary. Every check passed. The bevel just did not look
+round, and "the modifier is in the stack" was mistaken for evidence that it had
+changed a pixel. It had -- 1.6% of the frame, all of it on the three hero parts
+and none of it where it was wanted.
+
+`mark_sharp`'s own docstring already said to mark on FINAL geometry "where the
+bevel is already baked". This was the call site that could not honour it.
+
+The fix is `_bevel_rounds_every_sharp_edge()`: skip the marking pass on a part
+whose live Bevel is ANGLE-limited at or below `SHARP_ANGLE`, because then every
+edge the pass would flag is one the bevel already rounded and there is nothing
+left for a flag to protect. Zero triangles; 1.3% of the frame at max delta
+0.138.
+
+The test is narrow ON PURPOSE. `soften_top()` bevels by WEIGHT -- the top rim
+only -- and a ground tile's four vertical edges stay 90 degrees and MUST stay
+marked, or a field of grass melts into pillows. Verified after the change:
+guard fired on 0/2 parts of `Terrain/grass` (44 sharp edges kept) and on 9/9 of
+`Buildings/hut` (0 kept); Folk fired on their 3 bevelled parts and left the 16
+plain boxes crisp. All 27 assets pass `-- assets`.
+
+## 74. Blender 5.2 REMOVED `Action.fcurves`
+
+Actions are layered and slotted only. `act.fcurves` raises AttributeError -- it
+does not return an empty list, so the failure lands wherever you counted curves
+to prove an action was not empty, which is usually a guard.
+
+The curves live at `act.layers[] -> strips[] -> channelbags[] -> fcurves`, and
+`folkrig.action_fcurves()` walks it with a `hasattr` fallback for older builds.
+
+Authoring is unchanged: `pose_bone.keyframe_insert()` with the action assigned
+still creates the slot and the channelbag on its own. Only code that READS the
+curves has to change.
+
+## 75. `join()` applies the ACTIVE object's modifier stack to everything
+
+Joining nineteen boxes where the first happens to carry a Bevel bevels all
+nineteen. The 516-triangle villager came out of the rig target at 2052 and
+nothing errored -- the mesh was simply four times heavier than the same asset
+measured by the gate ten seconds earlier.
+
+`convert(target="MESH")` on the whole selection FIRST bakes each object against
+its own stack, and the join is then a pure concatenation. Order is: bake, group,
+join, attach the armature -- one Armature modifier on the joined mesh, which is
+also what a glTF skin is.
+
+The guard is a triangle-count comparison against the loose parts. It is worth
+having because the fault produces a correct-looking character; only the number
+says anything is wrong.

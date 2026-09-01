@@ -194,6 +194,17 @@ def init_materials():
         "cloth_blue": flat("ClothBlue", srgb(0.215, 0.420, 0.785), 0.70),
         "cloth_teal": flat("ClothTeal", srgb(0.130, 0.605, 0.575), 0.70),
         "cloth_plum": flat("ClothPlum", srgb(0.560, 0.265, 0.560), 0.70),
+        # Two clothing colours the village did not have, added for the folk.
+        # `cloth_green` is NOT a foliage green and must not become one: a
+        # follower wearing `leaf` stands on `grass` and disappears, which is the
+        # hue-not-value rule biting the one asset that has to stay legible.
+        # It is pushed blue and dark, away from the ground it is seen against.
+        "cloth_green": flat("ClothGreen", srgb(0.235, 0.545, 0.300), 0.70),
+        # The identity colour. A follower is ~40 px tall on a phone, and warm
+        # orange against green ground is the only thing at that size that
+        # separates a person from a bush.
+        "cloth_orange": flat("ClothOrange", srgb(0.900, 0.510, 0.170), 0.68),
+        "leather":    flat("Leather", srgb(0.480, 0.310, 0.180), 0.66),
     })
     # Colourways, keyed by NAME. In the parent project these were a list
     # selected by `idx % 6`, so adding a seventh silently repainted every
@@ -449,6 +460,37 @@ def mark_sharp(ob, angle=SHARP_ANGLE):
     return n
 
 
+def _bevel_rounds_every_sharp_edge(ob, sharp_angle):
+    """True if a live Bevel will round every edge mark_sharp would flag.
+
+    The reason this test exists: mark_sharp runs on the BASE CAGE, before the
+    modifier stack. On an unbevelled cube that is 12 of 12 edges flagged, and
+    Bevel then PROPAGATES those flags onto both sides of the strip it builds --
+    24 of the head's 108 evaluated edges came back sharp. Weighted Normal with
+    keep_sharp=True then dutifully preserved every one, so a 2-segment bevel
+    shaded as a chamfer with two hard creases instead of as a rounded edge.
+    Measured, not argued: releasing them changes 1.3% of the frame at a max
+    delta of 0.138 and costs zero triangles.
+
+    mark_sharp's own docstring says to mark on FINAL geometry "where the bevel
+    is already baked". This is the call site that could not honour it, because
+    weighted_normals_all runs while the Bevel is still live.
+
+    The test is narrow on purpose. soften_top() bevels by WEIGHT -- only the top
+    rim -- and the four vertical edges of a ground tile stay 90 degrees and must
+    stay sharp, or a field of grass melts. So only an ANGLE-limited bevel whose
+    limit reaches at least as low as `sharp_angle` qualifies: then every edge
+    mark_sharp would flag is an edge the bevel already rounded, and there is
+    nothing left for the marks to protect.
+    """
+    for m in ob.modifiers:
+        if m.type != "BEVEL" or getattr(m, "limit_method", None) != "ANGLE":
+            continue
+        if m.angle_limit <= math.radians(sharp_angle) + 1e-6:
+            return True
+    return False
+
+
 def weighted_normals_all(objects, mode="FACE_AREA", weight=100, thresh=0.01,
                          keep_sharp=True, face_influence=False, skip_names=(),
                          sharp_angle=SHARP_ANGLE):
@@ -480,7 +522,11 @@ def weighted_normals_all(objects, mode="FACE_AREA", weight=100, thresh=0.01,
             ob.modifiers.remove(m)
         n = len(ob.data.polygons)
         ob.data.polygons.foreach_set("use_smooth", [True] * n)
-        mark_sharp(ob, sharp_angle)
+        # Not on a part whose bevel already rounds every edge this would flag --
+        # the flags would only survive onto the bevel strip and crease it. See
+        # _bevel_rounds_every_sharp_edge.
+        if not _bevel_rounds_every_sharp_edge(ob, sharp_angle):
+            mark_sharp(ob, sharp_angle)
         ob.data.update()
         wn = ob.modifiers.new("WeightedNormal", "WEIGHTED_NORMAL")
         for attr, val in (("mode", mode), ("weight", weight), ("thresh", thresh),

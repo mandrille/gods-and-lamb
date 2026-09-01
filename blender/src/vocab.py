@@ -18,6 +18,7 @@ FAMILIES = frozenset({
     'crop',
     'fence',
     'flower',
+    'folk',
     'grass',
     'ground',
     'house',

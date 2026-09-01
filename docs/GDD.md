@@ -85,7 +85,12 @@ Constraints that follow from shipping on web:
   ambient fill.
 - Adjacent surfaces separate by **hue, not value** — there is no AO pass to do
   it for us.
-- Followers are unrigged meshes moved by tween. No skeletal animation anywhere.
+- Followers are RIGGED as of 2026-08-31: a 7-bone skeleton and a walk cycle,
+  built by `blender/assets/_kit/folkrig.py` and documented in
+  `blender/docs/03-folk-rig.md`. This reverses the original "unrigged, low
+  animation overhead" line on the owner's say-so. Nothing ELSE is animated:
+  terrain, buildings and plants are static meshes and stay that way, and the
+  rig has not been carried into Godot yet.
 - Terrain instances through `MultiMeshInstance3D`; per-instance tint carries
   neighbour-aware darkening that baked vertex AO cannot know about.
 

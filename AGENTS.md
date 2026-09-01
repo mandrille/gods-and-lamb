@@ -62,7 +62,10 @@ question with a *full sweep*.
 | what does it look like LIT | `build.py -- lit <asset_id>` | **~3.5 s** (bake + 3 angles) |
 | does a floor of it tile | `build.py -- field <asset_id> n=4` | **~5 s** |
 | does the whole village hold together | `build.py -- scene` | **~30 s** (renders BOTH ways) |
-| does it pass the gate | `build.py -- asset <asset_id>` | NOT BUILT YET |
+| does it pass the gate | `build.py -- asset <asset_id>` | **~0.5 s** |
+| does EVERY asset pass | `build.py -- assets` | **~45 s** (27 assets, one process each) |
+| does the AO bake show | `build.py -- ao <asset_id>` | **~3 s** |
+| does a folk rig and walk | `build.py -- rig <folk asset_id>` | **~6 s** (`blender/docs/03-folk-rig.md`) |
 
 Measured on this machine, not inherited. The numbers carried over from the
 parent project (~10 s / ~40 s) were far too pessimistic: this project has no
@@ -80,11 +83,19 @@ a relationship between two pieces is invisible in a picture of one.
 **2.3 s**, plus **0.4 s** for the AO bake. `-- look` is the shape loop because
 it skips the merge and the bake, not because its renderer is cheaper.
 
-**`-- asset` does not exist yet.** It is named in `build.py`'s PLANNED tuple
-and exits saying so. Until it lands there is no `verify.py`, no soften/mesh
-gate beyond the coverage check inside `_build_subject`, and no export
-read-back. Assets are currently verified by `-- measure` plus `-- look` and a
-human opening the PNG. Do not describe an asset as "gated".
+**`-- asset` EXISTS and is a real gate.** It collects every fault in one pass:
+triangle cap, declared footprint against the measured AABB, the `anchor="floor"`
+contract, and ngon/degenerate/zero-edge/loose debris. `-- assets` runs the whole
+tree, one process each, and fails once with every failure listed. An asset that
+has passed it may be called gated.
+
+What is still missing is the half that runs AFTER the gate: `library`, `export`
+and `guards` are named in `build.py`'s PLANNED tuple and exit saying so, so
+there is no `verify.py`, no export read-back and no Godot library test. Nothing
+you build reaches the engine yet.
+
+Trust `build.py`'s own `TARGETS` and `PLANNED` over any prose — including this
+file. This paragraph was wrong for long enough to matter.
 
 Run from `C:\Goliath\Gods and lamb\blender`:
 

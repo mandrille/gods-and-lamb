@@ -1,0 +1,246 @@
+# The folk rig
+
+`assets/_kit/folkrig.py` + `build.py -- rig <folk asset>`
+
+This document exists because it reverses a rule that three other files stated
+as permanent. If you have read "no rig, ever" somewhere in this repo, that text
+is older than this file.
+
+```
+blender/assets/_kit/folkrig.py     the skeleton, the bind, the walk, the asserts
+blender/build.py       target_rig  build -> bind -> animate -> check -> render
+blender/assets/Folk/villager.py    the BASE folk: symmetric rest pose
+blender/out/rig/                   walk strips and a rigged .blend per asset
+```
+
+Run it from `C:\Goliath\Gods and lamb\blender`:
+
+```
+blender --background --factory-startup --python build.py -- rig Folk/villager
+```
+
+About 6 s. It fails loudly and it writes pictures; there is no quiet mode.
+
+---
+
+## 1. What changed, and what did not
+
+**Changed.** The folk have a skeleton and a walk cycle. `villager.py` is the
+base body and its rest pose was squared up to serve as a bind pose.
+
+**Not changed.** Everything else about the folk contract. `build()` still
+returns a flat list of loose parts, the 600-triangle cap still holds, the asset
+still fronts -Y, `-- asset` still gates it as an unrigged single mesh, and the
+tween-between-tiles movement model is untouched. **The rig is animation, not
+physics** — departure #2 in `AGENTS.md` still stands and nothing here has a
+collider.
+
+Files that still carry the old claim, or did until this landed:
+`assets/Folk/villager.py` (updated), `.claude/agents/lamb-folk.md` (updated).
+If you find a fourth, fix it rather than believing it.
+
+---
+
+## 2. The skeleton
+
+Seven bones. That is not a starting point to grow from — it is sized to the
+subject, which is a 40 px stack of boxes.
+
+```
+Root ──── Torso ──── Head
+  │          └────── ArmL, ArmR
+  └─────── LegL, LegR
+```
+
+Parts are assigned to bones **by name**, in `folkrig.GROUPS`:
+
+| bone | claims parts matching |
+|---|---|
+| `Head` | `_Head` `_Hair` `_Eye` `_Kerchief` `_Sprig` |
+| `Torso` | `_Tunic` `_Apron` `_Vest` `_Hem` `_Strap` `_Pack` `_Bedroll` |
+| `ArmL` / `ArmR` | `_ArmL`/`_ArmR`, `_HandL`/`_HandR`, and `_Staff` on the right |
+| `LegL` / `LegR` | `_LegL`/`_LegR`, `_BootL`/`_BootR` |
+
+Order matters — first match wins, so `_ArmL` is tested before anything that
+could also contain `_Arm`.
+
+**An unclaimed part is a hard failure, never a default.** Falling back to the
+root is how a satchel ends up hovering where the character used to be, and it
+is invisible until something walks. If you add a part to a folk builder, add
+its name here in the same commit.
+
+Skinning is **rigid**: one vertex group per part, weight 1.0, no blending.
+Automatic weights on stacked boxes bleed the tunic into the arm and tear a
+shoulder on the first frame. One bone per part is exactly predictable, which at
+this size is worth more than a soft elbow.
+
+---
+
+## 3. The rest pose rule
+
+**The pose is symmetric. The details are not.**
+
+`villager.py` was originally built with a pose baked into the geometry — arms
+at 10° and −15°, head yawed −7°, one boot 28 mm forward — because an unrigged
+mesh has to look alive standing still. A rig cannot use that:
+
+- rest pose is what every clip is measured **from**, so a baked lean is a lean
+  added to every frame of every animation you will ever write;
+- `ArmL` and `ArmR` are mirrored bones, and mirrored bones on an asymmetric
+  body deform the two sides differently.
+
+So: arms level, feet level, head facing front. Keep the asymmetry that costs
+nothing at runtime — the diagonal strap, an off-centre satchel, a hair parting.
+The liveliness that used to come from the lean is now the walk cycle's job.
+
+Squaring the villager up pulled its real footprint from 0.401 × 0.367 to
+0.384 × 0.330, so the declaration came down to `(0.40, 0.35)`. **If you level a
+pose, re-measure and re-declare** — the old number was reserving village ground
+for a stride that is now animated.
+
+---
+
+## 4. The order, which is the whole thing
+
+```
+build parts  ->  bake each part  ->  group  ->  join  ->  attach armature
+```
+
+Every other target in this project merges an asset to one mesh before it
+measures anything. **The rig target cannot**, because rigid skinning assigns
+each PART to a bone and after a merge there are no parts — only one soup of
+triangles that would have to be re-sorted into groups geometrically.
+
+And the bake must come **before** the join, not after. `join()` keeps the
+ACTIVE object's modifier stack and throws the rest away, so joining first put
+the head's Bevel on all nineteen parts and a 516-triangle villager came out at
+2052 with nothing erroring. `convert(target="MESH")` over the whole selection
+bakes each object against its own stack; the join is then pure concatenation.
+
+The guard is a triangle-count comparison against the loose parts, and it is
+worth having because the fault renders as a perfectly good character. Only the
+number says anything is wrong. See gotcha #75.
+
+One `Armature` modifier goes on the **joined** mesh, first in its stack. That
+is also what a glTF skin is; nineteen armature modifiers would export as
+nineteen skinned meshes and nineteen draw calls.
+
+---
+
+## 5. The four asserts, and why each exists
+
+Every one of these catches a failure that renders as a plausible picture. That
+is the bar for adding another: if the fault is visible in a normal render, an
+assert is not what you need.
+
+| assert | catches |
+|---|---|
+| `assert_rigid_weights` | a vertex on two bones — tears an armpit |
+| `assert_roll_is_sagittal` | a leg that swings sideways: a curtsy, not a walk |
+| `assert_action_deforms` | an action that owns fcurves and moves nothing |
+| `assert_cycle_closes` | frame 1 ≠ frame 25 — pops once per stride, forever |
+| `assert_feet_on_floor` | wading through the ground, or floating above it |
+
+Two of them are worth understanding before you change anything.
+
+**`assert_roll_is_sagittal` measures, it does not read.** Arms and legs swing
+fore and aft, which is a rotation about world X — but a bone pointing straight
+down has no natural roll and Blender picks one. The roll *number* is
+unreadable, so the assert rotates each swinger 20° about its own local X and
+checks where the tail actually went.
+
+**`assert_feet_on_floor` checks every frame, not the keys.** The keys are the
+frames that were explicitly planted, so checking those would be checking that
+an assignment assigned. It caught the villager sinking 9.9 mm through the
+ground at frame 5, between two correct keys, because the leg rotations ease on
+a bezier and the height between two keys is whatever the curve felt like.
+
+---
+
+## 6. The walk, and how the height is decided
+
+24 frames at 24 fps, five keys: contact, pass, contact, pass, contact. The last
+is a copy of the first so the cycle closes. A three-key walk reads as a limp,
+because the two contacts are not the same distance from the pass.
+
+**Forward is NEGATIVE rotation about X.** The character fronts −Y, and for a
+point below the pivot `Rx(θ)` sends it to +Y for positive θ. Backwards gives a
+moonwalk, which looks deliberate enough to survive a casual look.
+
+**The body height is not authored.** One bone per leg means the foot swings on
+an arc about the hip, so a 26° stride lifts the boot's leading corner about
+6 cm — both feet hovering at every contact. Deriving the drop from leg length
+and `cos(swing)` gets the leg but not the boot, which is 15 cm deep and tilts
+with it. So each frame is posed first and the root is dropped by whatever the
+**measured** lowest vertex turns out to be, on all 25 frames. Change the swing,
+change the boot shape, and the feet still land. The vertical bob is then the
+foot arc itself rather than a number somebody invented.
+
+This is the local form of the project rule *measure, never derive*. If you add
+a run or an idle, plant it the same way.
+
+`pose_bone.location` is in **bone space**. The Root bone points along +Z, so
+its local Y is world up and its local Z is world −Y — writing the bob to `.z`
+slides the character backwards, and in a side view of a walk that reads as a
+stride. `_lift_axis()` finds the right component by nudging each one 1 cm and
+keeping whichever actually raised the mesh.
+
+---
+
+## 7. Adding a folk variant that rigs
+
+1. Write the builder to the normal contract in `assets/README.md`. Build it at
+   the origin on z=0, fronting −Y, **symmetric pose**.
+2. Name the parts so `folkrig.GROUPS` claims them, or add the new names to
+   `GROUPS`. `-- rig` will refuse the asset and list what it could not place.
+3. `-- asset Folk/<name>` — the normal gate: tri cap, footprint, anchor, mesh
+   defects. The rig does not exempt anything from it.
+4. `-- rig Folk/<name>` — bind, animate, check, render.
+5. **Open both strips.** Side is where a stride is judged; three-quarter is
+   what the game will actually show. A cycle that reads in one and not the
+   other is not finished.
+6. Report the numbers: parts, tris, bones, groups, vertex travel, loop gap,
+   floor sink/float.
+
+A healthy run:
+
+```
+Folk/villager  (folk.folk.villager)
+  19 part(s) -> 1 skinned mesh   516 tris   7 bones   6 group(s): ...
+  action 'walk'  15 fcurves  24 frames at 24 fps
+  max vertex travel 0.201 m   loop gap 0.000000 m   floor sink -0.0000 float 0.0000
+  [RIG] ok
+```
+
+The tri count must equal what `-- asset` reported for the same asset. If it
+does not, read section 4 before touching anything else.
+
+---
+
+## 8. What is NOT done
+
+**Nothing carries this into the game.** `library`, `export` and `guards` are
+still in `build.py`'s `PLANNED` tuple, so the rigged result lives in
+`out/rig/<asset>_rigged.blend` and reaches Godot by no route at all. When the
+exporter lands it will need glTF **skin + animation** support, which is a
+larger question than this target — armature export, bone node hierarchy, the
+animation sampler, and the Godot-side `AnimationPlayer`. Do not assume the
+existing per-asset `.glb` plan covers it.
+
+**The adventurer is rigged but not repose.** `-- rig Folk/adventurer` runs
+clean at 588 tris, but that asset still has a pose baked in (staff arm forward,
+one boot leading), so it walks with a permanent lean. Squaring it up is the
+same job section 3 describes.
+
+**One clip.** There is a walk and nothing else. Idle, carry and the tile-hop
+that the tween currently does are all unwritten.
+
+---
+
+## 9. Related
+
+- Gotcha **#73** — `mark_sharp` on the base cage creases every bevel
+- Gotcha **#74** — Blender 5.2 removed `Action.fcurves`
+- Gotcha **#75** — `join()` applies the active object's modifier stack to all
+- `assets/README.md` — the asset contract every folk still obeys
+- `AGENTS.md` §2 — look before you build; the cost table

@@ -1,6 +1,6 @@
 ---
 name: lamb-folk
-description: Gods and Lamb characters — blender/assets/Folk (villager, lamb). Use for "make a follower variant", "you cannot tell the followers apart", "the villager reads as a blob at play distance", or any work on the little people and animals. They are UNRIGGED meshes moved by tween — there is no skeleton, no animation, and none is coming.
+description: Gods and Lamb characters — blender/assets/Folk (villager, lamb). Use for "make a follower variant", "you cannot tell the followers apart", "the villager reads as a blob at play distance", or any work on the little people and animals. They are RIGGED as of 2026-08-31 — a 7-bone skeleton and a walk cycle in blender/assets/_kit/folkrig.py; read blender/docs/03-folk-rig.md before touching a folk asset.
 ---
 
 Read `C:\Goliath\Gods and lamb\AGENTS.md` first. Then this.
@@ -8,19 +8,31 @@ Read `C:\Goliath\Gods and lamb\AGENTS.md` first. Then this.
 You author the followers: one `.py` per character under
 `blender/assets/Folk/`, to the contract in `blender/assets/README.md`.
 
-## No rig. Ever.
+## The rig — read `blender/docs/03-folk-rig.md`
 
-Low animation overhead is a design goal, not a budget cut. Followers hop from
-tile to tile on a position tween with a squash, and that is the whole animation
-system. There is no armature, no skinning, no `BoneAttachment3D`, no idle loop.
+This section used to say "no rig, ever". That was reversed on 2026-08-31 by the
+project owner. The folk now carry a 7-bone skeleton (Root, Torso, Head, ArmL/R,
+LegL/R), rigid one-bone-per-part skinning, and a 24-frame walk:
 
-This deletes a large amount of parent-project machinery — `rig.py`, `anim.py`,
-`outfit.py`, `gearfit.py` and the runtime character hydration all exist in
-`C:\Goliath\Robotin` and none of it applies here. Do not port it.
+```
+build.py -- rig Folk/villager
+```
 
-It also means the mesh must look alive while standing perfectly still. That is
-done with **pose baked into the geometry** — a slight lean, arms not symmetric,
-head tilted a few degrees. A character modelled at attention looks dead.
+Two consequences you must build to, and the doc explains both:
+
+- **Symmetric POSE, asymmetric DETAILS.** Arms level, feet level, head facing
+  front. Rest pose is what every clip is measured from, so a baked lean is a
+  lean added to every frame of every animation. Keep the strap diagonal, the
+  off-centre satchel, the hair parting — the liveliness that used to come from
+  a baked lean is the walk cycle's job now.
+- **Name your parts so `folkrig.GROUPS` claims them**, or add the names there.
+  An unclaimed part fails the run by design; the alternative is a satchel
+  hovering where the character used to be.
+
+Still true: low animation overhead is a design goal, movement between tiles is
+still a tween, and **nothing here has physics** — the rig is animation only.
+Robotin's `rig.py`, `anim.py`, `outfit.py` and `gearfit.py` are still NOT the
+model; `folkrig.py` is 300 lines and serves every folk asset.
 
 ## The real constraint is 40 pixels
 
@@ -61,8 +73,11 @@ wrong way, which reads as a systemic bug rather than an art one.
 
 1. `-- measure` the ground tile, and the villager if you are matching it.
 2. Write the builder.
-3. `-- asset Folk/<name>` — runs the gate and writes a review PNG.
-4. **Open the PNG, then look at it at play scale.** If you cannot tell it from
+3. `-- asset Folk/<name>` — the gate: tri cap, footprint, floor anchor, mesh
+   defects. The rig exempts nothing from it.
+4. `-- rig Folk/<name>` — bind, animate, check, and write both walk strips.
+5. **Open the PNG, then look at it at play scale.** If you cannot tell it from
    the other follower at that size, it has failed regardless of how it looks
    close up.
-5. Report tri count and AABB as numbers.
+6. Report tri count and AABB as numbers, plus loop gap and floor
+   sink/float if you rigged it.

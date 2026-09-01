@@ -4,6 +4,7 @@
 
 Targets:
     look <asset_id> [k=v ...]     three Workbench angles into out/look/   (cheap)
+    rig <asset_id>                skeleton + skin + walk cycle, out/rig/  (folk only)
     lit <asset_id> [k=v ...]      the same three under the GAME light rig, out/lit/
     measure <asset_id> [k=v ...]  the real AABB per axis                  (cheapest)
     list                          every asset the registry can see
@@ -154,9 +155,14 @@ def target_look(rest):
           % (aid, len(parts), size[0], size[1], size[2]))
 
     stem = aid.replace("/", "_")
-    for name, dirv in (("front", (-1.00, -0.55, 0.30)),
+    # FRONT is dead-on -Y, because that is the direction every asset fronts.
+    # It used to be (-1.00, -0.55, 0.30), which puts the camera mostly at -X --
+    # so the angle called "front" was a LEFT SIDE view for every asset in the
+    # project, and a villager rendered with one eye behind his own hair before
+    # anyone noticed. `dirv` is the direction from the subject TO the camera.
+    for name, dirv in (("front", (0.00, -1.00, 0.30)),
                        ("three_quarter", (-0.85, -1.00, 0.42)),
-                       ("along", (-0.25, -1.00, 0.18))):
+                       ("along", (-1.00, -0.20, 0.22))):
         shot.render(os.path.join(OUT, "look", "%s_%s.png" % (stem, name)),
                     parts, res=(1400, 1000), fill=0.90, dirv=dirv)
     print("wrote out/look/%s_{front,three_quarter,along}.png" % stem)
@@ -279,9 +285,14 @@ def target_lit(rest):
     lit.ground()
 
     stem = aid.replace("/", "_")
-    for name, dirv in (("front", (-1.00, -0.55, 0.30)),
+    # FRONT is dead-on -Y, because that is the direction every asset fronts.
+    # It used to be (-1.00, -0.55, 0.30), which puts the camera mostly at -X --
+    # so the angle called "front" was a LEFT SIDE view for every asset in the
+    # project, and a villager rendered with one eye behind his own hair before
+    # anyone noticed. `dirv` is the direction from the subject TO the camera.
+    for name, dirv in (("front", (0.00, -1.00, 0.30)),
                        ("three_quarter", (-0.85, -1.00, 0.42)),
-                       ("along", (-0.25, -1.00, 0.18))):
+                       ("along", (-1.00, -0.20, 0.22))):
         lit.render(os.path.join(OUT, "lit", "%s_%s.png" % (stem, name)),
                    [merged], res=(1200, 800), fill=0.90, dirv=dirv)
     print("wrote out/lit/%s_{front,three_quarter,along}.png" % stem)
@@ -556,8 +567,160 @@ def target_vocab(rest):
         print("  %s" % f)
 
 
+def target_rig(rest):
+    """Skeleton, skin and walk cycle for a folk asset. Checked, then rendered.
+
+    The one target that does NOT merge first. Every other path in this project
+    collapses an asset to a single mesh before it measures anything, and rigid
+    skinning cannot survive that: the bind assigns each PART to a bone, and
+    after a merge there are no parts to assign. So the parts are bound loose
+    and joined afterwards, by which point the vertex groups already exist and
+    the join just carries them along.
+
+    Four asserts, and all four exist because the failure they catch renders as
+    a perfectly plausible picture:
+
+      rigid weights     a vertex on two bones tears an armpit
+      sagittal roll     a leg that swings sideways is a curtsy, not a walk
+      action deforms    an unslotted action owns fcurves and moves nothing
+      cycle closes      frame 1 != frame 25 pops once per stride, forever
+      feet on floor     checked on every frame, not on the planted keys
+
+    Frames are shot from a FIXED camera. lit.render() re-solves the framing per
+    call, so a per-frame solve would track the character and produce a walk
+    where the legs move and the body never does.
+    """
+    import bpy
+    import registry
+    import kit
+    import lit
+    import folkrig
+
+    if not rest:
+        raise SystemExit("FAIL: rig needs an asset id, e.g. Folk/villager")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    entry = registry.resolve(aid)
+    decl = entry["decl"]
+    if decl["cls"] != "folk":
+        raise SystemExit("FAIL: %s is cls=%s. folkrig's skeleton is a folk "
+                         "body -- binding it to a building would put a roof on "
+                         "a femur." % (aid, decl["cls"]))
+
+    _fresh_scene()
+    parts = _build_subject(entry, "RIG", kw)
+    tris_loose = sum(kit.evaluated_tris(p) for p in parts)
+    arm = folkrig.build_armature("%s_rig" % decl["variant"])
+    folkrig.assert_roll_is_sagittal(arm)
+    folkrig.bake_and_group(parts, tag="RIG")
+    folkrig.assert_rigid_weights(parts)
+
+    bpy.ops.object.select_all(action="DESELECT")
+    for ob in parts:
+        ob.select_set(True)
+    bpy.context.view_layer.objects.active = parts[0]
+    bpy.ops.object.join()
+    skinned = bpy.context.object
+    skinned.name = "%s_skinned" % decl["variant"]
+    folkrig.attach(arm, skinned)
+    folkrig.assert_rigid_weights([skinned])
+
+    # The join must not have changed the geometry. It applied nineteen modifier
+    # stacks and concatenated the results, and the number that proves it went
+    # cleanly is the one the gate already published for this asset.
+    tris = kit.evaluated_tris(skinned)
+    if tris != tris_loose:
+        raise SystemExit("FAIL: the skinned mesh is %d tris but the parts were "
+                         "%d. The join changed the geometry -- the usual cause "
+                         "is baking AFTER the join, which applies the active "
+                         "object's modifier stack to every other part."
+                         % (tris, tris_loose))
+
+    act = folkrig.walk_action(arm, skinned)
+    travel = folkrig.assert_action_deforms(arm, [skinned])
+    gap = folkrig.assert_cycle_closes(arm, [skinned])
+    sink, float_ = folkrig.assert_feet_on_floor(arm, [skinned])
+
+    groups = sorted(vg.name for vg in skinned.vertex_groups)
+    print("%s  (%s.%s.%s)" % (aid, decl["cls"], decl["family"], decl["variant"]))
+    print("  %d part(s) -> 1 skinned mesh   %d tris   %d bones   %d group(s): %s"
+          % (len(parts), tris, len(arm.pose.bones),
+             len(groups), ", ".join(groups)))
+    print("  action %r  %d fcurves  %d frames at %d fps"
+          % (act.name, len(folkrig.action_fcurves(act)), folkrig.CYCLE, folkrig.FPS))
+    print("  max vertex travel %.3f m   loop gap %.6f m   floor sink %.4f "
+          "float %.4f" % (travel, gap, -sink, float_))
+
+    lit.bake_isolated([skinned])
+    lit.ground()
+    # A hidden box the size of the whole stride, so every frame is solved
+    # against the SAME bounds. Hidden from the render, not from the solver --
+    # shot.solve_camera reads bound_box off any mesh it is handed.
+    lo, hi = kit.bounds_lohi([skinned])
+    pad = 0.22
+    guide = kit.box("RIG_FrameGuide",
+                    ((lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5,
+                     (lo[2] + hi[2]) * 0.5),
+                    (hi[0] - lo[0] + pad, hi[1] - lo[1] + pad, hi[2] - lo[2]))
+    guide.hide_render = True
+
+    stem = aid.replace("/", "_")
+    outdir = os.path.join(OUT, "rig")
+    frames = [1 + i * (folkrig.CYCLE // 8) for i in range(8)]
+    # TWO angles. A walk is judged from the SIDE -- that is the view the stride
+    # length, the foot plant and the arm counter-swing are all visible in -- and
+    # three-quarter is the view the game will actually use. A cycle that reads
+    # in one and not the other is not finished.
+    for view, dirv in (("side", (-1.00, 0.00, 0.16)),
+                       ("three_quarter", (-0.60, -1.00, 0.22))):
+        shots = []
+        for f in frames:
+            bpy.context.scene.frame_set(f)
+            bpy.context.view_layer.update()
+            p = os.path.join(outdir, "%s_%s_f%02d.png" % (stem, view, f))
+            lit.render(p, [guide, skinned], res=(300, 420), fill=0.94,
+                       dirv=dirv)
+            shots.append(p)
+        out = os.path.join(outdir, "%s_walk_%s.png" % (stem, view))
+        _strip(shots, out)
+        for p in shots:
+            os.remove(p)
+        print("  wrote out/rig/%s_walk_%s.png (%d frames)"
+              % (stem, view, len(shots)))
+
+    bpy.data.objects.remove(guide, do_unlink=True)
+    bpy.context.scene.frame_set(1)
+    blend = os.path.join(outdir, "%s_rigged.blend" % stem)
+    bpy.ops.wm.save_as_mainfile(filepath=blend)
+    print("  wrote %s" % blend)
+    print("  [RIG] ok")
+
+
+def _strip(paths, out):
+    """Lay the frames side by side. Eight PNGs in a folder is not a walk cycle
+    anyone can read; one strip is."""
+    import bpy
+    imgs = [bpy.data.images.load(p) for p in paths]
+    w, h = imgs[0].size
+    strip = bpy.data.images.new("strip", width=w * len(imgs), height=h)
+    buf = [0.0] * (w * len(imgs) * h * 4)
+    for i, img in enumerate(imgs):
+        px = list(img.pixels)
+        for y in range(h):
+            src = y * w * 4
+            dst = (y * w * len(imgs) + i * w) * 4
+            buf[dst:dst + w * 4] = px[src:src + w * 4]
+    strip.pixels = buf
+    strip.filepath_raw = out
+    strip.file_format = "PNG"
+    strip.save()
+    for img in imgs:
+        bpy.data.images.remove(img)
+    bpy.data.images.remove(strip)
+
+
 TARGETS = {
     "look": target_look,
+    "rig": target_rig,
     "lit": target_lit,
     "ao": target_ao,
     "field": target_field,

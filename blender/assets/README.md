@@ -92,7 +92,13 @@ saturated hue.
 blender --background --factory-startup --python build.py -- look Terrain/grass
 blender --background --factory-startup --python build.py -- measure Terrain/grass
 blender --background --factory-startup --python build.py -- asset Terrain/grass
+blender --background --factory-startup --python build.py -- rig Folk/villager
 ```
+
+`-- rig` is folk-only: it binds the parts to a skeleton and renders a walk
+cycle. It is the one target that does NOT merge first, and the reasons are in
+`docs/03-folk-rig.md`. Read that before adding a part to a folk builder — parts
+are claimed by NAME, and a name nothing claims fails the run.
 
 `-- look` is the cheap one and it renders three angles. **Open the PNG.** A
 triangle count cannot tell you that a roof overhangs its own doorway.
