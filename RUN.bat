@@ -5,7 +5,7 @@ rem  Gods and Lamb
 rem
 rem    RUN            build anything stale, then play on PC
 rem    RUN play       play, no staleness check
-rem    RUN assets     Blender: rebuild the GLB library and the layout, reimport
+rem    RUN assets     Blender: rebuild CHANGED assets + the layout, reimport
 rem    RUN test       headless checks (renderer, layout, library, skin, clip)
 rem    RUN shots      screenshots into godot\shots\
 rem    RUN exe        Windows build into godot\builds\windows\
@@ -51,21 +51,16 @@ exit /b 1
 
 rem ---------------------------------------------------------------- auto
 :auto
-rem Is the exported layout older than anything it is built from? The TOOL
-rem scripts are in the source list on purpose: leaving them out means editing
-rem the exporter silently changes nothing, which cost the parent project a
-rem session.
-set "STALE=1"
-if exist "%GD%\data\vale.json" (
-  for /f %%R in ('powershell -NoProfile -Command ^
-    "$t=(Get-Item '%GD%\data\vale.json').LastWriteTime; $n=(Get-ChildItem '%BL%\src\*.py','%BL%\assets\*\*.py','%BL%\assets\_kit\*.py','%BL%\build.py' -ErrorAction SilentlyContinue ^| Measure-Object LastWriteTime -Maximum).Maximum; if($n -gt $t){'1'}else{'0'}"') do set "STALE=%%R"
-)
-if "!STALE!"=="1" (
-  echo [RUN] assets are stale -- rebuilding
-  call :assets || exit /b 1
-) else (
-  echo [RUN] assets are current
-)
+rem No timestamp gate. `-- export` is CONTENT-addressed now (src/buildcache.py):
+rem it digests each asset's own source plus the core modules and the _kit
+rem helpers that asset actually uses, and rebuilds only what changed. A clean
+rem run is ~1.5 s against ~57 s before.
+rem
+rem The old gate compared one vale.json timestamp against every .py in the
+rem tree, which was wrong in both directions: editing src/vale.py rebuilt all
+rem 27 meshes although the layout cannot change a mesh, and a git checkout that
+rem restored an older asset with an older mtime rebuilt nothing at all.
+call :assets || exit /b 1
 goto :play
 
 rem ---------------------------------------------------------------- assets
@@ -79,12 +74,20 @@ if not "%RC%"=="0" (
   echo [FAIL] Blender export failed ^(exit %RC%^)
   exit /b %RC%
 )
-echo [RUN] Godot: importing
-rem TWICE. Godot writes the .import sidecar on the first pass and can only
-rem attach import settings on the second, so a brand-new .glb arrives with its
-rem metadata present and never read.
-"%GODOTC%" --headless --path "%GD%" --import >nul 2>&1
-"%GODOTC%" --headless --path "%GD%" --import >nul 2>&1
+rem Reimport only when a GLB was actually rewritten. The two passes cost 5.1 s
+rem and are pure waste on a run where the cache skipped everything.
+set "BUILT=0"
+if exist "%BL%\out\library_built.txt" set /p BUILT=<"%BL%\out\library_built.txt"
+if "%BUILT%"=="0" (
+  echo [RUN] library unchanged -- skipping reimport
+) else (
+  echo [RUN] Godot: importing %BUILT% changed asset^(s^)
+  rem TWICE. Godot writes the .import sidecar on the first pass and can only
+  rem attach import settings on the second, so a brand-new .glb arrives with
+  rem its metadata present and never read.
+  "%GODOTC%" --headless --path "%GD%" --import >nul 2>&1
+  "%GODOTC%" --headless --path "%GD%" --import >nul 2>&1
+)
 if /i "%~1"=="assets" goto :test
 exit /b 0
 
@@ -106,7 +109,14 @@ if not "%ERRORLEVEL%"=="0" (
   echo        To play it anyway:  RUN play
   exit /b 1
 )
+rem Both of the modes that ROUTE here are done once the checks pass. Only a
+rem bare `RUN` (auto) goes on to launch the game.
+rem
+rem This tested "test" alone, so `RUN assets` fell through and started the
+rem game -- which is why an asset rebuild appeared to take a minute when the
+rem build itself is under two seconds.
 if /i "%~1"=="test" exit /b 0
+if /i "%~1"=="assets" exit /b 0
 goto :play
 
 rem ---------------------------------------------------------------- play

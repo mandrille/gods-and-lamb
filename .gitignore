@@ -6,3 +6,7 @@ __pycache__/
 godot/assets/library/.built.json
 builds/
 docs/index.html
+
+# Build cache: derived state, machine-local, regenerated on demand.
+blender/out/library_cache.json
+blender/out/library_built.txt

@@ -546,15 +546,27 @@ def target_library(rest):
     """
     import subprocess
     import registry
+    import buildcache
 
     outdir = os.environ.get("LAMB_GODOT_ASSETS") or os.path.join(
         os.path.dirname(ROOT), "godot", "assets", "library")
     found = registry.discover()
     order = sorted(found)
+    cache = buildcache.load()
     print("library: %d asset(s) -> %s" % (len(order), outdir))
 
     failed = []
+    built = 0
+    skipped = []
     for aid in order:
+        out_path = os.path.join(outdir, _asset_glb_name(aid))
+        # CONTENT-addressed, not timestamp-addressed. The GLBs were always
+        # being written to disk; they were simply being rebuilt whether or not
+        # anything that feeds them had changed, which cost ~57 s on every run
+        # and made editing the LAYOUT rebuild every mesh in the game.
+        if buildcache.is_current(cache, aid, found[aid], out_path):
+            skipped.append(aid)
+            continue
         cmd = [sys.argv[0], "--background", "--factory-startup",
                "--python", os.path.abspath(__file__), "--", "glb", aid]
         r = subprocess.run(cmd, capture_output=True, text=True)
@@ -565,12 +577,31 @@ def target_library(rest):
             body = (r.stdout or "") + (r.stderr or "")
             keep = [ln for ln in body.splitlines() if ln.startswith("FAIL")]
             failed.append((aid, keep[0] if keep else body.strip()[-300:]))
+            # Drop the entry rather than leaving a stale one: a failed export
+            # must not be able to satisfy the cache on the next run.
+            cache.pop(aid, None)
+            continue
+        cache[aid] = buildcache.digest(aid, found[aid])
+        built += 1
+
+    buildcache.save(cache)
+    # A marker RUN.bat reads, so it can skip Godot's two-pass reimport when
+    # nothing changed -- that reimport is 5.1 s and is pure waste on a run
+    # where not one GLB was rewritten.
+    try:
+        os.makedirs(os.path.join(ROOT, "out"), exist_ok=True)
+        with open(os.path.join(ROOT, "out", "library_built.txt"), "w") as fh:
+            fh.write(str(built))
+    except OSError:
+        pass
     if failed:
         gap = chr(10) + "  "
         raise SystemExit("FAIL: %d asset(s) did not export:%s%s"
                          % (len(failed), gap,
                             gap.join("%s  %s" % f for f in failed)))
-    print("[LIBRARY] %d assets exported" % len(order))
+    print("[LIBRARY] %d built, %d unchanged%s"
+          % (built, len(skipped),
+             "  (LAMB_REBUILD_ALL=1 to force)" if skipped else ""))
 
 
 def target_glb(rest):
@@ -708,6 +739,81 @@ def target_export(rest):
         json.dump(doc, fh, indent=1)
     print("[EXPORT] %s  %d props, %d x %d tiles"
           % (path, len(doc["props"]), doc["cols"], doc["rows"]))
+
+
+def target_cache(rest):
+    """Prove the build cache invalidates on exactly the right things.
+
+    A cache that skips when it should not is a stale-asset bug you meet hours
+    later in the engine, so the interesting direction is BOTH: it must rebuild
+    what changed and it must NOT rebuild what did not.
+
+    Done by digesting against edited COPIES of the sources rather than by
+    running 27 Blender exports, so this is a second of arithmetic and can sit
+    in the gate.
+    """
+    import registry
+    import buildcache
+
+    found = registry.discover()
+    folk = [a for a in found if found[a]["decl"]["cls"] == "folk"]
+    other = [a for a in found if found[a]["decl"]["cls"] != "folk"]
+    if not folk or not other:
+        raise SystemExit("FAIL: cache test needs at least one folk and one "
+                         "non-folk asset; found %d / %d"
+                         % (len(folk), len(other)))
+    tree = sorted(other)[0]
+
+    base = {a: buildcache.digest(a, found[a]) for a in found}
+    real_read = buildcache._read
+    faults = []
+
+    def with_edit(target_path, label):
+        """Digests as they would be if `target_path` had different bytes."""
+        def patched(path):
+            data = real_read(path)
+            return data + b"# probe" if os.path.abspath(path)                 == os.path.abspath(target_path) else data
+        buildcache._read = patched
+        try:
+            return {a: buildcache.digest(a, found[a]) for a in found}
+        finally:
+            buildcache._read = real_read
+
+    def expect(label, after, should_change):
+        moved = {a for a in found if after[a] != base[a]}
+        if moved != set(should_change):
+            faults.append("%s changed %s, expected %s"
+                          % (label, sorted(moved) or "nothing",
+                             sorted(should_change) or "nothing"))
+        else:
+            print("  %-34s -> %d asset(s) invalidated"
+                  % (label, len(moved)))
+
+    # 1. One asset's own source invalidates only itself.
+    expect("edit %s" % tree, with_edit(found[tree]["path"], tree), [tree])
+
+    # 2. The folk rig invalidates the folk, and NOTHING else. This is the one
+    #    that matters most: treating all of assets/_kit as shared made every
+    #    animation tweak rebuild the terrain.
+    rig = os.path.join(ROOT, "assets", "_kit", "folkrig.py")
+    if os.path.exists(rig):
+        expect("edit _kit/folkrig.py", with_edit(rig, "rig"), folk)
+
+    # 3. A core module invalidates everything.
+    expect("edit src/kit.py",
+           with_edit(os.path.join(ROOT, "src", "kit.py"), "kit"), list(found))
+
+    # 4. The LAYOUT invalidates nothing. src/vale.py says where props stand;
+    #    it cannot change a mesh, and rebuilding 27 assets because it moved a
+    #    tree is the waste this cache exists to remove.
+    expect("edit src/vale.py",
+           with_edit(os.path.join(ROOT, "src", "vale.py"), "vale"), [])
+
+    if faults:
+        gap = chr(10) + "  "
+        raise SystemExit("FAIL: build cache invalidates wrongly:%s%s"
+                         % (gap, gap.join(faults)))
+    print("[CACHE] invalidation is correct in both directions")
 
 
 def target_list(rest):
@@ -910,6 +1016,7 @@ TARGETS = {
     "asset": target_asset,
     "assets": target_assets,
     "measure": target_measure,
+    "cache": target_cache,
     "list": target_list,
     "vocab": target_vocab,
 }
