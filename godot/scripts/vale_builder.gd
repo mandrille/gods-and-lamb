@@ -41,10 +41,56 @@ var extent_min := Vector3.ZERO
 var extent_max := Vector3.ZERO
 
 
+## Set BEFORE the node enters the tree to build a generated world instead of
+## reading data/vale.json. The archipelago uses this; the Blender-authored Vale
+## still comes off disk, and both go through exactly one builder.
+var source_doc: Dictionary = {}
+
+
 func _ready() -> void:
-	_load()
+	if source_doc.is_empty():
+		_load()
+	else:
+		_adopt(source_doc)
 	_build_ground()
 	_build_props()
+
+
+## Throw the world away and build a different one.
+##
+## Everything derived from the layout goes with it -- the ground batches, the
+## prop nodes, and `placed_props`, which hover picking and FX both hold. Leaving
+## any of those behind is how a bought island arrives with the previous world
+## still standing inside it, and the stale AABBs in `placed_props` would make
+## the picker report hits on props that are no longer there.
+func rebuild(new_doc: Dictionary) -> void:
+	for inst in _multi.values():
+		if is_instance_valid(inst):
+			inst.queue_free()
+	_multi.clear()
+	for entry in placed_props:
+		var n = entry.get("node")
+		if is_instance_valid(n):
+			n.queue_free()
+	placed_props.clear()
+	var skirt := get_node_or_null("Skirt")
+	if skirt != null:
+		skirt.queue_free()
+	_adopt(new_doc)
+	_build_ground()
+	_build_props()
+
+
+func _adopt(d: Dictionary) -> void:
+	doc = d
+	tile = float(doc.get("tile", 0.5))
+	lift = float(doc.get("lift", 0.5))
+	upper_blocks = int(doc.get("upper_blocks", 2))
+	water_drop = float(doc.get("water_drop", 0.06))
+	cols = int(doc.get("cols", 0))
+	rows = int(doc.get("rows", 0))
+	lower = doc.get("lower", [])
+	upper = doc.get("upper", [])
 
 
 func _load() -> void:
@@ -56,15 +102,9 @@ func _load() -> void:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		push_error("ValeBuilder: %s is not a JSON object" % DATA)
 		return
-	doc = parsed
-	tile = float(doc.get("tile", 0.5))
-	lift = float(doc.get("lift", 0.5))
-	upper_blocks = int(doc.get("upper_blocks", 2))
-	water_drop = float(doc.get("water_drop", 0.06))
-	cols = int(doc.get("cols", 0))
-	rows = int(doc.get("rows", 0))
-	lower = doc.get("lower", [])
-	upper = doc.get("upper", [])
+	# One place that reads a document into fields, so the file path and the
+	# generated path cannot drift apart.
+	_adopt(parsed)
 
 
 ## Tile centre in world space. Row 0 is the FAR edge, so rows run -Z as they go
@@ -261,10 +301,78 @@ func _build_props() -> void:
 		# Recorded for hover picking and the FX layer. Neither should
 		# re-read the JSON to find the props: a second walk of the
 		# layout is a second chance to disagree with the first.
-		placed_props.append({"id": aid, "node": node,
-			                     "pos": node.position})
+		placed_props.append({"id": aid, "node": node, "pos": node.position,
+							 "col": col, "row": row,
+							 "fp": p.get("fp", [0.5, 0.5])})
 		placed += 1
 	print("[VALE] props: %d placed" % placed)
+
+
+## Put one more thing into the world after the build, and record it exactly the
+## way the initial pass does.
+##
+## Same record shape, appended to the same list, because hover picking, FX and
+## the walk grid all read `placed_props` -- a miracle-grown tree that is not in
+## that list is a tree nobody can click, nothing walks around, and no smoke ever
+## rises from. Returns false rather than placing something in the sea.
+func add_prop(aid: String, col: int, row: int, yaw := 0.0,
+			  scale_v := 1.0) -> bool:
+	if col < 0 or row < 0 or col >= cols or row >= rows:
+		return false
+	if code_at(lower, col, row) in [".", "W"]:
+		return false
+	var packed := _packed_of(aid)
+	if packed == null:
+		return false
+	var node := packed.instantiate()
+	add_child(node)
+	node.position = world_of(col, row) + Vector3(0, lift, 0)
+	node.rotation.y = deg_to_rad(yaw)
+	node.scale = Vector3(scale_v, scale_v, scale_v)
+	placed_props.append({"id": aid, "node": node, "pos": node.position,
+						 "col": col, "row": row,
+						 "fp": Islands.FOOTPRINTS.get(aid, [0.5, 0.5])})
+	return true
+
+
+## Take one out. The entry is removed from `placed_props` FIRST, so nothing can
+## observe the list holding a freed node -- queue_free is deferred, and a picker
+## running this frame would happily test its AABB.
+func remove_prop(entry: Dictionary) -> void:
+	placed_props.erase(entry)
+	var node = entry.get("node")
+	if is_instance_valid(node):
+		node.queue_free()
+
+
+## The layout as the walk grid wants it: the current document, but with `props`
+## replaced by what is ACTUALLY standing right now. Rebuilding the grid from
+## `doc` alone would resurrect every tree a miracle burned down.
+func live_doc() -> Dictionary:
+	var out := doc.duplicate()
+	var props: Array = []
+	for e in placed_props:
+		if not is_instance_valid(e.get("node")):
+			continue
+		var col: int = int(e.get("col", -1))
+		var row: int = int(e.get("row", -1))
+		if col < 0:
+			var c := cell_of(e["pos"])
+			col = c.x
+			row = c.y
+		props.append({"id": e["id"], "col": col, "row": row, "yaw": 0.0,
+					  "scale": 1.0, "fp": e.get("fp", [0.5, 0.5])})
+	out["props"] = props
+	return out
+
+
+## Inverse of world_of. Kept here rather than duplicated in the grid, so the
+## two cannot disagree about where a tile is.
+func cell_of(world: Vector3) -> Vector2i:
+	var ox := -float(cols - 1) * tile * 0.5
+	var oz := -float(rows - 1) * tile * 0.5
+	return Vector2i(int(round((world.x - ox) / tile)),
+					(rows - 1) - int(round((world.z - oz) / tile)))
 
 ## A flat plane of distant grass, far beyond the map, one draw call.
 ##
@@ -279,15 +387,45 @@ func _build_props() -> void:
 ## Ground can. The skirt sits a hair below the tile tops so it cannot z-fight
 ## with them, and it is a desaturated grass so the tiles read as the near
 ## detail of a landscape that keeps going.
+## The colour the world fades into: the most common ground tile along the map
+## border, pushed toward the sky.
+func _horizon_colour() -> Color:
+	var tally := {}
+	for col in cols:
+		for row in [0, rows - 1]:
+			var c := code_at(lower, col, row)
+			tally[c] = int(tally.get(c, 0)) + 1
+	for row in rows:
+		for col in [0, cols - 1]:
+			var c := code_at(lower, col, row)
+			tally[c] = int(tally.get(c, 0)) + 1
+	var best := "G"
+	var top := -1
+	for c in tally:
+		if String(c) != "." and int(tally[c]) > top:
+			top = int(tally[c])
+			best = String(c)
+	var by_code := {"W": Color(0.24, 0.52, 0.72), "G": Color(0.34, 0.50, 0.31),
+					"A": Color(0.72, 0.66, 0.46), "S": Color(0.46, 0.47, 0.49),
+					"D": Color(0.42, 0.33, 0.24), "P": Color(0.52, 0.51, 0.48),
+					"C": Color(0.38, 0.29, 0.21)}
+	return by_code.get(best, Color(0.34, 0.50, 0.31))
+
+
 func _add_skirt() -> void:
 	var span := maxf(extent_max.x - extent_min.x, extent_max.z - extent_min.z)
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(span * 12.0, span * 12.0)
 	var mat := StandardMaterial3D.new()
-	# Desaturated and slightly lifted in value: this is DISTANCE, and matching
-	# the near grass exactly makes the map edge vanish into a flat field with
-	# no depth to it.
-	mat.albedo_color = Color(0.34, 0.50, 0.31)
+	# Coloured after whatever the map actually ENDS in, desaturated and lifted
+	# in value: this is DISTANCE, and matching the near tiles exactly makes the
+	# map edge vanish into a flat field with no depth to it.
+	#
+	# It was a fixed meadow green, which was right for a continuous landscape
+	# and became a green horizon around an archipelago the moment the world
+	# turned to ocean. Reading the dominant edge tile means it cannot be wrong
+	# again for the next kind of world either.
+	mat.albedo_color = _horizon_colour()
 	mat.roughness = 1.0
 	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	plane.material = mat

@@ -617,7 +617,12 @@ def target_glb(rest):
         mesh = bpy.context.object
         mesh.name = "%s_mesh" % decl["variant"]
         folkrig.attach(arm, mesh)
-        folkrig.walk_action(arm, mesh)
+        # All four clips, each on its own NLA track. The exporter's ACTIONS
+        # mode collects actions from NLA plus the assigned one; an action that
+        # is merely in bpy.data is invisible to it and the GLB comes back with
+        # a single animation and no error at all.
+        tracks = folkrig.all_actions(arm, mesh)
+        print("  clips: %s" % ", ".join(tracks))
         subjects = [mesh]
     else:
         mesh = kit.merge_many(parts, "%s_mesh" % decl["variant"])

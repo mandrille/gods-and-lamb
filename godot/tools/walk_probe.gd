@@ -36,6 +36,17 @@ func _process(_d: float) -> bool:
 			printerr("[WALK] no grid")
 			quit(1)
 			return true
+		# The world starts as ONE island with no bridges, so the crossing checks
+		# below would have nothing to say. Buy a neighbour first: that is the
+		# case worth testing anyway -- an archipelago whose islands are joined
+		# only by the spans the purchase laid.
+		if _grid.cells_of("Buildings/bridge").is_empty():
+			_root.divinity.faith = 1000.0
+			var slots: Array = _root.islands.buyable()
+			if not slots.is_empty() and _root.divinity.buy_island(slots[0]):
+				_grid = _root.grid
+				print("[WALK] bought island %s to test the crossing"
+					% str(slots[0]))
 		for c in _grid.cells_of("Buildings/bridge"):
 			_bridge_cells[c] = true
 		# Where the river actually is, in world x. The obvious divide -- x > 0 --
@@ -128,14 +139,26 @@ func _routes_hold() -> bool:
 			west.append(c)
 		elif c.x > bcol_hi + 2:
 			east.append(c)
-	print("[WALK] river spans cols %d..%d; sampled %d west / %d east cells"
+	print("[WALK] crossing spans cols %d..%d; sampled %d west / %d east cells"
 		% [bcol_lo, bcol_hi, west.size(), east.size()])
+	if _bridge_cells.is_empty():
+		print("[WALK] no bridges in this world -- crossing checks skipped")
+		return true
 	if west.is_empty() or east.is_empty():
-		printerr("[WALK] FAIL: could not sample cells on both banks.")
+		printerr("[WALK] FAIL: could not sample cells on both sides of the "
+			+ "crossing, so nothing here was actually tested.")
 		return false
 
+	# Which connected region each cell belongs to.
+	#
+	# "Unreachable" is only a fault when both ends are in the SAME region --
+	# otherwise no route is the correct answer, and asserting otherwise makes
+	# the probe fail on a world-gen quirk (a few tiles walled off behind a
+	# cottage) as though pathfinding were broken. Region 0 is the mainland.
+	var region := _region_map()
 	var tested := 0
 	var unreachable := 0
+	var unreachable_same := 0
 	var used_bridge := 0
 	var wet := 0
 	var jumps := 0
@@ -148,6 +171,8 @@ func _routes_hold() -> bool:
 			var route: Array = _grid.path_world(pair[0], pair[1])
 			if route.is_empty():
 				unreachable += 1
+				if int(region.get(pair[0], -1)) == int(region.get(pair[1], -2)):
+					unreachable_same += 1
 				continue
 			var on_bridge := false
 			var prev: Vector3 = route[0]
@@ -169,8 +194,9 @@ func _routes_hold() -> bool:
 			if on_bridge:
 				used_bridge += 1
 
-	print("[WALK] %d cross-river routes requested, %d unreachable"
-		% [tested, unreachable])
+	print("[WALK] %d crossings requested, %d unreachable (%d of them between "
+		% [tested, unreachable, unreachable_same]
+		+ "cells that ARE connected)")
 	print("[WALK] routed over a bridge deck: %d of %d" % [used_bridge, tested - unreachable])
 	print("[WALK] waypoints on open water: %d" % wet)
 	print("[WALK] non-adjacent waypoint steps: %d (worst %.2f m)" % [jumps, worst_jump])
@@ -180,10 +206,14 @@ func _routes_hold() -> bool:
 	if jumps > 0:
 		printerr("[WALK] FAIL: a route skipped over blocked ground.")
 		return false
-	if unreachable > 0:
-		printerr("[WALK] FAIL: %d cross-river routes had no path, but the map is "
-			% unreachable + "one connected region -- the grid and A* disagree.")
+	if unreachable_same > 0:
+		printerr("[WALK] FAIL: %d routes had no path between cells that a flood "
+			% unreachable_same + "fill says are connected -- the grid and A* "
+			+ "disagree about the same map.")
 		return false
+	if unreachable > 0:
+		print("[WALK] the %d unreachable pairs are all across a genuine gap "
+			% unreachable + "(isolated pockets), which is the correct answer")
 	if used_bridge == 0:
 		printerr("[WALK] FAIL: not one route crossed at a bridge.")
 		return false
@@ -200,18 +230,22 @@ func _routes_hold() -> bool:
 ##
 ## So pin everything except identity: same cell, same need, forty brains.
 func _errands_differ() -> bool:
-	var BrainScript := load("res://scripts/brain.gd")
+	# Brain moved to scripts/sim/ and is a global class now; the old path loads
+	# as null and `null.new()` is the only symptom. Use the class name, which
+	# cannot silently resolve to nothing.
 	var from: Vector2i = _grid.cell_of(Vector3(0.0, 0.5, 0.0))
 	if not _grid.is_walkable(from):
 		from = _grid.beside(from)
 	var seen := {}
 	var n := 40
 	for i in n:
-		var b = BrainScript.new(9000 + i)
+		var b := Brain.new(9000 + i)
 		# Force the same need on all of them, so any spread is the destination
-		# choice and not a difference in what they happened to want.
-		b.hunger = 0.95
-		b.rest = 0.0
+		# choice and not a difference in what they happened to want. Stats are
+		# SATISFACTION, so "starving" is a LOW hunger value.
+		for k in Brain.STAT_ORDER:
+			b.stats[k] = 1.0
+		b.stats["hunger"] = 0.05
 		var d: Vector2i = b.destination(_grid, from)
 		seen[d] = true
 	print("[WALK] %d brains, same cell, same need -> %d distinct destinations"
@@ -221,3 +255,36 @@ func _errands_differ() -> bool:
 			% seen.size() + "destination(s) for %d followers." % n)
 		return false
 	return true
+
+
+## cell -> region index, largest region first. Same flood fill the grid reports
+## at build time, kept here so the probe can reason about pairs rather than
+## totals.
+func _region_map() -> Dictionary:
+	var out := {}
+	var groups: Array = []
+	for row in _grid.rows:
+		for col in _grid.cols:
+			var start := Vector2i(col, row)
+			if not _grid.is_walkable(start) or out.has(start):
+				continue
+			var members: Array[Vector2i] = []
+			var stack: Array[Vector2i] = [start]
+			out[start] = -1
+			while not stack.is_empty():
+				var c: Vector2i = stack.pop_back()
+				members.append(c)
+				for d in WalkGrid.NEIGHBOURS:
+					var nb: Vector2i = c + d
+					if _grid.is_walkable(nb) and not out.has(nb):
+						out[nb] = -1
+						stack.append(nb)
+			groups.append(members)
+	groups.sort_custom(func(a, b): return a.size() > b.size())
+	var sizes: Array[int] = []
+	for i in groups.size():
+		sizes.append(groups[i].size())
+		for c in groups[i]:
+			out[c] = i
+	print("[WALK] regions: %s" % str(sizes.slice(0, 5)))
+	return out

@@ -406,3 +406,148 @@ def assert_cycle_closes(arm, meshes, tol=1e-5):
                          "differ by %.6f m. The character will pop every cycle."
                          % (1 + CYCLE, worst))
     return worst
+
+
+# ------------------------------------------------------- the other three clips
+#
+# Walk is the load-bearing one and it lives above, with its measured foot
+# planting. These three are cheaper: nothing here takes a stride, so the feet
+# stay where the rest pose put them and the only vertical motion is deliberate.
+#
+# All four end up as SEPARATE glTF animations, which needs each action pushed
+# to its own NLA track -- the exporter's default ACTIONS mode collects actions
+# from NLA plus whatever is currently assigned. An action merely created and
+# left in bpy.data is invisible to it, and the export comes back with one clip
+# and no error at all.
+
+
+def _plant(arm, mesh, act, frames):
+    """Drop the Root each frame so the lowest vertex sits on z=0.
+
+    Same measured approach as the walk, and for the same reason: a pose that
+    bends the torso or swings the arms moves the boots as well, and deriving
+    the drop from the numbers that were authored gets the bone but not the
+    geometry hanging off it.
+    """
+    axis = _lift_axis(arm, mesh)
+    root = arm.pose.bones["Root"]
+    for f in frames:
+        bpy.context.scene.frame_set(f)
+        root.location = (0.0, 0.0, 0.0)
+        bpy.context.view_layer.update()
+        drop = min(p.z for p in evaluated_points(mesh))
+        v = [0.0, 0.0, 0.0]
+        v[axis] = -drop
+        root.location = v
+        root.keyframe_insert("location", frame=f)
+    bpy.context.scene.frame_set(1)
+
+
+def _finish(arm, act, last):
+    curves = action_fcurves(act)
+    if not curves:
+        raise SystemExit("FAIL: action %r came out with no fcurves. An action "
+                         "assigned but unslotted takes keyframes that go "
+                         "nowhere." % act.name)
+    for fc in curves:
+        for kp in fc.keyframe_points:
+            kp.interpolation = "BEZIER"
+    # Push to its own NLA track and clear the active slot, so the next action
+    # starts from a clean armature rather than layering onto this one.
+    track = arm.animation_data.nla_tracks.new()
+    track.name = act.name
+    track.strips.new(act.name, 1, act)
+    arm.animation_data.action = None
+    return act
+
+
+def _begin(arm, name):
+    arm.animation_data_create()
+    act = bpy.data.actions.new(name)
+    arm.animation_data.action = act
+    return act
+
+
+def idle_action(arm, mesh, name="idle", length=48):
+    """Standing about: a slow breath and the faintest sway.
+
+    Deliberately small. An idle with visible movement reads as fidgeting, and
+    with a dozen villagers standing around it turns the island into a crowd of
+    people who all need the lavatory. The whole range here is four degrees.
+    """
+    act = _begin(arm, name)
+    pb = arm.pose.bones
+    keys = ((1, 0.0, 1.5), (1 + length // 2, -2.0, -1.5), (1 + length, 0.0, 1.5))
+    for f, torso, arms in keys:
+        _key_rot(pb["Torso"], f, torso)
+        _key_rot(pb["Head"], f, -torso * 0.5)
+        _key_rot(pb["ArmL"], f, arms)
+        _key_rot(pb["ArmR"], f, arms)
+    _plant(arm, mesh, act, range(1, length + 2))
+    return _finish(arm, act, length)
+
+
+def pickup_action(arm, mesh, name="pickup", length=30):
+    """Bend, take something off the ground, straighten up.
+
+    One cycle rather than a one-shot, because the follower does this for a few
+    seconds at a time and a clip that ends leaves them frozen mid-bend. The
+    hold at the bottom is what makes it read as PICKING something up instead
+    of as bobbing.
+    """
+    act = _begin(arm, name)
+    pb = arm.pose.bones
+    #     frame          torso   arms    head
+    keys = ((1,            -4.0,  -6.0,   0.0),
+            (1 + length // 4,  -42.0, -62.0, -12.0),
+            (1 + length // 2,  -46.0, -74.0, -14.0),   # the hold
+            (1 + 3 * length // 4, -20.0, -30.0,  -6.0),
+            (1 + length,       -4.0,  -6.0,   0.0))
+    for f, torso, arms, head in keys:
+        _key_rot(pb["Torso"], f, torso)
+        _key_rot(pb["Head"], f, head)
+        _key_rot(pb["ArmL"], f, arms)
+        _key_rot(pb["ArmR"], f, arms)
+    _plant(arm, mesh, act, range(1, length + 2))
+    return _finish(arm, act, length)
+
+
+def chop_action(arm, mesh, name="chop", length=24):
+    """Axe up, axe down, recover.
+
+    The timing is the whole thing: the windup is slow and the strike is one
+    frame. Evenly-spaced keys give a swing that looks like stirring soup.
+    """
+    act = _begin(arm, name)
+    pb = arm.pose.bones
+    #     frame       torso   arms
+    keys = ((1,          -6.0,  -20.0),   # ready
+            (1 + 9,       6.0, -128.0),   # windup, arms overhead and back
+            (1 + 11,      4.0, -120.0),   # the tiny hitch before the strike
+            (1 + 13,    -30.0,   -4.0),   # STRIKE, one frame of travel
+            (1 + 17,    -22.0,  -10.0),   # follow through
+            (1 + length, -6.0,  -20.0))
+    for f, torso, arms in keys:
+        _key_rot(pb["Torso"], f, torso)
+        _key_rot(pb["Head"], f, torso * 0.4)
+        _key_rot(pb["ArmL"], f, arms)
+        _key_rot(pb["ArmR"], f, arms)
+    _plant(arm, mesh, act, range(1, length + 2))
+    return _finish(arm, act, length)
+
+
+def all_actions(arm, mesh):
+    """Every clip a follower needs, in one call.
+
+    Walk LAST and left assigned: the walk is what a follower plays most of the
+    time, and leaving the armature holding it means a look-dev render or a
+    static export shows a character mid-stride rather than in rest pose.
+    """
+    idle_action(arm, mesh)
+    pickup_action(arm, mesh)
+    chop_action(arm, mesh)
+    act = walk_action(arm, mesh)
+    track = arm.animation_data.nla_tracks.new()
+    track.name = act.name
+    track.strips.new(act.name, 1, act)
+    return [t.name for t in arm.animation_data.nla_tracks]

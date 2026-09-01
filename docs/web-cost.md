@@ -141,6 +141,34 @@ have found it. The measurement that did is in `godot/tools/perf_followers.gd`,
 and it needed a WINDOWED run -- `--headless` uses the dummy rendering driver
 and reports every draw call and GPU millisecond as zero.
 
+## The gameplay slice, 2026-09-01
+
+Sixteen systems: needs and stats, personality, memory, thoughts, morality,
+work and a village ledger, conversations, a procedural archipelago you buy
+with Faith, a miracle deck, blessing, punishment, area wrath, the whole UI,
+one-shot FX, nine sounds and three new animation clips.
+
+    before   index.pck  591,641 gzip     TOTAL 10,774,225 gzip
+    after    index.pck  676,648 gzip     TOTAL 10,859,233 gzip
+    delta               +85,007          +0.79% of the download
+
+**85 KB for the entire game.** Two things kept it there, and both were
+deliberate:
+
+- **The sounds are generated, not shipped.** Nine effects, built from a few
+  hundred samples of arithmetic at startup, in `scripts/audio/sfx.gd`. A
+  modest set of .wav files would have been a megabyte -- twelve times the cost
+  of everything else in this batch put together, and by far the most expensive
+  thing in the project.
+- **The world is generated, not authored.** The archipelago is a function, so
+  nine islands cost the same as one. What grew instead was the GLB library
+  (three extra animation clips per folk asset, +26 KB across the two of them),
+  which is the honest price of item 14.
+
+The three new animations are the only part of this batch that is really
+*content*, and they are also the only part that scales with how much more of
+it we make. Everything else is code.
+
 ## What is still unmeasured
 
 - **Frame rate**, desktop or mobile, in a real browser window.

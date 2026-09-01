@@ -36,6 +36,11 @@ const BRIDGE := "Buildings/bridge"
 const NEIGHBOURS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
 									 Vector2i(0, 1), Vector2i(0, -1)]
 
+## How far out to look for somewhere to stand next to a thing. Must exceed the
+## half-footprint of the biggest building in tiles; the cottage is the current
+## worst case at 3, so this has real headroom rather than a hard-won exact fit.
+const MAX_BESIDE := 7
+
 var cols := 0
 var rows := 0
 var tile := 0.5
@@ -211,8 +216,15 @@ func cells_of(asset_id: String) -> Array:
 ## follower who ever wants this tree to the same cell on the same side of it,
 ## and two of them standing in the same half-metre is the single most obvious
 ## way for a village to stop looking alive.
+##
+## MAX_BESIDE has to clear the largest FOOTPRINT, not merely "be a bit of room".
+## It was 3, and a cottage blocks 7x7 around its own centre -- so every cell the
+## search could reach was inside the building and `beside()` returned "nowhere"
+## for every house, shrine and well in the village. The visible symptom was not
+## an error: followers simply never slept, prayed or washed, every one of those
+## bars sat at zero, and the village looked merely unhappy rather than broken.
 func beside(c: Vector2i, rng: RandomNumberGenerator = null) -> Vector2i:
-	for r in [1, 2, 3]:
+	for r in range(1, MAX_BESIDE + 1):
 		var ring: Array[Vector2i] = []
 		for i in range(-r, r + 1):
 			for j in range(-r, r + 1):

@@ -22,20 +22,10 @@ const FX_PATH := "res://scripts/fx.gd"
 const SETTINGS_PATH := "res://scripts/settings.gd"
 const DEBUG_PATH := "res://scripts/debug_menu.gd"
 
-const CAM_START_COL := 32
-const CAM_START_ROW := 50
+## How many villagers the island opens with. Below the cap on purpose: a
+## village with room to grow is the hook the population mechanic hangs on.
+const START_FOLK := 4
 
-## Where followers walk. Tile coordinates, so this stays readable against the
-## ASCII map in blender/src/vale.py rather than being a list of world floats.
-const ROAD_ROW := 49
-const WALKERS := [
-	{"asset": "Folk/villager", "path": [[5, 49], [30, 49], [52, 49], [76, 49]], "speed": 1.0},
-	{"asset": "Folk/villager", "path": [[76, 51], [52, 51], [30, 51], [5, 51]], "speed": 0.9},
-	{"asset": "Folk/adventurer", "path": [[21, 30], [21, 47], [40, 49], [60, 49]], "speed": 1.1},
-	{"asset": "Folk/villager", "path": [[60, 48], [40, 48], [21, 48], [21, 30]], "speed": 0.95},
-	{"asset": "Folk/villager", "path": [[33, 55], [33, 70], [50, 70], [50, 55]], "speed": 0.85},
-	{"asset": "Folk/adventurer", "path": [[70, 55], [70, 44], [88, 44], [88, 55]], "speed": 1.0},
-]
 
 var builder: ValeBuilder
 var light: Node3D
@@ -46,6 +36,22 @@ var settings: Node
 var menu: CanvasLayer
 
 var grid: WalkGrid
+var village: Village
+var social: Social
+var islands: Islands
+var divinity: Divinity
+var ui: CanvasLayer
+var overhead: Overhead
+var panel: VillagerPanel
+var hud: HUD
+var fxe: FXEvents
+var sfx: SFX
+
+## Every follower with a mind, scene residents and stress-spawns alike. The
+## social layer needs ONE list to match pairs from; keeping two and iterating
+## both would let a resident and a spawn stand nose to nose in silence.
+var folk: Array = []
+
 var _spawned: Array = []
 var _next_seed := 1
 var _rng := RandomNumberGenerator.new()
@@ -53,8 +59,13 @@ var _walk_paths: Array = []          ## world-space paths, reused by the stress 
 
 
 func _ready() -> void:
+	islands = Islands.new()
 	builder = BUILDER.new()
 	builder.name = "Vale"
+	# Handed the generated archipelago BEFORE it enters the tree: the builder
+	# reads data/vale.json in _ready() otherwise, and add_child runs _ready
+	# immediately.
+	builder.source_doc = islands.build_doc()
 	add_child(builder)
 
 	light = LIGHT.new()
@@ -64,7 +75,9 @@ func _ready() -> void:
 	rig = RIG.new()
 	rig.name = "CameraRig"
 	add_child(rig)
-	rig.focus = builder.world_of(CAM_START_COL, CAM_START_ROW)
+	# Centred on the home island, which is the middle slot of the grid.
+	var home_mid: int = Islands.MARGIN + (Islands.GRID / 2) * Islands.PITCH 						+ Islands.SPAN / 2
+	rig.focus = builder.world_of(home_mid, home_mid)
 	# Clamp panning to the ground, with a margin so the edge can be inspected
 	# but not left behind entirely.
 	var pad := 4.0
@@ -80,8 +93,30 @@ func _ready() -> void:
 	grid = WALKGRID.new()
 	grid.build(builder.doc)
 
+	village = Village.new()
+	village.pop_cap = islands.pop_cap()
+	social = Social.new(20260901)
+
+	divinity = Divinity.new()
+	divinity.name = "Divinity"
+	divinity.host = self
+	divinity.village = village
+	divinity.islands = islands
+	divinity.builder = builder
+	divinity.grid = grid
+	add_child(divinity)
+
 	_add_fx()
+	fxe = FXEvents.new()
+	fxe.name = "FXEvents"
+	add_child(fxe)
+	sfx = SFX.new()
+	sfx.name = "SFX"
+	add_child(sfx)
+
 	_add_followers()
+	_add_ui()
+	_wire_feedback()
 	_add_menu()
 
 
@@ -183,17 +218,32 @@ func _on_picked(entry: Dictionary) -> void:
 	print("[PICK] %s at %.1f, %.1f" % [entry["id"], entry["pos"].x, entry["pos"].z])
 
 
-## Villagers now think for themselves rather than patrolling a fixed loop, so
-## WALKERS supplies only a starting place and a speed -- the route is the
-## brain's business from the first frame.
+## The island's residents.
+##
+## Spawned onto walkable cells of the home island rather than at authored
+## coordinates: the world is generated now, so a hard-coded tile is a promise
+## about terrain nobody made. Capped by the island, which is the whole point of
+## item 6 -- five people on a small island is a village you can watch.
 func _add_followers() -> void:
 	var made := 0
-	for w in WALKERS:
-		var cell: Array = w["path"][0]
-		var at := builder.world_of(int(cell[0]), int(cell[1])) 			+ Vector3(0, builder.lift, 0)
-		if _spawn_thinker(String(w["asset"]), at, float(w["speed"])) != null:
+	var want: int = mini(START_FOLK, islands.pop_cap())
+	var home := Vector2i(Islands.GRID / 2, Islands.GRID / 2)
+	var tries := 0
+	while made < want and tries < 400:
+		tries += 1
+		var cell := grid.random_cell(_rng)
+		# On the STARTING island specifically. random_cell is happy to return a
+		# bridge deck or, once more islands are bought, somewhere across the
+		# water that nobody has any business being born on.
+		if islands.slot_of_cell(cell) != home:
+			continue
+		var asset := "Folk/adventurer" if made % 3 == 2 else "Folk/villager"
+		var at := grid.world_of(cell)
+		if _spawn_thinker(asset, at, _rng.randf_range(0.9, 1.1)) != null:
 			made += 1
-	print("[VALE] followers: %d thinking" % made)
+	village.population = made
+	print("[VALE] followers: %d of %d cap, %s"
+		% [made, islands.pop_cap(), village.summary()])
 
 
 func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
@@ -201,9 +251,180 @@ func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
 	if f == null:
 		return null
 	f.position = at
-	f.think(grid, _next_seed, speed)
+	f.think(grid, _next_seed, speed, village)
 	_next_seed += 1
+	folk.append(f)
+	if fxe != null and sfx != null:
+		_wire_follower(f)
 	return f
+
+
+## Sound and one-shot FX for everything the player does or watches happen.
+##
+## Wired HERE rather than inside each system, so Divinity and Social stay
+## testable without an audio bus or a particle pool -- both of the headless
+## probes run them with neither, and a system that emitted its own effects
+## could not be run that way.
+func _wire_feedback() -> void:
+	divinity.judged.connect(func(who, good):
+		if not is_instance_valid(who):
+			return
+		var at: Vector3 = who.position + Vector3(0, 0.5, 0)
+		fxe.burst("bless" if good else "punish", at)
+		sfx.play("bless" if good else "punish"))
+
+	divinity.smote.connect(func(at, radius, destroyed):
+		fxe.ring("wrath", at, radius)
+		sfx.play("wrath")
+		# A strike that hit nothing gets the refusal sound instead, so the
+		# player hears the difference between "missed" and "nothing there".
+		if destroyed == 0:
+			sfx.play("deny"))
+
+	divinity.miracle_cast.connect(func(id, at):
+		fxe.burst("grow" if id == "grove" else "miracle",
+			at if at != Vector3.ZERO else _village_centre())
+		sfx.play("miracle"))
+
+	divinity.island_bought.connect(func(_slot): sfx.play("coin"))
+	social.chat_started.connect(func(a, _b): sfx.play("chat",
+		1.0 + a.brain.rng.randf_range(-0.1, 0.1)))
+
+
+## Per-follower feedback, connected as each one is made.
+func _wire_follower(f: Node) -> void:
+	f.arrived_at.connect(func(act):
+		if act == "chop":
+			sfx.play("chop")
+		elif act in ["harvest", "forage", "eat", "wash"]:
+			sfx.play("pick"))
+	f.finished.connect(func(act):
+		var at: Vector3 = f.position + Vector3(0, 0.6, 0)
+		if act == "chop":
+			fxe.burst("chips", at)
+			sfx.play("chop", 0.85)
+		elif act in ["harvest", "forage"]:
+			fxe.burst("chips", at, 0.5))
+
+
+## Somewhere sensible to put an effect that has no place of its own -- a
+## village-wide miracle. The mean of where everyone is standing, which is a
+## better answer than the world origin now that the world is an archipelago.
+func _village_centre() -> Vector3:
+	if folk.is_empty():
+		return Vector3.ZERO
+	var total := Vector3.ZERO
+	for f in folk:
+		total += f.position
+	return total / float(folk.size()) + Vector3(0, 0.8, 0)
+
+
+## The god's screen.
+##
+## Built AFTER the followers, because the overhead icons and the HUD both read
+## `folk` on their first frame. Layer 10 puts it under the debug menu, which
+## lives higher up: an Escape menu that opens behind the card hand is a menu
+## the player has to click through to use.
+func _add_ui() -> void:
+	ui = CanvasLayer.new()
+	ui.name = "UI"
+	ui.layer = 10
+	add_child(ui)
+
+	overhead = Overhead.new()
+	overhead.name = "Overhead"
+	overhead.host = self
+	overhead.rig = rig
+	ui.add_child(overhead)
+
+	panel = VillagerPanel.new()
+	panel.name = "VillagerPanel"
+	panel.position = Vector2(16, 96)
+	ui.add_child(panel)
+
+	hud = HUD.new()
+	hud.name = "HUD"
+	hud.host = self
+	hud.divinity = divinity
+	hud.rig = rig
+	ui.add_child(hud)
+
+	overhead.follower_clicked.connect(panel.show_for)
+	panel.bless_pressed.connect(func(who): divinity.bless(who))
+	panel.punish_pressed.connect(func(who): divinity.punish(who))
+	panel.closed.connect(func(): overhead.selected = null)
+
+
+## Rebuild the walk grid from what is STANDING, not from the document.
+##
+## Called whenever the world changes under the villagers -- a miracle grows a
+## grove, wrath flattens a cottage. Skipping it leaves followers routing around
+## trees that no longer exist and walking through the space a felled one left.
+func rebuild_grid() -> void:
+	grid = WALKGRID.new()
+	grid.build(builder.live_doc())
+	divinity.grid = grid
+	for f in folk:
+		if is_instance_valid(f):
+			f.grid = grid
+	# The prop set changed too -- that is WHY the grid is being rebuilt -- so
+	# the picker's cached AABBs are stale in exactly the same way.
+	if pick != null:
+		pick.setup(rig, builder, builder.placed_props)
+
+
+## A bought island: regenerate the terrain, then everything derived from it.
+func rebuild_world() -> void:
+	builder.rebuild(islands.build_doc())
+	grid = WALKGRID.new()
+	grid.build(builder.doc)
+	divinity.grid = grid
+	for f in folk:
+		if is_instance_valid(f):
+			f.grid = grid
+	if pick != null:
+		# setup(), not a direct assignment. The picker builds a WORLD AABB per
+		# prop and stores it beside the node; handing it the builder's raw
+		# records skips that and every ray test then reads a missing 'aabb'
+		# key -- once per prop per frame, which is loud but only at runtime.
+		pick.setup(rig, builder, builder.placed_props)
+	if fx != null and fx.has_method("setup"):
+		fx.setup(builder.placed_props)
+	var pad := 4.0
+	rig.set_bounds(builder.extent_min - Vector3(pad, 0, pad),
+				   builder.extent_max + Vector3(pad, 0, pad))
+
+
+## One more villager, anywhere they can stand. Returns false when there is
+## genuinely nowhere, which the Fertility miracle reports rather than silently
+## doing nothing.
+func spawn_villager() -> bool:
+	if grid == null or not village.has_room():
+		return false
+	for attempt in 200:
+		var cell := grid.random_cell(_rng)
+		if islands.slot_of_cell(cell).x < 0:
+			continue
+		var asset := "Folk/villager" if folk.size() % 3 else "Folk/adventurer"
+		var f := _spawn_thinker(asset, grid.world_of(cell),
+								_rng.randf_range(0.9, 1.1))
+		if f != null:
+			village.population = folk.size()
+			return true
+	return false
+
+
+func _process(delta: float) -> void:
+	if social == null:
+		return
+	# Prune here rather than in every consumer. A freed follower left in the
+	# list is a dangling reference the matchmaker would dereference next frame.
+	var live: Array = []
+	for f in folk:
+		if is_instance_valid(f):
+			live.append(f)
+	folk = live
+	social.tick(delta, folk)
 
 
 func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:
@@ -241,13 +462,17 @@ func spawn_follower() -> void:
 	var f := _spawn_thinker(asset, grid.world_of(cell), randf_range(0.8, 1.2))
 	if f != null:
 		_spawned.append(f)
+		village.population = folk.size()
 
 
 func clear_spawned() -> void:
 	for f in _spawned:
 		if is_instance_valid(f):
+			folk.erase(f)
 			f.queue_free()
 	_spawned.clear()
+	if village != null:
+		village.population = folk.size()
 
 
 ## FX density, exposed so the debug menu drives it through the host rather than
@@ -268,4 +493,4 @@ func spawned_count() -> int:
 
 
 func follower_count() -> int:
-	return WALKERS.size() + _spawned.size()
+	return folk.size()
