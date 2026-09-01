@@ -175,6 +175,7 @@ func _build_ground() -> void:
 		total += xforms.size()
 	extent_min = world_of(0, rows - 1)
 	extent_max = world_of(cols - 1, 0)
+	_add_skirt()
 	print("[VALE] ground: %d tiles in %d multimesh batches, %.1f x %.1f m"
 		% [total, batches.size(), extent_max.x - extent_min.x,
 		   extent_max.z - extent_min.z])
@@ -222,3 +223,43 @@ func _build_props() -> void:
 			                     "pos": node.position})
 		placed += 1
 	print("[VALE] props: %d placed" % placed)
+
+## A flat plane of distant grass, far beyond the map, one draw call.
+##
+## The play camera is pitched down about 35 degrees with a half-FOV under 20,
+## so the frame NEVER reaches the horizon: everything past the last tile is the
+## sky's ground hemisphere, which is a flat slab of colour. It reads as heavy
+## haze, and it was reported as "the fog is too aggressive" when measurement
+## showed the fog contributes 0.008 of mean luma and that slab contributes
+## 0.041 -- five times more.
+##
+## Fog cannot fix that, because there is nothing out there for fog to sit on.
+## Ground can. The skirt sits a hair below the tile tops so it cannot z-fight
+## with them, and it is a desaturated grass so the tiles read as the near
+## detail of a landscape that keeps going.
+func _add_skirt() -> void:
+	var span := maxf(extent_max.x - extent_min.x, extent_max.z - extent_min.z)
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(span * 12.0, span * 12.0)
+	var mat := StandardMaterial3D.new()
+	# Desaturated and slightly lifted in value: this is DISTANCE, and matching
+	# the near grass exactly makes the map edge vanish into a flat field with
+	# no depth to it.
+	mat.albedo_color = Color(0.34, 0.50, 0.31)
+	mat.roughness = 1.0
+	mat.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	plane.material = mat
+	var mi := MeshInstance3D.new()
+	mi.name = "Skirt"
+	mi.mesh = plane
+	# At the BASE of the tiles, not near their tops.
+	#
+	# The first version sat 1.5 cm under the tile top and hid the river: water
+	# tiles are sunk 6 cm, so a skirt above them covers them. Anything that
+	# passes UNDER the terrain has to clear the lowest surface in it, not the
+	# highest -- and at y=0 it is below every tile, so it is only ever visible
+	# out past the last one, which is the whole job.
+	mi.position = Vector3((extent_min.x + extent_max.x) * 0.5, 0.0,
+						  (extent_min.z + extent_max.z) * 0.5)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)

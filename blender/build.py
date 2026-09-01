@@ -664,6 +664,8 @@ def target_export(rest):
 
     target_library(rest)
 
+    import registry
+    found = registry.discover()
     outdir = os.path.join(os.path.dirname(ROOT), "godot", "data")
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, "vale.json")
@@ -678,7 +680,13 @@ def target_export(rest):
         "fill": vale.FILL,
         "lower": list(vale.LOWER),
         "upper": list(vale.UPPER),
-        "props": [{"id": a, "col": c, "row": r, "yaw": y, "scale": sc}
+        # Footprints travel WITH the props. The engine has to know what ground
+        # a prop occupies to keep a follower from walking through a cottage,
+        # and the declaration is the only honest source -- re-deriving it from
+        # the mesh in Godot would be a second answer to a question that
+        # already has one.
+        "props": [{"id": a, "col": c, "row": r, "yaw": y, "scale": sc,
+                   "fp": list(found[a]["decl"]["footprint"])}
                   for a, c, r, y, sc in (list(vale.RUNS) + vale.props_all())],
         "frame": list(vale.FRAME),
     }

@@ -22,9 +22,57 @@ const CYCLE_SECONDS := 1.0         ## 24 frames at 24 fps
 
 var speed := STRIDE_PER_CYCLE / CYCLE_SECONDS
 var path: Array[Vector3] = []
+
+## Set these and the follower runs its own errands: it asks the brain where to
+## go, asks the grid how to get there, walks it, and asks again on arrival.
+## Left null it falls back to the fixed loop it was given, which is what the
+## perf harness and any hand-authored patrol want.
+var grid: WalkGrid = null
+var brain: Brain = null
+var _idle := 0.0
 var _leg := 0
 var _t := 0.0
 var _anim: AnimationPlayer = null
+
+
+## Give the follower a brain and a map and it decides for itself.
+##
+## The path is REPLANNED on arrival rather than being a loop, which is the
+## whole difference between a patrol and a villager: where it goes next depends
+## on what it wants next, and two followers with the same needs at different
+## times take different errands.
+func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0) -> void:
+	grid = walk_grid
+	brain = Brain.new(seed_value)
+	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * walk_speed_scale
+	_start_anim(walk_speed_scale)
+	_replan()
+
+
+func _replan() -> void:
+	if grid == null or brain == null:
+		return
+	var here := grid.cell_of(position)
+	if not grid.is_walkable(here):
+		here = grid.beside(here)
+		if here.x < 0:
+			return
+		position = grid.world_of(here)
+	# Up to a few tries: a destination can be genuinely unreachable -- the far
+	# bank without a bridge in range, or the hill, which has no ramp at all --
+	# and treating that as an error would freeze the follower forever.
+	for attempt in 4:
+		var to := brain.destination(grid, here)
+		if to.x < 0:
+			continue
+		var route := grid.path_world(here, to)
+		if route.size() >= 2:
+			path = route
+			_leg = 0
+			_t = 0.0
+			return
+	path.clear()
+	_idle = 1.0 + brain.rng.randf() * 2.0
 
 
 func setup(points: Array, walk_speed_scale := 1.0) -> void:
@@ -32,6 +80,10 @@ func setup(points: Array, walk_speed_scale := 1.0) -> void:
 	for p in points:
 		path.append(p as Vector3)
 	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * walk_speed_scale
+	_start_anim(walk_speed_scale)
+
+
+func _start_anim(walk_speed_scale: float) -> void:
 	_anim = _find_anim(self)
 	if _anim == null:
 		push_warning("Follower: no AnimationPlayer in the GLB -- it will slide")
@@ -73,7 +125,15 @@ func _walk_clip(ap: AnimationPlayer) -> String:
 
 
 func _process(delta: float) -> void:
+	if brain != null:
+		brain.tick(delta)
 	if path.size() < 2:
+		# Nothing to walk. If a brain is driving, wait a moment and think
+		# again rather than spinning on a replan every frame.
+		if brain != null:
+			_idle -= delta
+			if _idle <= 0.0:
+				_replan()
 		return
 	var a: Vector3 = path[_leg]
 	var b: Vector3 = path[(_leg + 1) % path.size()]
@@ -84,7 +144,17 @@ func _process(delta: float) -> void:
 	_t += (speed * delta) / span
 	while _t >= 1.0:
 		_t -= 1.0
-		_leg = (_leg + 1) % path.size()
+		_leg += 1
+		# A brain-driven route ENDS. A hand-authored patrol loops. Treating the
+		# two the same was the bug waiting to happen here: an errand that wraps
+		# round to its start is a follower that never arrives anywhere.
+		if brain != null and _leg >= path.size() - 1:
+			position = path[path.size() - 1]
+			brain.arrived()
+			_idle = 0.4 + brain.rng.randf() * 1.2
+			path.clear()
+			return
+		_leg = _leg % path.size()
 		a = path[_leg]
 		b = path[(_leg + 1) % path.size()]
 		span = max(a.distance_to(b), 0.001)

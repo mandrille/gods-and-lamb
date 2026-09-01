@@ -13,6 +13,7 @@ const LIGHT := preload("res://scripts/vale_light.gd")
 const RIG := preload("res://scripts/camera_rig.gd")
 const HOVER := preload("res://scripts/hover.gd")
 const FOLLOWER := preload("res://scripts/follower.gd")
+const WALKGRID := preload("res://scripts/walk_grid.gd")
 
 ## Loaded defensively: two of these are authored by other agents in parallel and
 ## the scene must still come up if one is missing. A hard preload of a file that
@@ -44,7 +45,10 @@ var fx: Node3D
 var settings: Node
 var menu: CanvasLayer
 
+var grid: WalkGrid
 var _spawned: Array = []
+var _next_seed := 1
+var _rng := RandomNumberGenerator.new()
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
 
@@ -72,6 +76,9 @@ func _ready() -> void:
 	add_child(pick)
 	pick.setup(rig, builder, builder.placed_props)
 	pick.picked.connect(_on_picked)
+
+	grid = WALKGRID.new()
+	grid.build(builder.doc)
 
 	_add_fx()
 	_add_followers()
@@ -122,7 +129,52 @@ func _add_menu() -> void:
 	menu.name = "DebugMenu"
 	add_child(menu)
 	if menu.has_method("setup"):
+		var before := _light_state()
 		menu.setup(light.env, light.sun, self, settings)
+		_report_overrides(before, _light_state())
+
+
+## Everything the debug panel can persist, read straight off the live objects.
+func _light_state() -> Dictionary:
+	var e: Environment = light.env
+	var u: DirectionalLight3D = light.sun
+	return {
+		"fog_enabled": e.fog_enabled, "fog_density": e.fog_density,
+		"fog_sun_scatter": e.fog_sun_scatter,
+		"fog_aerial_perspective": e.fog_aerial_perspective,
+		"glow_enabled": e.glow_enabled, "glow_intensity": e.glow_intensity,
+		"tonemap_exposure": e.tonemap_exposure,
+		"ambient_light_energy": e.ambient_light_energy,
+		"ambient_light_sky_contribution": e.ambient_light_sky_contribution,
+		"sun_energy": u.light_energy, "sun_shadow": u.shadow_enabled,
+	}
+
+
+## Say out loud when user://settings.json is overriding the code.
+##
+## This exists because of a real hour lost: a saved file from a debug session
+## held `fog_density 0.01` and `ambient_sky 1.0`, so editing vale_light.gd
+## changed NOTHING on screen -- including a fix that made the ambient energy
+## live, which the saved contribution of 1.0 quietly re-broke. A settings file
+## that silently wins over source is indistinguishable from a broken edit.
+func _report_overrides(before: Dictionary, after: Dictionary) -> void:
+	var diffs: Array[String] = []
+	for k in before:
+		var a: Variant = before[k]
+		var b: Variant = after[k]
+		# Annotated, not inferred: a ternary over two Variants has no static
+		# type, and `:=` on it is a parse error rather than a runtime one.
+		var same: bool = is_equal_approx(float(a), float(b)) 			if typeof(a) == TYPE_FLOAT else (a == b)
+		if not same:
+			diffs.append("%s %s -> %s" % [k, str(a), str(b)])
+	if diffs.is_empty():
+		return
+	print("[SETTINGS] user://settings.json OVERRIDES the code in %d place(s):"
+		% diffs.size())
+	for d in diffs:
+		print("    " + d)
+	print("    Delete that file, or press Reset in the debug panel, to get the "
+		+ "values in vale_light.gd back.")
 
 
 func _on_picked(entry: Dictionary) -> void:
@@ -131,17 +183,27 @@ func _on_picked(entry: Dictionary) -> void:
 	print("[PICK] %s at %.1f, %.1f" % [entry["id"], entry["pos"].x, entry["pos"].z])
 
 
+## Villagers now think for themselves rather than patrolling a fixed loop, so
+## WALKERS supplies only a starting place and a speed -- the route is the
+## brain's business from the first frame.
 func _add_followers() -> void:
+	var made := 0
 	for w in WALKERS:
-		var pts: Array[Vector3] = []
-		for cell in w["path"]:
-			pts.append(builder.world_of(int(cell[0]), int(cell[1]))
-				+ Vector3(0, builder.lift, 0))
-		_walk_paths.append(pts)
-		var f := _make_follower(String(w["asset"]), pts, float(w["speed"]))
-		if f != null:
-			f._t = randf()
-	print("[VALE] followers: %d walking" % _walk_paths.size())
+		var cell: Array = w["path"][0]
+		var at := builder.world_of(int(cell[0]), int(cell[1])) 			+ Vector3(0, builder.lift, 0)
+		if _spawn_thinker(String(w["asset"]), at, float(w["speed"])) != null:
+			made += 1
+	print("[VALE] followers: %d thinking" % made)
+
+
+func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
+	var f := _make_follower(asset_id, [], speed)
+	if f == null:
+		return null
+	f.position = at
+	f.think(grid, _next_seed, speed)
+	_next_seed += 1
+	return f
 
 
 func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:
@@ -169,15 +231,16 @@ func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:
 ## the scene's own, so `clear_spawned()` cannot delete the village's residents.
 
 func spawn_follower() -> void:
-	if _walk_paths.is_empty():
+	if grid == null:
 		return
-	var pts: Array = _walk_paths[_spawned.size() % _walk_paths.size()]
+	# Dropped on a random WALKABLE cell, which is the only kind there is a
+	# route out of. Spawning on the map at large would put half a stress test
+	# inside the river.
+	var cell := grid.random_cell(_rng)
 	var asset := "Folk/villager" if _spawned.size() % 3 else "Folk/adventurer"
-	var f := _make_follower(asset, pts, randf_range(0.8, 1.2))
-	if f == null:
-		return
-	f._t = randf()
-	_spawned.append(f)
+	var f := _spawn_thinker(asset, grid.world_of(cell), randf_range(0.8, 1.2))
+	if f != null:
+		_spawned.append(f)
 
 
 func clear_spawned() -> void:
@@ -205,4 +268,4 @@ func spawned_count() -> int:
 
 
 func follower_count() -> int:
-	return _walk_paths.size() + _spawned.size()
+	return WALKERS.size() + _spawned.size()
