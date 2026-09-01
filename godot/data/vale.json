@@ -1,0 +1,1918 @@
+{
+ "tile": 0.5,
+ "lift": 0.5,
+ "upper_blocks": 2,
+ "water_drop": 0.06,
+ "cols": 64,
+ "rows": 48,
+ "code": {
+  "G": "Terrain/grass",
+  "D": "Terrain/dirt",
+  "S": "Terrain/stone",
+  "P": "Terrain/path",
+  "W": "Terrain/water",
+  "A": "Terrain/sand",
+  "C": "Terrain/soil"
+ },
+ "fill": "Terrain/dirt",
+ "lower": [
+  "WAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "WWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "WWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "WWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "AWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGAAWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCCGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCCGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCCGGPPWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGCCCCCCCCGGPPAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGPPGGGGGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+  "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+  "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+  "GGGGGGGGGGGGGGGGGGGGGGGGAWWWAAPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGGGGGAWWWWAPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCAWWWWAGGGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCAWWWWAGGGGGPPPPGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCCAWWWAAGGGGGGPPPPGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCCAWWWWAGGGGGGGGPPGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGCCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+  "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+ ],
+ "upper": [
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "...............................GGGGGGG..........................",
+  ".............................GGGGGGGGGGG........................",
+  "...........................GGGGGGGGGGGGGGG......................",
+  "...........................GGGGGGGGGGGGGGG......................",
+  "..........................GGGGGGGGGGGGGGGGG.....................",
+  "..........................GGGGGGGGGGGGGGGGG.....................",
+  ".........................GGGGGGGGGGGGGGGGGGG....................",
+  "..........................GGGGGGGGGGGGGGGGG.....................",
+  "..........................GGGGGGGGGGGGGGGGG.....................",
+  "...........................GGGGGGGGGGGGGGG......................",
+  "...........................GGGGGGGGGGGGGGG......................",
+  ".............................GGGGGGGGGGG........................",
+  "...............................GGGGGGG..........................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................",
+  "................................................................"
+ ],
+ "props": [
+  {
+   "id": "Buildings/bridge",
+   "col": 23,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/bridge",
+   "col": 24,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/bridge",
+   "col": 25,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/bridge",
+   "col": 26,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/bridge",
+   "col": 27,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/bridge",
+   "col": 28,
+   "row": 33,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 2,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 3,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 4,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 5,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 6,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 7,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 8,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 9,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 14,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 15,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 16,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 17,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 10,
+   "row": 36,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 11,
+   "row": 36,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 12,
+   "row": 36,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/fence",
+   "col": 13,
+   "row": 36,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/cottage",
+   "col": 3,
+   "row": 28,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/hut",
+   "col": 10,
+   "row": 28,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/cottage",
+   "col": 17,
+   "row": 28,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/hut",
+   "col": 7,
+   "row": 38,
+   "yaw": 180.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/cottage",
+   "col": 14,
+   "row": 38,
+   "yaw": 180.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/well",
+   "col": 20,
+   "row": 37,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/hut",
+   "col": 33,
+   "row": 29,
+   "yaw": 200.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/market_stall",
+   "col": 33,
+   "row": 37,
+   "yaw": 180.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Buildings/shrine",
+   "col": 34,
+   "row": 19,
+   "yaw": 180.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 3,
+   "row": 43,
+   "yaw": 24.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 6,
+   "row": 45,
+   "yaw": -37.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 9,
+   "row": 44,
+   "yaw": 128.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 2,
+   "row": 40,
+   "yaw": 61.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 6,
+   "row": 41,
+   "yaw": -95.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 10,
+   "row": 47,
+   "yaw": 24.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 13,
+   "row": 44,
+   "yaw": -37.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 4,
+   "row": 36,
+   "yaw": 128.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 16,
+   "row": 46,
+   "yaw": 61.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 10,
+   "row": 41,
+   "yaw": -95.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 44,
+   "row": 30,
+   "yaw": 24.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 46,
+   "row": 36,
+   "yaw": -37.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 43,
+   "row": 41,
+   "yaw": 128.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 45,
+   "row": 44,
+   "yaw": 61.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 41,
+   "row": 25,
+   "yaw": -95.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 46,
+   "row": 18,
+   "yaw": 24.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 43,
+   "row": 14,
+   "yaw": -37.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/tree",
+   "col": 39,
+   "row": 43,
+   "yaw": 128.0,
+   "scale": 0.95
+  },
+  {
+   "id": "Nature/tree",
+   "col": 36,
+   "row": 46,
+   "yaw": 61.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tree",
+   "col": 33,
+   "row": 43,
+   "yaw": -95.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/pine",
+   "col": 38,
+   "row": 16,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/pine",
+   "col": 41,
+   "row": 20,
+   "yaw": -88.0,
+   "scale": 0.92
+  },
+  {
+   "id": "Nature/pine",
+   "col": 30,
+   "row": 15,
+   "yaw": 44.0,
+   "scale": 1.05
+  },
+  {
+   "id": "Nature/pine",
+   "col": 44,
+   "row": 23,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/pine",
+   "col": 36,
+   "row": 13,
+   "yaw": -88.0,
+   "scale": 0.92
+  },
+  {
+   "id": "Nature/pine",
+   "col": 2,
+   "row": 22,
+   "yaw": 44.0,
+   "scale": 1.05
+  },
+  {
+   "id": "Nature/pine",
+   "col": 5,
+   "row": 18,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/pine",
+   "col": 3,
+   "row": 13,
+   "yaw": -88.0,
+   "scale": 0.92
+  },
+  {
+   "id": "Nature/pine",
+   "col": 7,
+   "row": 12,
+   "yaw": 44.0,
+   "scale": 1.05
+  },
+  {
+   "id": "Nature/pine",
+   "col": 45,
+   "row": 11,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 9,
+   "row": 35,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 17,
+   "row": 35,
+   "yaw": 122.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 25,
+   "row": 29,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 30,
+   "row": 31,
+   "yaw": 78.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 35,
+   "row": 35,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 12,
+   "row": 22,
+   "yaw": 122.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 20,
+   "row": 18,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 28,
+   "row": 43,
+   "yaw": 78.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 18,
+   "row": 42,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 8,
+   "row": 31,
+   "yaw": 122.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 40,
+   "row": 34,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 22,
+   "row": 13,
+   "yaw": 78.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 33,
+   "row": 40,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 15,
+   "row": 15,
+   "yaw": 122.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/bush",
+   "col": 2,
+   "row": 30,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/bush",
+   "col": 47,
+   "row": 28,
+   "yaw": 78.0,
+   "scale": 0.85
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 6,
+   "row": 31,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 10,
+   "row": 31,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 16,
+   "row": 31,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 21,
+   "row": 31,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 26,
+   "row": 36,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 31,
+   "row": 31,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 36,
+   "row": 31,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 12,
+   "row": 36,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 18,
+   "row": 36,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 23,
+   "row": 43,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 29,
+   "row": 30,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 34,
+   "row": 32,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 8,
+   "row": 26,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 13,
+   "row": 19,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 39,
+   "row": 29,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 43,
+   "row": 32,
+   "yaw": 15.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 19,
+   "row": 22,
+   "yaw": -40.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/flowers",
+   "col": 25,
+   "row": 40,
+   "yaw": 70.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 4,
+   "row": 32,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 9,
+   "row": 32,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 13,
+   "row": 32,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 18,
+   "row": 32,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 22,
+   "row": 31,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 27,
+   "row": 30,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 32,
+   "row": 32,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 37,
+   "row": 32,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 41,
+   "row": 32,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 45,
+   "row": 32,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 7,
+   "row": 22,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 11,
+   "row": 26,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 16,
+   "row": 40,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 21,
+   "row": 26,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 26,
+   "row": 22,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 31,
+   "row": 44,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 36,
+   "row": 26,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 40,
+   "row": 39,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 44,
+   "row": 26,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 3,
+   "row": 27,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 17,
+   "row": 18,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 29,
+   "row": 18,
+   "yaw": 25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 42,
+   "row": 36,
+   "yaw": -60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/tall_grass",
+   "col": 14,
+   "row": 13,
+   "yaw": 100.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/rock",
+   "col": 24,
+   "row": 16,
+   "yaw": 33.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/rock",
+   "col": 28,
+   "row": 25,
+   "yaw": -12.0,
+   "scale": 0.8
+  },
+  {
+   "id": "Nature/rock",
+   "col": 19,
+   "row": 12,
+   "yaw": 71.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/rock",
+   "col": 23,
+   "row": 37,
+   "yaw": 33.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/rock",
+   "col": 30,
+   "row": 21,
+   "yaw": -12.0,
+   "scale": 0.8
+  },
+  {
+   "id": "Nature/rock",
+   "col": 38,
+   "row": 38,
+   "yaw": 71.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/rock",
+   "col": 42,
+   "row": 44,
+   "yaw": 33.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/rock",
+   "col": 7,
+   "row": 16,
+   "yaw": -12.0,
+   "scale": 0.8
+  },
+  {
+   "id": "Nature/rock",
+   "col": 35,
+   "row": 29,
+   "yaw": 71.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/rock",
+   "col": 12,
+   "row": 12,
+   "yaw": 33.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/rock",
+   "col": 26,
+   "row": 46,
+   "yaw": -12.0,
+   "scale": 0.8
+  },
+  {
+   "id": "Nature/rock",
+   "col": 46,
+   "row": 40,
+   "yaw": 71.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 21,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 22,
+   "row": 21,
+   "yaw": 65.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 23,
+   "row": 27,
+   "yaw": -30.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 28,
+   "row": 30,
+   "yaw": 0.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 29,
+   "row": 36,
+   "yaw": 65.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 31,
+   "row": 41,
+   "yaw": -30.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 33,
+   "row": 46,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 13,
+   "row": 11,
+   "yaw": 65.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 17,
+   "row": 13,
+   "yaw": -30.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 25,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 30,
+   "row": 39,
+   "yaw": 65.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 34,
+   "row": 44,
+   "yaw": -30.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 20,
+   "row": 24,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/reeds",
+   "col": 26,
+   "row": 31,
+   "yaw": 65.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 11,
+   "row": 11,
+   "yaw": 20.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 13,
+   "row": 15,
+   "yaw": -55.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 16,
+   "row": 19,
+   "yaw": 110.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 19,
+   "row": 23,
+   "yaw": 20.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 22,
+   "row": 27,
+   "yaw": -55.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 26,
+   "row": 33,
+   "yaw": 110.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 28,
+   "row": 37,
+   "yaw": 20.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 31,
+   "row": 42,
+   "yaw": -55.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 33,
+   "row": 46,
+   "yaw": 110.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 15,
+   "row": 17,
+   "yaw": 20.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 24,
+   "row": 30,
+   "yaw": -55.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/lily_pad",
+   "col": 29,
+   "row": 40,
+   "yaw": 110.0,
+   "scale": 0.9
+  },
+  {
+   "id": "Nature/log",
+   "col": 6,
+   "row": 39,
+   "yaw": -25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/log",
+   "col": 12,
+   "row": 45,
+   "yaw": 60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/log",
+   "col": 41,
+   "row": 37,
+   "yaw": -25.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/log",
+   "col": 44,
+   "row": 16,
+   "yaw": 60.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/stump",
+   "col": 9,
+   "row": 40,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/stump",
+   "col": 15,
+   "row": 43,
+   "yaw": 95.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/stump",
+   "col": 39,
+   "row": 40,
+   "yaw": 12.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/stump",
+   "col": 42,
+   "row": 18,
+   "yaw": 95.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 4,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 5,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 6,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 7,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 8,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 9,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 14,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 10,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 11,
+   "row": 15,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 11,
+   "row": 16,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 11,
+   "row": 17,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 11,
+   "row": 18,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 11,
+   "row": 19,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 38,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 39,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 20,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 38,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 39,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 21,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 38,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 39,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 22,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 38,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 39,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 23,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 38,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 39,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 24,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 25,
+   "row": 40,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 25,
+   "row": 41,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 25,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 25,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 25,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 26,
+   "row": 42,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 26,
+   "row": 43,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 26,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  },
+  {
+   "id": "Nature/crop_row",
+   "col": 27,
+   "row": 44,
+   "yaw": 0.0,
+   "scale": 1.0
+  }
+ ],
+ "frame": [
+  21,
+  34,
+  21,
+  14
+ ]
+}

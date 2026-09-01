@@ -57,6 +57,30 @@ Characters front **-Y**, like everything floor-standing. The engine yaws them to
 face travel. Get this wrong and every follower in the village faces the same
 wrong way, which reads as a systemic bug rather than an art one.
 
+
+## The workflow for EVERY new character
+
+This is settled now. A new folk asset follows the same four steps and does not
+invent its own:
+
+1. Author it under `blender/assets/Folk/`, `cls="folk"`, cap 600 tris. Build it
+   AT ATTENTION -- symmetric pose, asymmetric details. Rest pose is what every
+   clip is measured from, so a baked lean is a lean added to every frame.
+2. Name the parts so `folkrig.GROUPS` claims them. Parts are bound to bones BY
+   NAME; a part nothing claims is a part that does not move.
+3. `build.py -- rig Folk/<name>` -- skeleton, skin, walk, five asserts, render.
+4. `build.py -- glb Folk/<name>` -- exports WITH the armature and the clip, and
+   `verify_export` fails the run if the skin or the animation did not come
+   across. That check exists because a GLB missing its skin is a valid file
+   that renders as a perfectly good statue.
+
+The engine side needs nothing per character: `follower.gd` finds the
+AnimationPlayer, picks the clip whose name contains "walk", loops it, and seeds
+each follower at a random point in the cycle so a crowd does not march in
+lockstep. Add the asset id to `WALKERS` in `vale_root.gd` and it walks.
+
+Full detail: `blender/docs/03-folk-rig.md`.
+
 ## Traps that have cost real time here
 
 - **A bar through the centre renders as two arms** — literally, here. A limb box

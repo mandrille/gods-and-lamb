@@ -278,6 +278,41 @@ def _kind(lower, upper, col, row):
     return upper.get((col, row)) or lower.get((col, row))
 
 
+SCATTERS = (
+    ("Nature/tree", "WOODS", (24.0, -37.0, 128.0, 61.0, -95.0), (1.0, 0.9, 0.95)),
+    ("Nature/pine", "PINES", (12.0, -88.0, 44.0), (1.0, 0.92, 1.05)),
+    ("Nature/bush", "SCATTER_BUSH", (15.0, 122.0, -60.0, 78.0), (1.0, 0.85)),
+    ("Nature/flowers", "SCATTER_FLOWER", (15.0, -40.0, 70.0), (1.0,)),
+    ("Nature/tall_grass", "SCATTER_GRASS", (25.0, -60.0, 100.0), (1.0,)),
+    ("Nature/rock", "ROCKS", (33.0, -12.0, 71.0), (1.0, 0.8, 0.9)),
+    ("Nature/reeds", "REEDS", (0.0, 65.0, -30.0), (1.0, 0.9)),
+    ("Nature/lily_pad", "LILIES", (20.0, -55.0, 110.0), (1.0, 0.9)),
+    ("Nature/log", "LOGS", (-25.0, 60.0), (1.0,)),
+    ("Nature/stump", "STUMPS", (12.0, 95.0), (1.0,)),
+)
+
+
+def props_all():
+    """Every prop except the runs, as (aid, col, row, yaw, scale).
+
+    Pulled out of build() so the ENGINE and the look-dev render read the same
+    list. Two copies of a village layout is two villages, and the one you are
+    not looking at is the one that drifts.
+    """
+    out = list(BUILDINGS)
+    here = globals()
+    for aid, listname, yaws, scales in SCATTERS:
+        for i, (col, row) in enumerate(here[listname]):
+            out.append((aid, col, row, yaws[i % len(yaws)],
+                        scales[i % len(scales)]))
+    # Every crop tile grows something. A field with gaps reads as a failed one.
+    lower, upper = _grid(LOWER), _grid(UPPER)
+    for (col, row), ch in sorted(lower.items()):
+        if ch == "C" and (col, row) not in upper:
+            out.append(("Nature/crop_row", col, row, 0.0, 1.0))
+    return out
+
+
 def _prototype(aid, cache):
     """Build an asset once and instance it. One mesh, many transforms --
     cheap here, and honest about what MultiMesh does in the engine."""
@@ -406,25 +441,7 @@ def build():
     for key in lower:
         topmost[key] = upper.get(key) or lower[key]
 
-    props = list(RUNS) + list(BUILDINGS)
-    for aid, cells, yaws, scales in (
-            ("Nature/tree", WOODS, (24.0, -37.0, 128.0, 61.0, -95.0), (1.0, 0.9, 0.95)),
-            ("Nature/pine", PINES, (12.0, -88.0, 44.0), (1.0, 0.92, 1.05)),
-            ("Nature/bush", SCATTER_BUSH, (15.0, 122.0, -60.0, 78.0), (1.0, 0.85)),
-            ("Nature/flowers", SCATTER_FLOWER, (15.0, -40.0, 70.0), (1.0,)),
-            ("Nature/tall_grass", SCATTER_GRASS, (25.0, -60.0, 100.0), (1.0,)),
-            ("Nature/rock", ROCKS, (33.0, -12.0, 71.0), (1.0, 0.8, 0.9)),
-            ("Nature/reeds", REEDS, (0.0, 65.0, -30.0), (1.0, 0.9)),
-            ("Nature/lily_pad", LILIES, (20.0, -55.0, 110.0), (1.0, 0.9)),
-            ("Nature/log", LOGS, (-25.0, 60.0), (1.0,)),
-            ("Nature/stump", STUMPS, (12.0, 95.0), (1.0,))):
-        for i, (col, row) in enumerate(cells):
-            props.append((aid, col, row, yaws[i % len(yaws)],
-                          scales[i % len(scales)]))
-    # Every crop tile grows something. A field with gaps reads as a failed one.
-    for (col, row), ch in sorted(lower.items()):
-        if ch == "C" and (col, row) not in upper:
-            props.append(("Nature/crop_row", col, row, 0.0, 1.0))
+    props = list(RUNS) + props_all()
 
     # Guards run on the declared footprints BEFORE anything is built: a
     # placement fault should cost a second, not a whole landscape.

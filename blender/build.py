@@ -531,6 +531,163 @@ def target_assets(rest):
     print("[SWEEP] all %d assets ok" % len(order))
 
 
+def _asset_glb_name(aid):
+    """Category__variant.glb. Godot rewrites . : @ / % in NODE names, so the
+    file name avoids them entirely rather than relying on a mapping."""
+    return aid.replace("/", "__") + ".glb"
+
+
+def target_library(rest):
+    """One GLB per asset into godot/assets/library/, ONE PROCESS EACH.
+
+    One process each because kit.M, kit.STATS and kit.SCHEMES are mutable
+    module globals; cross-contamination presents as a geometry bug and you
+    would not suspect the build system.
+    """
+    import subprocess
+    import registry
+
+    outdir = os.environ.get("LAMB_GODOT_ASSETS") or os.path.join(
+        os.path.dirname(ROOT), "godot", "assets", "library")
+    found = registry.discover()
+    order = sorted(found)
+    print("library: %d asset(s) -> %s" % (len(order), outdir))
+
+    failed = []
+    for aid in order:
+        cmd = [sys.argv[0], "--background", "--factory-startup",
+               "--python", os.path.abspath(__file__), "--", "glb", aid]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        line = [ln for ln in (r.stdout or "").splitlines()
+                if ln.startswith("  glb ")]
+        print(line[0] if line else "  %-26s FAIL" % aid)
+        if r.returncode != 0:
+            body = (r.stdout or "") + (r.stderr or "")
+            keep = [ln for ln in body.splitlines() if ln.startswith("FAIL")]
+            failed.append((aid, keep[0] if keep else body.strip()[-300:]))
+    if failed:
+        gap = chr(10) + "  "
+        raise SystemExit("FAIL: %d asset(s) did not export:%s%s"
+                         % (len(failed), gap,
+                            gap.join("%s  %s" % f for f in failed)))
+    print("[LIBRARY] %d assets exported" % len(order))
+
+
+def target_glb(rest):
+    """ONE asset to GLB. The per-asset worker `-- library` spawns.
+
+    Folk take the rigged path: bound loose, joined, attached, walk baked, and
+    exported WITH the armature. Everything else is merged to a single mesh
+    first, which is what MultiMesh and a draw-call budget both want.
+
+    AO is baked here rather than in the engine, per asset, in isolation. It is
+    the whole contact-shading budget under GL Compatibility, and glTF COLOR_0
+    is defined as multiplying into base colour -- so the multiply survives to
+    the Compatibility renderer with nothing to configure.
+    """
+    import bpy
+    import registry
+    import kit
+    import aobake
+    import export_gltf
+    import verify_export
+
+    if not rest:
+        raise SystemExit("FAIL: glb needs an asset id")
+    aid, kw = rest[0], _kwargs(rest[1:])
+    entry = registry.resolve(aid)
+    decl = entry["decl"]
+    outdir = os.environ.get("LAMB_GODOT_ASSETS") or os.path.join(
+        os.path.dirname(ROOT), "godot", "assets", "library")
+    path = os.path.join(outdir, _asset_glb_name(aid))
+
+    _fresh_scene()
+    parts = _build_subject(entry, "GLB", kw)
+    rigged = decl["cls"] == "folk"
+
+    if rigged:
+        import folkrig
+        arm = folkrig.build_armature("%s_rig" % decl["variant"])
+        folkrig.bake_and_group(parts, tag="GLB")
+        bpy.ops.object.select_all(action="DESELECT")
+        for ob in parts:
+            ob.select_set(True)
+        bpy.context.view_layer.objects.active = parts[0]
+        bpy.ops.object.join()
+        mesh = bpy.context.object
+        mesh.name = "%s_mesh" % decl["variant"]
+        folkrig.attach(arm, mesh)
+        folkrig.walk_action(arm, mesh)
+        subjects = [mesh]
+    else:
+        mesh = kit.merge_many(parts, "%s_mesh" % decl["variant"])
+        # Origin to the floor contact point. Placement in the engine sets
+        # global_position and expects it to mean "where this stands".
+        kit.floor_origin(mesh)
+        arm = None
+        subjects = [mesh]
+
+    aobake.bake(subjects)
+    aobake.wire_all()
+
+    # The vocabulary the engine reads. Custom properties become glTF extras,
+    # and Godot must key on THOSE, never on node names -- validate_node_name()
+    # rewrites . : @ / % to _.
+    mesh["lamb_id"] = aid
+    mesh["lamb_class"] = decl["cls"]
+    mesh["lamb_family"] = decl["family"]
+    mesh["lamb_variant"] = decl["variant"]
+    mesh["lamb_footprint"] = list(decl["footprint"])
+    mesh["lamb_anchor"] = decl.get("anchor", "floor")
+
+    if rigged:
+        export_gltf.export_rigged(arm, [mesh], path)
+    else:
+        export_gltf.export_static([mesh], path)
+    info = verify_export.assert_glb_readback(
+        path, want_skin=rigged, want_animation=rigged)
+    print("  glb %-26s %6d B  nodes %d  meshes %d  skins %d  anims %d  "
+          "COLOR_0 %s" % (aid, os.path.getsize(path), info["nodes"],
+                          info["meshes"], info["skins"], info["animations"],
+                          "yes" if info["has_color0"] else "NO"))
+
+
+def target_export(rest):
+    """Everything the engine needs: the library, plus the Vale as data.
+
+    The layout goes across as JSON rather than as a baked scene GLB, because
+    the village GROWS during play. Godot instances from this the same way the
+    look-dev render does, so the two cannot drift into different villages.
+    """
+    import json
+    import vale
+
+    target_library(rest)
+
+    outdir = os.path.join(os.path.dirname(ROOT), "godot", "data")
+    os.makedirs(outdir, exist_ok=True)
+    path = os.path.join(outdir, "vale.json")
+    doc = {
+        "tile": vale.TILE,
+        "lift": vale.LIFT,
+        "upper_blocks": vale.UPPER_BLOCKS,
+        "water_drop": vale.WATER_DROP,
+        "cols": vale.COLS,
+        "rows": vale.ROWS,
+        "code": vale.CODE,
+        "fill": vale.FILL,
+        "lower": list(vale.LOWER),
+        "upper": list(vale.UPPER),
+        "props": [{"id": a, "col": c, "row": r, "yaw": y, "scale": sc}
+                  for a, c, r, y, sc in (list(vale.RUNS) + vale.props_all())],
+        "frame": list(vale.FRAME),
+    }
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=1)
+    print("[EXPORT] %s  %d props, %d x %d tiles"
+          % (path, len(doc["props"]), doc["cols"], doc["rows"]))
+
+
 def target_list(rest):
     import registry
     found = registry.discover(verbose=True)
@@ -721,6 +878,9 @@ def _strip(paths, out):
 TARGETS = {
     "look": target_look,
     "rig": target_rig,
+    "glb": target_glb,
+    "library": target_library,
+    "export": target_export,
     "lit": target_lit,
     "ao": target_ao,
     "field": target_field,
@@ -735,7 +895,7 @@ TARGETS = {
 # Named here rather than falling through to "unknown target", so the message
 # says "not built yet" rather than "no such thing". They are different problems
 # and only one of them is a typo.
-PLANNED = ("library", "export", "guards")
+PLANNED = ("guards",)
 
 
 def main():

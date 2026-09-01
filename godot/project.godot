@@ -1,0 +1,45 @@
+; Gods and Lamb.
+;
+; GL COMPATIBILITY, and it is not a preference. Godot's web export runs the
+; Compatibility renderer only -- Forward+ is Vulkan and browsers get WebGL2 --
+; and this game ships to web. Everything in the art direction is built around
+; what Compatibility has: no volumetric fog, no SSAO, no SSIL, clamped
+; emissives. Contact shading arrives as vertex colour baked in Blender and
+; multiplied through glTF COLOR_0.
+;
+; tools/vale_test.gd asserts the renderer, so this cannot be quietly "upgraded"
+; by someone who sees Forward+ in a tutorial and loses the platform.
+
+config_version=5
+
+[application]
+
+config/name="Gods and Lamb"
+config/description="A chill incremental god-game. Tiny autonomous followers generate Faith; you spend it dragging Miracle cards onto them."
+config/version="0.1.0"
+run/main_scene="res://scenes/vale.tscn"
+; Android's hardware back gesture QUITS by default, which on a phone means the
+; back swipe closes the game mid-session. Turned into ui_cancel instead.
+config/quit_on_go_back=false
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/resizable=true
+; expand, NOT ignore. A 19.5:9 handset renders a fixed-aspect canvas into a
+; pillarboxed box; expand hands back a WIDER viewport with square pixels, and
+; this project is resolution-agnostic so it is safe.
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+anti_aliasing/quality/msaa_3d=2
+; Fill rate is the ceiling on a phone long before vertex count is. This is the
+; lever; 1.0 here and dropped on mobile once it is measured on a real device.
+scaling_3d/scale=1.0
