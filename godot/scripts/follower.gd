@@ -90,10 +90,17 @@ func _process(delta: float) -> void:
 		span = max(a.distance_to(b), 0.001)
 	position = a.lerp(b, _t)
 
-	# Face the way we are going. The mesh fronts -Z in Godot (it fronts -Y in
-	# Blender and the exporter swizzles), so the yaw is atan2 of the heading
-	# with no extra half-turn. A sign error here walks everyone backwards.
+	# Face the way we are going.
+	#
+	# The mesh fronts +Z in Godot, NOT -Z, and getting that backwards is what
+	# had every villager moonwalking. glTF Y-up maps Blender (x, y, z) to
+	# (x, z, -y), so Blender's -Y front becomes +Z here -- the opposite of the
+	# -Z that Godot's own `look_at` and every tutorial assume.
+	#
+	# With +Z forward the yaw is plain atan2 of the heading and nothing else.
+	# The half-turn that used to be here was correcting for a convention this
+	# mesh does not follow.
 	var heading := b - a
 	heading.y = 0.0
 	if heading.length_squared() > 0.000001:
-		rotation.y = atan2(heading.x, heading.z) + PI
+		rotation.y = atan2(heading.x, heading.z)

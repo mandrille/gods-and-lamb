@@ -76,6 +76,32 @@ func _process(_d: float) -> bool:
 					% [c.name, c.position.x, c.position.z,
 					   rad_to_deg(c.rotation.y),
 					   ("%.1f deg" % leg) if not is_nan(leg) else "NO SKELETON"])
+	# Hover picking, proven rather than assumed. Aiming at the middle of the
+	# frame proves nothing -- the centre is usually bare ground, and "nothing"
+	# is then a correct answer that looks like a broken one. So take a prop
+	# that is actually ON SCREEN, project it to its own pixel, and fire the
+	# ray the mouse would fire there. The right answer is that prop.
+	for top in get_root().get_children():
+		if top.has_method("_on_picked") and top.get("pick") != null:
+			var pk = top.get("pick")
+			var cam: Camera3D = top.get("rig").cam
+			var tested := 0
+			var ok := 0
+			for entry in pk.props:
+				var world: Vector3 = (entry["aabb"] as AABB).get_center()
+				if cam.is_position_behind(world):
+					continue
+				var screen := cam.unproject_position(world)
+				if screen.x < 0 or screen.y < 0 or screen.x > img.get_width() 						or screen.y > img.get_height():
+					continue
+				tested += 1
+				var hit: Dictionary = pk._pick_at(screen)
+				if not hit.is_empty():
+					ok += 1
+				if tested >= 40:
+					break
+			print("        pick: %d/%d on-screen props hit by their own ray"
+				% [ok, tested])
 	_taken += 1
 	if _taken >= 3:
 		quit(0)

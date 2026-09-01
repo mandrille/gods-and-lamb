@@ -31,6 +31,15 @@ var rows := 0
 var lower: Array = []
 var upper: Array = []
 
+## Every prop that was actually placed: {id, node, pos}. Hover picking and the
+## FX layer both need this and neither should re-read the JSON to get it --
+## a second walk of the layout is a second chance to disagree with the first.
+var placed_props: Array = []
+
+## World-space extent of the ground, for clamping the camera.
+var extent_min := Vector3.ZERO
+var extent_max := Vector3.ZERO
+
 
 func _ready() -> void:
 	_load()
@@ -164,7 +173,11 @@ func _build_ground() -> void:
 		for i in xforms.size():
 			inst.multimesh.set_instance_transform(i, xforms[i])
 		total += xforms.size()
-	print("[VALE] ground: %d tiles in %d multimesh batches" % [total, batches.size()])
+	extent_min = world_of(0, rows - 1)
+	extent_max = world_of(cols - 1, 0)
+	print("[VALE] ground: %d tiles in %d multimesh batches, %.1f x %.1f m"
+		% [total, batches.size(), extent_max.x - extent_min.x,
+		   extent_max.z - extent_min.z])
 
 
 func _stack(batches: Dictionary, aid: String, at: Vector3) -> void:
@@ -191,11 +204,21 @@ func _build_props() -> void:
 		var node := packed.instantiate()
 		add_child(node)
 		node.position = world_of(col, row) + Vector3(0, y, 0)
-		# Blender yaw is about +Z, Godot's is about +Y, and the sign flips with
-		# the axis swizzle. Getting this wrong faces every building backwards,
-		# which is invisible in a log and obvious in the first frame.
-		node.rotation.y = deg_to_rad(-float(p["yaw"]))
+		# Blender yaw is about +Z and Godot's about +Y, and the sign does NOT
+		# flip: the (x, y, z) -> (x, z, -y) swizzle is a -90 degree rotation
+		# about X, which preserves handedness, so +90 in Blender is +90 here.
+		#
+		# This was negated, which mirrored every building's facing. It survived
+		# because the props are near-symmetric in plan -- a hut looks like a hut
+		# from either side -- and it only became visible once a FOLLOWER, which
+		# has a face, was walking around them.
+		node.rotation.y = deg_to_rad(float(p["yaw"]))
 		var s := float(p.get("scale", 1.0))
 		node.scale = Vector3(s, s, s)
+		# Recorded for hover picking and the FX layer. Neither should
+		# re-read the JSON to find the props: a second walk of the
+		# layout is a second chance to disagree with the first.
+		placed_props.append({"id": aid, "node": node,
+			                     "pos": node.position})
 		placed += 1
 	print("[VALE] props: %d placed" % placed)

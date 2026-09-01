@@ -35,6 +35,30 @@ const GROUND_HORIZON := Color(0.52, 0.62, 0.45)
 const GROUND_BOTTOM := Color(0.44, 0.54, 0.40)
 const AMBIENT_ENERGY := 0.36       ## the shadow-depth knob
 
+## DEPTH fog, and depth fog only.
+##
+## VOLUMETRIC fog does not exist in GL Compatibility -- it is a Forward+
+## feature, and this game ships to web, which has no other renderer. A
+## volumetric control here would be a slider that does nothing in the build
+## that matters, so there is not one. What IS available is `fog_*`, which is a
+## per-pixel depth fade: it does the job asked of it here, which is to soften
+## the far edge of the map into the sky instead of ending at a hard line.
+const FOG_ON := true
+const FOG_DENSITY := 0.0035     ## 0.008 greyed the whole far half
+const FOG_COLOR := Color(0.62, 0.74, 0.84)
+const FOG_SUN_SCATTER := 0.18
+const FOG_AERIAL := 0.35           ## blends fog toward the sky colour by depth
+
+const GLOW_ON := true
+const GLOW_INTENSITY := 0.22    ## 0.35 blew the lit windows to white
+const GLOW_BLOOM := 0.05
+
+## Handles the debug menu drives. Public on purpose: the menu is handed these
+## rather than reaching into the tree for them, so it cannot bind to a node
+## path that a later refactor moves.
+var env: Environment
+var sun: DirectionalLight3D
+
 
 func _ready() -> void:
 	_add_sky()
@@ -58,7 +82,7 @@ func _add_sky() -> void:
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	sky.radiance_size = Sky.RADIANCE_SIZE_128
 
-	var env := Environment.new()
+	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
@@ -70,6 +94,21 @@ func _add_sky() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	env.tonemap_exposure = 1.0
 
+	env.fog_enabled = FOG_ON
+	env.fog_density = FOG_DENSITY
+	env.fog_light_color = FOG_COLOR
+	env.fog_sun_scatter = FOG_SUN_SCATTER
+	env.fog_aerial_perspective = FOG_AERIAL
+
+	env.glow_enabled = GLOW_ON
+	env.glow_intensity = GLOW_INTENSITY
+	env.glow_bloom = GLOW_BLOOM
+
+	# Off by default and left for the debug menu to switch on: a colour grade
+	# applied by default is a second place the palette lives, and the palette
+	# already has one.
+	env.adjustment_enabled = false
+
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
 	we.environment = env
@@ -78,7 +117,7 @@ func _add_sky() -> void:
 
 
 func _add_sun() -> void:
-	var sun := DirectionalLight3D.new()
+	sun = DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.light_color = SUN_COLOR
 	sun.light_energy = SUN_ENERGY

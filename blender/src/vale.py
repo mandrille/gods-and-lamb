@@ -36,107 +36,155 @@ import registry
 
 # G grass   D dirt   S stone   P path   W water   A sand/bank   C crop   . none
 LOWER = [
-    "WAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "WWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "WWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "WWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "AWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGAAWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCCGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCCGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCCGGPPWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGCCCCCCCCGGPPAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGPPGGGGGGAAWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
-    "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
-    "PPPPPPPPPPPPPPPPPPPPPPPPWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
-    "GGGGGGGGGGGGGGGGGGGGGGGGAWWWAAPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGGGGGAWWWWAPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCAWWWWAGGGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCAWWWWAGGGGGPPPPGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCCAWWWAAGGGGGGPPPPGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCCAWWWWAGGGGGGGGPPGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGCCCCCCCCAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGAWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "WWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "AWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "AAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGAAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGGPPPWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGGPPPAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGCCCCCCCCCCCCGGGPPPAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGGAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGPPPGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPWWWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPWWWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPWWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPWWWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPWWWWWWPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGAAWWWWWAAGPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPAAWWWWWWAGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGAWWWWWWAAPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGAAWWWWWAAGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGAAWWWWWWAGGGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCAWWWWWWAAGGGGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCAAWWWWWWAGGGGGGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCAWWWWWWAAGGGGGGGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCAAWWWWWAAGGGGGGGGGGPPPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCAWWWWWWAAGGGGGGGGGGGPPPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCAAWWWWWWAGGGGGGGGGGGGGPPGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCCAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCCAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCCCAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGCCCPPCCCCCCCAAWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGGGGGGGGGAWWWWWWAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
+    "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGPPGGGGGGGGGGGAAWWWWWWAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG",
 ]
 
 # The hill. Two blocks up, with the block beneath filled, so the cliff is solid
 # and only the top wears a grass cap. Neither the river nor the roads climb it.
 UPPER = [
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "...............................GGGGGGG..........................",
-    ".............................GGGGGGGGGGG........................",
-    "...........................GGGGGGGGGGGGGGG......................",
-    "...........................GGGGGGGGGGGGGGG......................",
-    "..........................GGGGGGGGGGGGGGGGG.....................",
-    "..........................GGGGGGGGGGGGGGGGG.....................",
-    ".........................GGGGGGGGGGGGGGGGGGG....................",
-    "..........................GGGGGGGGGGGGGGGGG.....................",
-    "..........................GGGGGGGGGGGGGGGGG.....................",
-    "...........................GGGGGGGGGGGGGGG......................",
-    "...........................GGGGGGGGGGGGGGG......................",
-    ".............................GGGGGGGGGGG........................",
-    "...............................GGGGGGG..........................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
-    "................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................GGGGGGG.........................................",
+    ".............................................GGGGGGGGGGGGG......................................",
+    "...........................................GGGGGGGGGGGGGGGGG....................................",
+    ".........................................GGGGGGGGGGGGGGGGGGGGG..................................",
+    "........................................GGGGGGGGGGGGGGGGGGGGGGG.................................",
+    "........................................GGGGGGGGGGGGGGGGGGGGGGG.................................",
+    ".......................................GGGGGGGGGGGGGGGGGGGGGGGGG................................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    "......................................GGGGGGGGGGGGGGGGGGGGGGGGGGG...............................",
+    ".......................................GGGGGGGGGGGGGGGGGGGGGGGGG................................",
+    "........................................GGGGGGGGGGGGGGGGGGGGGGG.................................",
+    "........................................GGGGGGGGGGGGGGGGGGGGGGG.................................",
+    ".........................................GGGGGGGGGGGGGGGGGGGGG..................................",
+    "...........................................GGGGGGGGGGGGGGGGG....................................",
+    ".............................................GGGGGGGGGGGGG......................................",
+    "................................................GGGGGGG.........................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "................................................................................................",
+    "...........GGGGGG...............................................................................",
 ]
 
 CODE = {
@@ -161,7 +209,7 @@ WATER_DROP = 0.06
 # The camera aims at THIS, not at the whole scene, which is what lets the
 # landscape run off the frame instead of being fitted inside it.
 # (centre col, centre row, width in tiles, depth in tiles)
-FRAME = (21, 34, 21, 14)
+FRAME = (32, 51, 32, 21)
 
 # Buildings stand apart from other buildings by this much ground beyond their
 # own footprints. Overlap and crowding are different faults: five houses 20 cm
@@ -193,18 +241,18 @@ def wants_clearance(aid):
 # yaw 0 faces south (down-screen), 180 faces north.
 BUILDINGS = [
     # The main street, north side, facing south onto the road.
-    ("Buildings/cottage", 3, 28, 0.0, 1.0),
-    ("Buildings/hut", 10, 28, 0.0, 1.0),
-    ("Buildings/cottage", 17, 28, 0.0, 1.0),
+    ("Buildings/cottage", 4, 42, 0.0, 1.0),
+    ("Buildings/hut", 15, 42, 0.0, 1.0),
+    ("Buildings/cottage", 26, 42, 0.0, 1.0),
     # South side, facing north back across it.
-    ("Buildings/hut", 7, 38, 180.0, 1.0),
-    ("Buildings/cottage", 14, 38, 180.0, 1.0),
-    ("Buildings/well", 20, 37, 0.0, 1.0),
+    ("Buildings/hut", 10, 57, 180.0, 1.0),
+    ("Buildings/cottage", 21, 57, 180.0, 1.0),
+    ("Buildings/well", 30, 56, 0.0, 1.0),
     # East of the river, where the road climbs toward the hill.
-    ("Buildings/hut", 33, 29, 200.0, 1.0),
-    ("Buildings/market_stall", 33, 37, 180.0, 1.0),
+    ("Buildings/hut", 50, 44, 200.0, 1.0),
+    ("Buildings/market_stall", 50, 56, 180.0, 1.0),
     # The shrine crowns the hill, alone, which is the whole point of it.
-    ("Buildings/shrine", 34, 19, 180.0, 1.0),
+    ("Buildings/shrine", 51, 28, 180.0, 1.0),
 ]
 
 # Runs. A fence is a line and a bridge is a crossing; both are seeded before
@@ -215,43 +263,43 @@ RUNS = (
     # overlaps each section with its neighbour by 18 cm. It chains along X and
     # only along X -- the run axis is a property of the asset, not a choice
     # made here.
-    [("Buildings/bridge", c, 33, 0.0, 1.0) for c in range(23, 29)]
+    [("Buildings/bridge", c, 49, 0.0, 1.0) for c in range(34, 43)]
     # A fence along the north side of the street, breaking either side of each
     # house so the run reads as boundary rather than as a barricade.
-    + [("Buildings/fence", c, 30, 0.0, 1.0) for c in range(2, 10)]
-    + [("Buildings/fence", c, 30, 0.0, 1.0) for c in range(14, 18)]
-    + [("Buildings/fence", c, 36, 0.0, 1.0) for c in range(10, 14)]
+    + [("Buildings/fence", c, 45, 0.0, 1.0) for c in range(3, 15)]
+    + [("Buildings/fence", c, 45, 0.0, 1.0) for c in range(21, 27)]
+    + [("Buildings/fence", c, 54, 0.0, 1.0) for c in range(15, 21)]
 )
 
 # Nature, placed by zone. Deliberately sparse near the road and dense away from
 # it: the eye needs somewhere to rest, and an evenly-scattered landscape reads
 # as wallpaper.
 WOODS = [
-         (3, 43), (6, 45), (9, 44), (2, 40), (6, 41), (10, 47), (13, 44),
-         (4, 36), (16, 46), (10, 41), (44, 30), (46, 36), (43, 41), (45, 44), (41, 25), (46, 18), (43, 14), (39, 43), (36, 46), (33, 43)
+         (4, 64), (9, 68), (14, 66), (3, 60), (9, 62), (15, 70), (20, 66),
+         (6, 54), (24, 69), (15, 62), (66, 45), (69, 54), (64, 62), (68, 66), (62, 38), (69, 27), (64, 21), (58, 64), (54, 69), (50, 64)
 ]
 PINES = [
-         (38, 16), (41, 20), (30, 15), (44, 23), (36, 13), (2, 22), (5, 18),
-         (3, 13), (7, 12), (45, 11)
+         (57, 24), (62, 30), (45, 22), (66, 34), (54, 20), (3, 33), (8, 27),
+         (4, 20), (10, 18), (68, 16)
 ]
-SCATTER_BUSH = [(9, 35), (17, 35), (25, 29), (30, 31), (35, 35), (12, 22),
-                (20, 18), (28, 43), (18, 42), (8, 31), (40, 34), (22, 13),
-                (33, 40), (15, 15), (2, 30), (47, 28)]
-SCATTER_FLOWER = [(6, 31), (10, 31), (16, 31), (21, 31), (26, 36), (31, 31),
-                  (36, 31), (12, 36), (18, 36), (23, 43), (29, 30), (34, 32),
-                  (8, 26), (13, 19), (39, 29), (43, 32), (19, 22), (25, 40)]
-SCATTER_GRASS = [(4, 32), (9, 32), (13, 32), (18, 32), (22, 31), (27, 30),
-                 (32, 32), (37, 32), (41, 32), (45, 32), (7, 22), (11, 26),
-                 (16, 40), (21, 26), (26, 22), (31, 44), (36, 26), (40, 39),
-                 (44, 26), (3, 27), (17, 18), (29, 18), (42, 36), (14, 13)]
-ROCKS = [(24, 16), (28, 25), (19, 12), (23, 37), (30, 21), (38, 38), (42, 44),
-         (7, 16), (35, 29), (12, 12), (26, 46), (46, 40)]
-REEDS = [(21, 15), (22, 21), (23, 27), (28, 30), (29, 36), (31, 41), (33, 46),
-         (13, 11), (17, 13), (25, 18), (30, 39), (34, 44), (20, 24), (26, 31)]
-LILIES = [(11, 11), (13, 15), (16, 19), (19, 23), (22, 27), (26, 33), (28, 37),
-          (31, 42), (33, 46), (15, 17), (24, 30), (29, 40)]
-LOGS = [(6, 39), (12, 45), (41, 37), (44, 16)]
-STUMPS = [(9, 40), (15, 43), (39, 40), (42, 18)]
+SCATTER_BUSH = [(14, 52), (26, 52), (38, 44), (45, 46), (52, 52), (18, 33),
+                (30, 27), (42, 64), (27, 63), (12, 46), (60, 51), (33, 20),
+                (50, 60), (22, 22), (3, 45), (70, 42)]
+SCATTER_FLOWER = [(9, 46), (15, 46), (24, 46), (32, 46), (39, 54), (46, 46),
+                  (54, 46), (18, 54), (27, 54), (34, 64), (44, 45), (51, 48),
+                  (12, 39), (20, 28), (58, 44), (64, 48), (28, 33), (38, 60)]
+SCATTER_GRASS = [(6, 48), (14, 48), (20, 48), (27, 48), (33, 46), (40, 45),
+                 (48, 48), (56, 48), (62, 48), (68, 48), (10, 33), (16, 39),
+                 (24, 60), (32, 39), (39, 33), (46, 66), (54, 39), (60, 58),
+                 (66, 39), (4, 40), (26, 27), (44, 27), (63, 54), (21, 20)]
+ROCKS = [(36, 24), (42, 38), (28, 18), (34, 56), (45, 32), (57, 57), (63, 66),
+         (10, 24), (52, 44), (18, 18), (39, 69), (69, 60)]
+REEDS = [(32, 22), (33, 32), (34, 40), (42, 45), (44, 54), (46, 62), (50, 69),
+         (20, 16), (26, 20), (38, 27), (45, 58), (51, 66), (30, 36), (39, 46)]
+LILIES = [(16, 16), (20, 22), (24, 28), (28, 34), (33, 40), (39, 50), (42, 56),
+          (46, 63), (50, 69), (22, 26), (36, 45), (44, 60)]
+LOGS = [(9, 58), (18, 68), (62, 56), (66, 24)]
+STUMPS = [(14, 60), (22, 64), (58, 60), (63, 27)]
 
 
 def _grid(layer):
