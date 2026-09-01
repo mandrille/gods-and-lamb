@@ -179,8 +179,10 @@ func _build_scene() -> void:
 	_cam.keep_aspect = Camera3D.KEEP_WIDTH
 	_cam.fov = 2.0 * rad_to_deg(atan(18.0 / 35.0))
 	_cam.position = Vector3(3.4, 4.2, 8.0)
+	# look_at() refuses to run on a node that is not in the tree yet, and
+	# during _initialize() it is not. Aim it before parenting instead.
+	_cam.look_at_from_position(_cam.position, Vector3(0, 1.0, -6.0), Vector3.UP)
 	_root.add_child(_cam)
-	_cam.look_at(Vector3(0, 1.0, -6.0), Vector3.UP)
 
 
 func _mat(c: Color) -> StandardMaterial3D:
@@ -264,9 +266,35 @@ func _build_tests() -> void:
 			_env.tonemap_exposure = 2.0,
 		 "off": func() -> void:
 			_env.tonemap_exposure = 1.0},
-		{"name": "ambient_light_energy", "on": func() -> void:
+		# Ambient, four ways. The Light tab exposes ambient_light_energy and
+		# vale_light.gd calls it "the shadow-depth knob", so whether it is
+		# actually wired under this renderer AND this sky configuration is
+		# worth four A/Bs rather than one.
+		{"name": "ambient_energy @sky=1", "on": func() -> void:
 			_env.ambient_light_energy = 4.0,
 		 "off": func() -> void:
+			_env.ambient_light_energy = 0.36},
+		{"name": "ambient sky_contrib 1->0", "on": func() -> void:
+			_env.ambient_light_sky_contribution = 0.0
+			_env.ambient_light_color = Color(1, 0, 0),
+		 "off": func() -> void:
+			_env.ambient_light_sky_contribution = 1.0
+			_env.ambient_light_color = Color(0, 0, 0)},
+		{"name": "ambient_energy @sky=0", "on": func() -> void:
+			_env.ambient_light_sky_contribution = 0.0
+			_env.ambient_light_color = Color(1, 0, 0)
+			_env.ambient_light_energy = 4.0,
+		 "off": func() -> void:
+			_env.ambient_light_sky_contribution = 1.0
+			_env.ambient_light_color = Color(0, 0, 0)
+			_env.ambient_light_energy = 0.36},
+		{"name": "ambient_energy @source=COLOR", "on": func() -> void:
+			_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			_env.ambient_light_color = Color(0.4, 0.5, 0.6)
+			_env.ambient_light_energy = 4.0,
+		 "off": func() -> void:
+			_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+			_env.ambient_light_color = Color(0, 0, 0)
 			_env.ambient_light_energy = 0.36},
 		{"name": "sun light_energy", "on": func() -> void:
 			_sun.light_energy = 3.0,
@@ -380,6 +408,16 @@ func _phase_menu() -> bool:
 				_finish()
 				return true
 			print("[PROBE] tabs: %d" % _tabs.get_tab_count())
+			# The panel came out narrower than PANEL_W on the first run. Print
+			# the numbers rather than guessing at a stretch factor.
+			var panel: Control = _menu._panel
+			print("[PROBE] window %s  root vp %s  scale %.4f  stretch '%s'/'%s'"
+				% [str(DisplayServer.window_get_size()), str(get_root().size),
+				   get_root().content_scale_factor,
+				   str(ProjectSettings.get_setting("display/window/stretch/mode")),
+				   str(ProjectSettings.get_setting("display/window/stretch/aspect"))])
+			print("[PROBE] panel rect %s (asked for %.0f wide)"
+				% [str(panel.size), DebugMenuScript.PANEL_W])
 			_step = 2
 			return false
 		2:
@@ -436,6 +474,56 @@ func _capture_tab() -> void:
 	_shot += 1
 
 
+## Drive every control the way a finger does -- set the Control, not the
+## property -- and read the target back. A slider whose signal is not connected
+## looks identical in a screenshot to one that is, so this is the only thing
+## that proves the panel is wired rather than drawn.
+func _check_wiring() -> void:
+	_menu.open()                       ## rows only exist while it is built
+	var ok := 0
+	for e in DebugMenuScript.BINDINGS:
+		var key: String = e["key"]
+		if not _menu._rows.has(key):
+			_faults.append("%s built no control" % key)
+			continue
+		var main: Control = _menu._rows[key][0]["main"]
+		var kind := String(e["kind"])
+		var want: Variant = null
+		match kind:
+			"float":
+				var sl := main as HSlider
+				# 70% along the range, so it differs from any sane default.
+				sl.value = sl.min_value + (sl.max_value - sl.min_value) * 0.7
+				want = sl.value
+			"bool":
+				var cb := main as CheckButton
+				cb.button_pressed = not cb.button_pressed
+				want = cb.button_pressed
+			"color":
+				# ColorPickerButton.color does not emit on assignment -- only a
+				# human picking does. Emit it, which tests the handler but NOT
+				# the widget; the colour rows are only half proven here.
+				var cp := main as ColorPickerButton
+				cp.color = Color(0.25, 0.5, 0.75)
+				cp.color_changed.emit(cp.color)
+				want = cp.color
+		var got: Variant = _menu._read_prop(e)
+		var match_ok := false
+		if kind == "color":
+			match_ok = (got as Color).is_equal_approx(want)
+		elif kind == "bool":
+			match_ok = bool(got) == bool(want)
+		else:
+			match_ok = is_equal_approx(float(got), float(want))
+		if match_ok:
+			ok += 1
+		else:
+			_faults.append("%s: control says %s, %s.%s says %s"
+				% [key, str(want), e["obj"], e["prop"], str(got)])
+	print("[PROBE] wiring: %d/%d controls moved their target"
+		% [ok, DebugMenuScript.BINDINGS.size()])
+
+
 func _press_escape() -> void:
 	# The real path: a key event through the input map, not a call to open().
 	# "ui_cancel opens it" is the requirement, and calling the method would
@@ -458,15 +546,41 @@ func _find_tabs(n: Node) -> TabContainer:
 
 
 func _finish() -> void:
+	_check_wiring()
+
+	# Reset to defaults, measured rather than eyeballed: move the sun off its
+	# rig value, press reset, and check it came back. This is also the only
+	# proof that setup() captured the defaults before applying anything saved.
+	_sun.light_energy = 3.0
+	_menu._reset_defaults()
+	print("[PROBE] reset: light_energy back to %.3f (rig value 1.000), "
+		% _sun.light_energy + "%d defaults captured" % _menu._defaults.size())
+	if not is_equal_approx(_sun.light_energy, 1.0):
+		_faults.append("reset did not restore light_energy")
+	if _menu._defaults.size() != DebugMenuScript.BINDINGS.size():
+		_faults.append("captured %d defaults for %d bindings"
+			% [_menu._defaults.size(), DebugMenuScript.BINDINGS.size()])
+
 	# Round trip the store, so "the next load restores them" is measured.
+	# Move two values off their defaults FIRST -- saving the defaults back and
+	# reading the defaults out again would pass with a store that does nothing.
+	_sun.light_energy = 2.5
+	_env.fog_enabled = true
 	_menu._save_values()
 	var check: Settings = SettingsScript.new()
 	check.load_all()
 	var got: Variant = check.get_value("light.energy", null)
-	print("[PROBE] settings round-trip: light.energy = %s (live %.3f)"
-		% [str(got), _sun.light_energy])
-	if got == null:
-		_faults.append("settings did not round-trip")
+	var fog: Variant = check.get_value("fx.fog_enabled", null)
+	var col: Variant = check.get_value("light.color", null)
+	print("[PROBE] round-trip from disk: light.energy=%s fx.fog_enabled=%s "
+		% [str(got), str(fog)] + "light.color=%s" % str(col))
+	if typeof(got) != TYPE_FLOAT or not is_equal_approx(float(got), 2.5):
+		_faults.append("light.energy did not round-trip as 2.5 (got %s)"
+			% str(got))
+	if fog != true:
+		_faults.append("fx.fog_enabled did not round-trip as true")
+	if typeof(col) != TYPE_STRING or not Color.html_is_valid(String(col)):
+		_faults.append("light.color did not round-trip as a colour string")
 
 	if _faults.is_empty():
 		print("[PROBE] all checks ok")

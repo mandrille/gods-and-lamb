@@ -57,7 +57,7 @@ func _process(_d: float) -> bool:
 			sum += l
 			n += 1
 	var mean: float = sum / float(max(n, 1))
-	var path := OUT + "vale_%02d.png" % _taken
+	var path := OUT + "vale_%02d%s.png" % [_taken, "_menu" if _taken == 2 else ""]
 	img.save_png(ProjectSettings.globalize_path(path))
 	print("[SHOT] %s  frame %d  luma %.3f (%.3f..%.3f)%s"
 		% [path, _frame, mean, lo, hi,
@@ -102,6 +102,14 @@ func _process(_d: float) -> bool:
 					break
 			print("        pick: %d/%d on-screen props hit by their own ray"
 				% [ok, tested])
+	# The menu, opened in the REAL scene. The agent's own probe used a stub
+	# host; this is the only thing that proves setup() survives contact with
+	# the actual Environment, sun and Vale.
+	if _taken == 1:
+		var ev := InputEventAction.new()
+		ev.action = "ui_cancel"
+		ev.pressed = true
+		Input.parse_input_event(ev)
 	_taken += 1
 	if _taken >= 3:
 		quit(0)

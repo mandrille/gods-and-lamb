@@ -75,6 +75,33 @@ walking. Frame rate was NOT measured: the automation pane throttles
 made up. Measure it in a real window before quoting one, and measure it on a
 real phone before believing it.
 
+## A worked example, 2026-09-01
+
+One session added: 2.25x the land (64x48 -> 96x72 tiles, 7338 ground tiles),
+drag-pan and zoom, hover and click picking, a particle system, depth fog and
+glow, an escape menu with four tabs of live controls, settings persistence, a
+stress spawner, touch input and a portrait configuration.
+
+    before   index.pck  538,528 gzip     TOTAL 10,721,113 gzip
+    after    index.pck  581,566 gzip     TOTAL 10,764,150 gzip
+    delta               +43,038          +0.4% of the download
+
+**Everything in that list cost 43 KB.** More than doubling the world cost
+nothing measurable, because the ground is data in `vale.json` and instanced
+from meshes that already shipped. The particle system added no textures at all
+-- its emission points are a small generated RGBF strip and its puff is drawn
+in code.
+
+This is the shape the answer usually has. If a change ever DOES move the pck by
+megabytes, it will be because something started shipping bitmaps, and that is
+worth a conversation. Geometry and code are not.
+
+What that session cost where it actually matters, measured rather than
+guessed: **3 draw calls** for the whole village's particles regardless of prop
+count, and **+0.002 ms/frame** for the 500-particle simulation on a desktop
+GPU -- below the noise floor there, and untested on a phone, which is where
+alpha billboards are expected to bite.
+
 ## What is still unmeasured
 
 - **Frame rate**, desktop or mobile, in a real browser window.

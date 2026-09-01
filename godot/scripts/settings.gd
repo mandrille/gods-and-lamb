@@ -50,6 +50,11 @@ func load_all() -> void:
 
 
 func save_all() -> void:
+	# Nothing changed and the file already says so. On web every write is an
+	# IndexedDB transaction, and a Save button people press twice should not
+	# cost two of them.
+	if not _dirty and FileAccess.file_exists(PATH):
+		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f == null:
 		push_error("Settings: cannot write %s (%d)"

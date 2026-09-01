@@ -42,9 +42,9 @@ const LEAF_IDS: PackedStringArray = ["Nature/tree"]
 ## each plume thinner rather than making the frame slower -- which is the right
 ## trade on a phone.
 const BUDGET := {
-	"smoke": {"per": 22, "min": 24, "max": 240},
-	"motes": {"per": 3, "min": 24, "max": 180},
-	"leaves": {"per": 2, "min": 16, "max": 120},
+	"smoke": {"per": 30, "min": 30, "max": 300},
+	"motes": {"per": 8, "min": 40, "max": 220},
+	"leaves": {"per": 5, "min": 24, "max": 150},
 }
 
 ## Where the smoke leaves the building, in the prop's own local XZ. The cottage
@@ -52,12 +52,17 @@ const BUDGET := {
 ## (Blender +Y is Godot -Z). The hut has no stack at all, so its smoke seeps
 ## from the middle of the thatch ridge.
 ##
-## Only the horizontal offset is authored. The HEIGHT is measured off the
+## Only the OFFSET is authored -- x and z across the roof, y as a nudge above
+## whatever the roof turns out to be. The height itself is measured off the
 ## prop's own mesh AABB at setup, so a taller roof or a re-modelled chimney
 ## moves the plume without anyone remembering to come back here.
-const CHIMNEY_XZ := {
-	"Buildings/cottage": Vector2(-0.40, -0.40),
-	"Buildings/hut": Vector2(0.0, 0.0),
+##
+## The hut is nudged higher than the cottage because it has no stack to clear:
+## sitting the plume on the ridge itself put a white blob on the thatch instead
+## of a column above it.
+const CHIMNEY_OFFSET := {
+	"Buildings/cottage": Vector3(-0.40, 0.05, -0.40),
+	"Buildings/hut": Vector3(0.0, 0.18, 0.0),
 }
 
 ## Palette, straight out of `init_materials()` in blender/src/kit.py, in sRGB
@@ -97,6 +102,11 @@ var _sources: Dictionary = {}      ## kind -> how many props feed it
 ## emitters are dropped and rebuilt, which is what a rebuilt village needs.
 func setup(props: Array) -> void:
 	for e in _emitters:
+		# remove_child BEFORE queue_free: the free is deferred to the end of the
+		# frame, so an emitter that is only queued is still a child, still
+		# drawn and still counted by anything inspecting get_children(). On a
+		# rebuild that reads as a doubled pool.
+		remove_child(e)
 		e.queue_free()
 	_emitters.clear()
 	_sources = {"smoke": 0, "motes": 0, "leaves": 0}
@@ -179,29 +189,33 @@ func emitter_count() -> int:
 ## instead of a single pixel-wide seam of overlapping quads.
 func _smoke_points(out: PackedVector3Array, id: String, xform: Transform3D,
 		box: AABB, rng: RandomNumberGenerator) -> void:
-	var off: Vector2 = CHIMNEY_XZ.get(id, Vector2.ZERO)
-	var top := box.position.y + box.size.y + 0.05
+	var off: Vector3 = CHIMNEY_OFFSET.get(id, Vector3.ZERO)
+	var top := box.position.y + box.size.y + off.y
 	for i in 3:
 		var local := Vector3(
 			off.x + rng.randf_range(-0.04, 0.04),
 			top + rng.randf_range(-0.02, 0.03),
-			off.y + rng.randf_range(-0.04, 0.04))
+			off.z + rng.randf_range(-0.04, 0.04))
 		out.append(xform * local)
 
 
-## Motes live INSIDE the canopy volume, not above it -- the effect being sold
-## is shade with something floating in it.
+## Motes ring the canopy rather than filling it. The first version scattered
+## them through the canopy VOLUME, which is the physically sensible thing and
+## was almost entirely invisible: these canopies are solid boxes, depth test is
+## on, and a mote inside one is behind it. So they sit in a shell just outside
+## the silhouette, where they read against the dark leaf colour.
 func _mote_points(out: PackedVector3Array, xform: Transform3D, box: AABB,
 		rng: RandomNumberGenerator) -> void:
-	var mid := box.position.y + box.size.y * 0.62
-	var rx := box.size.x * 0.30
-	var rz := box.size.z * 0.30
-	var ry := box.size.y * 0.18
-	for i in 5:
+	var mid := box.position.y + box.size.y * 0.60
+	var ry := box.size.y * 0.20
+	var span := maxf(box.size.x, box.size.z)
+	for i in 6:
+		var a := rng.randf_range(0.0, TAU)
+		var r := span * rng.randf_range(0.52, 0.66)
 		var local := Vector3(
-			box.position.x + box.size.x * 0.5 + rng.randf_range(-rx, rx),
+			box.position.x + box.size.x * 0.5 + cos(a) * r,
 			mid + rng.randf_range(-ry, ry),
-			box.position.z + box.size.z * 0.5 + rng.randf_range(-rz, rz))
+			box.position.z + box.size.z * 0.5 + sin(a) * r)
 		out.append(xform * local)
 
 
@@ -210,7 +224,7 @@ func _mote_points(out: PackedVector3Array, xform: Transform3D, box: AABB,
 func _leaf_points(out: PackedVector3Array, xform: Transform3D, box: AABB,
 		rng: RandomNumberGenerator) -> void:
 	var top := box.position.y + box.size.y * 0.80
-	var r := maxf(box.size.x, box.size.z) * 0.34
+	var r := maxf(box.size.x, box.size.z) * 0.46
 	for i in 4:
 		var a := rng.randf_range(0.0, TAU)
 		var local := Vector3(
@@ -284,6 +298,11 @@ func _make_emitter(kind: String, pts: PackedVector3Array, authored: int) -> GPUP
 	e.amount = int(round(float(authored) * DENSITY_MAX))
 	e.amount_ratio = 1.0 / DENSITY_MAX
 	e.local_coords = false
+	# The emission points are WORLD positions, and an emitter transforms them by
+	# its own global transform when it spawns. top_level cuts the emitter off
+	# from whatever ValeFX ends up parented to, so the plumes stay on the roofs
+	# no matter where the node is hung in the scene.
+	e.top_level = true
 	e.fixed_fps = 24          ## these drift; 24 is invisible and a third cheaper
 	e.interpolate = true
 	e.draw_pass_1 = _quad_for(kind)
@@ -363,32 +382,43 @@ func _process_for(kind: String, pts: PackedVector3Array) -> ParticleProcessMater
 	match kind:
 		"smoke":
 			pm.direction = Vector3(0, 1, 0)
-			pm.spread = 7.0
-			pm.initial_velocity_min = 0.30
-			pm.initial_velocity_max = 0.50
-			# Mostly sideways: a plume that only rises is a pillar. The small
-			# +Y keeps it climbing while the damping bleeds the launch speed
-			# off, so it slows and spreads near the top the way smoke does.
-			pm.gravity = Vector3(0.13, 0.03, -0.07)
-			pm.damping_min = 0.10
-			pm.damping_max = 0.22
+			pm.spread = 6.0
+			pm.initial_velocity_min = 0.46
+			pm.initial_velocity_max = 0.64
+			# Buoyancy first, drift second. The first tuning had this the other
+			# way round -- 0.13 sideways against 0.03 up, with heavy damping --
+			# and the plume left the chimney at 45 degrees and stayed there. A
+			# chimney that smokes SIDEWAYS reads as a lens smear on the render,
+			# not as smoke, and that is exactly how it looked.
+			pm.gravity = Vector3(0.035, 0.14, -0.02)
+			pm.damping_min = 0.03
+			pm.damping_max = 0.08
 			pm.angle_min = -180.0
 			pm.angle_max = 180.0
 			pm.angular_velocity_min = -14.0
 			pm.angular_velocity_max = 14.0
-			pm.scale_min = 0.55
-			pm.scale_max = 0.90
+			pm.scale_min = 0.62
+			pm.scale_max = 1.05
 			pm.scale_curve = _curve("smoke_scale",
-				[Vector2(0.0, 0.26), Vector2(0.30, 0.72), Vector2(1.0, 1.0)])
+				[Vector2(0.0, 0.20), Vector2(0.35, 0.64), Vector2(1.0, 1.0)])
+			# Peak alpha 0.70, not 0.46. Judged at the PLAY camera, where a
+			# plume is forty pixels tall: the first tuning was legible in a
+			# close-up and completely gone at seventeen metres, which is the
+			# only distance the player ever sees it from.
 			pm.color_ramp = _gradient("smoke_ramp", [
 				[0.00, Color(SMOKE_HOT, 0.00)],
-				[0.10, Color(SMOKE_HOT, 0.46)],
-				[0.45, Color(SMOKE_HOT.lerp(SMOKE_COLD, 0.5), 0.30)],
+				[0.08, Color(SMOKE_HOT, 0.72)],
+				[0.50, Color(SMOKE_HOT.lerp(SMOKE_COLD, 0.5), 0.50)],
+				[0.82, Color(SMOKE_COLD, 0.26)],
 				[1.00, Color(SMOKE_COLD, 0.00)],
 			])
 			pm.turbulence_enabled = true
-			pm.turbulence_noise_strength = 0.14
-			pm.turbulence_noise_scale = 1.8
+			# Strength stays low and the noise stays FINE. At 0.18/1.5 the whole
+			# plume sat inside one noise cell, so the turbulence stopped being
+			# turbulence and became a coherent wind: every plume in the village
+			# leaned the same way at the same moment.
+			pm.turbulence_noise_strength = 0.10
+			pm.turbulence_noise_scale = 3.4
 			pm.turbulence_noise_speed = Vector3(0.10, 0.02, 0.06)
 		"motes":
 			pm.direction = Vector3(0, 1, 0)
@@ -396,12 +426,16 @@ func _process_for(kind: String, pts: PackedVector3Array) -> ParticleProcessMater
 			pm.initial_velocity_min = 0.015
 			pm.initial_velocity_max = 0.060
 			pm.gravity = Vector3(0.012, -0.004, 0.010)
-			pm.scale_min = 0.020
-			pm.scale_max = 0.048
+			# 2.8 cm to 6 cm. Below about 2.5 cm a mote is under one pixel at
+			# the play camera and mipmaps average it out of existence; above
+			# about 7 it stops being dust and becomes a firefly, which is a
+			# different game.
+			pm.scale_min = 0.028
+			pm.scale_max = 0.060
 			pm.color_ramp = _gradient("mote_ramp", [
 				[0.00, Color(MOTE_COLOR, 0.00)],
-				[0.22, Color(MOTE_COLOR, 0.85)],
-				[0.70, Color(MOTE_COLOR, 0.60)],
+				[0.22, Color(MOTE_COLOR, 0.62)],
+				[0.70, Color(MOTE_COLOR, 0.44)],
 				[1.00, Color(MOTE_COLOR, 0.00)],
 			])
 		"leaves":
@@ -418,8 +452,8 @@ func _process_for(kind: String, pts: PackedVector3Array) -> ParticleProcessMater
 			pm.angle_max = 180.0
 			pm.angular_velocity_min = -95.0
 			pm.angular_velocity_max = 95.0
-			pm.scale_min = 0.050
-			pm.scale_max = 0.085
+			pm.scale_min = 0.070
+			pm.scale_max = 0.115
 			pm.color_ramp = _gradient("leaf_ramp", [
 				[0.00, Color(1, 1, 1, 0.0)],
 				[0.08, Color(1, 1, 1, 1.0)],
@@ -467,7 +501,7 @@ func _tex_dot() -> ImageTexture:
 	for y in n:
 		for x in n:
 			var r := Vector2(float(x) - c, float(y) - c).length() / c
-			img.set_pixel(x, y, Color(1, 1, 1, smoothstep(1.0, 0.10, r)))
+			img.set_pixel(x, y, Color(1, 1, 1, smoothstep(1.0, 0.28, r)))
 	img.generate_mipmaps()
 	var t := ImageTexture.create_from_image(img)
 	_cache["tex:dot"] = t
@@ -492,7 +526,10 @@ func _tex_puff() -> ImageTexture:
 	for y in n:
 		for x in n:
 			var r := Vector2(float(x) - c, float(y) - c).length() / c
-			var base := smoothstep(1.0, 0.05, r)
+			# Solid out to 42% of the radius. A falloff that starts at the
+			# very centre has an average alpha so low that the whole plume
+			# needs an opacity that then blows out where two puffs cross.
+			var base := smoothstep(1.0, 0.42, r)
 			var v := noise.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
 			# The core stays solid and only the outer half gets chewed, or the
 			# puff turns into lace and loses its silhouette.

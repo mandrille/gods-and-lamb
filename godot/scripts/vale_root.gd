@@ -187,6 +187,19 @@ func clear_spawned() -> void:
 	_spawned.clear()
 
 
+## FX density, exposed so the debug menu drives it through the host rather than
+## reaching into the tree for a node it did not create.
+func set_fx_density(scale: float) -> void:
+	if fx != null and fx.has_method("set_density"):
+		fx.set_density(scale)
+
+
+func fx_particles() -> int:
+	if fx != null and fx.has_method("active_count"):
+		return fx.active_count()
+	return 0
+
+
 func spawned_count() -> int:
 	return _spawned.size()
 

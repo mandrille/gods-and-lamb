@@ -24,20 +24,35 @@ class_name DebugMenu
 ## Nothing here is Forward+. No volumetric fog control exists because
 ## Compatibility has no volumetric fog; adding one would make the editor
 ## silently disagree with the web build, which is the one thing this project
-## cannot have. Depth fog (`fog_*`) is real here and does work.
+## cannot have.
+##
+## What IS real here was measured rather than recalled -- `tools/menu_probe.gd`
+## toggles each property on a lit scene and byte-compares the frames. On
+## GL Compatibility, Godot 4.7, NVIDIA/OpenGL 3.3, every control on this panel
+## changes the picture, GLOW INCLUDED: glow_enabled at intensity 8 moved mean
+## luma by +0.35. The received wisdom that glow is Forward+-only is wrong for
+## this version, and a disabled glow slider would have been a lie.
+##
+## The one property that can be inert is `ambient_light_energy`, and it is not
+## the renderer's fault: while `ambient_light_sky_contribution` is 1.0 the
+## ambient term comes entirely from the sky and energy is not applied. That is
+## exactly how vale_light.gd ships, so the sky-contribution slider sits next to
+## it and the row says so while it is inert. See `_note_for`.
 
+## Sizes are DEVICE pixels and go through `_ui()` before they are used. The
+## project stretches a 720x1280 portrait canvas onto whatever window it gets
+## (`canvas_items` / `expand`), so the logical space the layout runs in is not
+## the screen: on a 1280x800 desktop window it is 2048x1280. A literal "480
+## wide" panel drew 300 pixels across with 10-pixel text, which is how this
+## was found.
 const PANEL_W := 480.0
 const LABEL_W := 178.0
 const VALUE_W := 74.0
+const SLIDER_W := 130.0
+const SWATCH_W := 80.0
+const FONT_PX := 14.0
+const HEAD_PX := 12.0
 const CANVAS_LAYER := 128
-
-## Properties that exist on Environment but do nothing under the Compatibility
-## renderer. Measured, not assumed -- `tools/menu_probe.gd` toggles each one on
-## a lit scene and byte-compares the frames. A row named here is still built,
-## because it is real on Forward+ and this file is the only place the fact is
-## written down, but it is disabled and says so, so nobody spends an afternoon
-## dragging a slider that the renderer never reads.
-const COMPAT_DEAD := ["glow_enabled", "glow_intensity", "glow_bloom"]
 
 ## key, label, kind, where it lives, and the property path. `prop` goes through
 ## get_indexed/set_indexed so a sub-property ("rotation_degrees:y") is just
@@ -103,6 +118,13 @@ const BINDINGS := [
 	{"key": "light.ambient", "label": "Ambient energy", "kind": "float",
 	 "tab": "Light", "obj": "env", "prop": "ambient_light_energy",
 	 "head": "Environment"},
+	# Not on the original list, and it is here because without it the slider
+	# above is dead. Measured: ambient_light_energy moved nothing at all at
+	# sky contribution 1.0, and moved the frame the moment the contribution
+	# came down. Shipping the energy slider alone would have shipped a knob
+	# that does nothing in the exact configuration the game runs in.
+	{"key": "light.ambient_sky", "label": "Ambient from sky", "kind": "float",
+	 "tab": "Light", "obj": "env", "prop": "ambient_light_sky_contribution"},
 ]
 
 const TABS := ["Settings", "Post FX", "Light", "Stress"]
@@ -114,9 +136,10 @@ var _settings: Settings = null
 
 var _open := false
 var _panel: Control = null
-## key -> Array of {"main": Control, "value": Label}. A key can own more than
-## one row: shadows appear on both Settings and Light, and toggling either has
-## to move the other or the panel contradicts itself in the same screenshot.
+## key -> Array of {"main": Control, "value": Label, "name": Label}. A key can
+## own more than one row: shadows appear on both Settings and Light, and
+## toggling either has to move the other or the panel contradicts itself inside
+## a single screenshot.
 var _rows: Dictionary = {}
 ## The values the rig itself set, captured before anything saved is applied.
 ## "Default" means what vale_light.gd shipped, not what Godot's Environment
@@ -138,6 +161,11 @@ func setup(env: Environment, sun: DirectionalLight3D, host: Node,
 	_host = host
 	_settings = settings
 	layer = CANVAS_LAYER
+	# PROCESS_MODE_ALWAYS, before anything pauses. Pausing the tree while a
+	# debug panel is open is the obvious thing to want; with an inherited
+	# process mode it would stop _unhandled_input, and Escape could no longer
+	# close the thing that caused the pause.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	if _settings != null and not _settings.changed.is_connected(_on_setting_changed):
 		_settings.changed.connect(_on_setting_changed)
 	set_process(false)
@@ -316,23 +344,28 @@ func _build() -> void:
 	var panel := PanelContainer.new()
 	panel.name = "Panel"
 	panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-	panel.offset_right = PANEL_W
+	panel.offset_right = _ui(PANEL_W)
+	# The stock panel style is translucent, and a readout sitting over a bright
+	# meadow is a readout nobody can read -- which defeats the point of putting
+	# the numbers on the controls. A stylebox override, not a Theme resource.
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.07, 0.08, 0.11, 0.95)
+	panel.add_theme_stylebox_override("panel", bg)
 	add_child(panel)
 	_panel = panel
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 10)
+		margin.add_theme_constant_override("margin_" + side, int(_ui(8.0)))
 	panel.add_child(margin)
 
 	var col := VBoxContainer.new()
 	margin.add_child(col)
 
-	var title := Label.new()
-	title.text = "DEBUG    esc closes    %s" % _renderer_name()
-	col.add_child(title)
+	col.add_child(_label("DEBUG    esc closes    %s" % _renderer_name()))
 
 	var tabs := TabContainer.new()
+	tabs.add_theme_font_size_override("font_size", int(_ui(FONT_PX)))
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(tabs)
 
@@ -365,15 +398,44 @@ func _build() -> void:
 
 	var footer := HBoxContainer.new()
 	col.add_child(footer)
-	var save := Button.new()
-	save.text = "Save"
+	var save := _button("Save")
 	save.pressed.connect(_save_values)
 	footer.add_child(save)
-	_lbl_status = Label.new()
+	_lbl_status = _label("unsaved changes" if _dirty else Settings.PATH)
 	_lbl_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_lbl_status.clip_text = true
-	_lbl_status.text = "unsaved changes" if _dirty else Settings.PATH
+	_lbl_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	footer.add_child(_lbl_status)
+
+
+## Device pixels -> the logical units the Control layout actually runs in.
+## Falls back to 1:1 when there is no window to measure against, which is the
+## headless case and does not matter: nothing is being looked at.
+func _ui(px: float) -> float:
+	if not is_inside_tree():
+		return px
+	var logical: float = get_viewport().get_visible_rect().size.x
+	var device: float = float(DisplayServer.window_get_size().x)
+	if device <= 0.0 or logical <= 0.0:
+		return px
+	return px * (logical / device)
+
+
+## Every Label goes through here so the font size is converted exactly once.
+## Per-control overrides rather than a Theme: the house style is code-built
+## controls, and a Theme is a second copy of the look to keep in step.
+func _label(text: String, px := FONT_PX) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", int(_ui(px)))
+	return l
+
+
+func _button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.add_theme_font_size_override("font_size", int(_ui(FONT_PX)))
+	return b
 
 
 func _renderer_name() -> String:
@@ -388,16 +450,18 @@ func _status(text: String) -> void:
 
 func _header(parent: VBoxContainer, text: String) -> void:
 	parent.add_child(HSeparator.new())
-	var l := Label.new()
-	l.text = text.to_upper()
-	parent.add_child(l)
+	parent.add_child(_label(text.to_upper(), HEAD_PX))
 
 
 func _name_label(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.custom_minimum_size.x = LABEL_W
+	var l := _label(text)
+	l.custom_minimum_size.x = _ui(LABEL_W)
+	# TRIM_ELLIPSIS, not just clip_text: a long label reports a long minimum
+	# size, and HBoxContainer honours it by taking the space out of the slider.
+	# The first version of the inert note shrank its own slider to ten pixels.
 	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	l.size_flags_horizontal = Control.SIZE_FILL
 	return l
 
 
@@ -443,10 +507,10 @@ func _fmt(v: float, step: float) -> String:
 	return String.num(v, dp)
 
 
-func _register(key: String, main: Control, value: Label) -> void:
+func _register(key: String, main: Control, value: Label, name: Label) -> void:
 	if not _rows.has(key):
 		_rows[key] = []
-	_rows[key].append({"main": main, "value": value})
+	_rows[key].append({"main": main, "value": value, "name": name})
 
 
 ## Repaint every control bound to `key` from the live value. Cheap, and it is
@@ -475,7 +539,7 @@ func _refresh(key: String) -> void:
 				var cp := main as ColorPickerButton
 				cp.color = v
 				if value != null:
-					value.text = "#" + (v as Color).to_html()
+					value.text = "#" + (v as Color).to_html(false)
 
 
 func _binding(key: String) -> Dictionary:
@@ -489,7 +553,8 @@ func _add_slider(parent: VBoxContainer, e: Dictionary) -> void:
 	var r := _range_of(e)
 	var hb := HBoxContainer.new()
 	parent.add_child(hb)
-	hb.add_child(_name_label(String(e["label"])))
+	var name := _name_label(String(e["label"]) + _note_for(e))
+	hb.add_child(name)
 
 	var sl := HSlider.new()
 	sl.min_value = r.x
@@ -497,110 +562,109 @@ func _add_slider(parent: VBoxContainer, e: Dictionary) -> void:
 	sl.step = r.z
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	sl.custom_minimum_size.x = 140
+	sl.custom_minimum_size.x = _ui(SLIDER_W)
 	var now: Variant = _read_prop(e)
 	sl.set_value_no_signal(float(now) if now != null else r.x)
 	hb.add_child(sl)
 
-	var val := Label.new()
-	val.custom_minimum_size.x = VALUE_W
+	var val := _label(_fmt(sl.value, sl.step))
+	val.custom_minimum_size.x = _ui(VALUE_W)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	val.text = _fmt(sl.value, sl.step)
 	hb.add_child(val)
 
-	if _is_dead(e):
-		_mark_dead(hb, sl)
 	sl.value_changed.connect(func(v: float) -> void:
 		_write_prop(e, v)
 		val.text = _fmt(v, sl.step)
-		_dirty = true)
-	_register(String(e["key"]), sl, val)
+		_dirty = true
+		_update_notes())
+	_register(String(e["key"]), sl, val, name)
 
 
 func _add_toggle(parent: VBoxContainer, e: Dictionary) -> void:
 	var hb := HBoxContainer.new()
 	parent.add_child(hb)
-	hb.add_child(_name_label(String(e["label"])))
+	var name := _name_label(String(e["label"]) + _note_for(e))
+	hb.add_child(name)
 
 	var cb := CheckButton.new()
+	cb.add_theme_font_size_override("font_size", int(_ui(FONT_PX)))
 	var now := bool(_read_prop(e))
 	cb.set_pressed_no_signal(now)
 	cb.text = "on" if now else "off"
 	cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(cb)
 
-	if _is_dead(e):
-		_mark_dead(hb, cb)
 	var key: String = e["key"]
 	cb.toggled.connect(func(pressed: bool) -> void:
 		_write_prop(e, pressed)
 		_dirty = true
-		_refresh(key))
-	_register(key, cb, null)
+		_refresh(key)
+		_update_notes())
+	_register(key, cb, null, name)
 
 
 func _add_color(parent: VBoxContainer, e: Dictionary) -> void:
 	var hb := HBoxContainer.new()
 	parent.add_child(hb)
-	hb.add_child(_name_label(String(e["label"])))
+	var name := _name_label(String(e["label"]) + _note_for(e))
+	hb.add_child(name)
 
 	var cp := ColorPickerButton.new()
 	cp.edit_alpha = false
-	cp.custom_minimum_size = Vector2(80, 24)
+	cp.custom_minimum_size = Vector2(_ui(SWATCH_W), _ui(22.0))
 	cp.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var now: Variant = _read_prop(e)
 	cp.color = now if now != null else Color.WHITE
 	hb.add_child(cp)
 
-	var val := Label.new()
-	val.custom_minimum_size.x = 96
+	var val := _label("#" + cp.color.to_html(false))
+	val.custom_minimum_size.x = _ui(VALUE_W)
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	val.text = "#" + cp.color.to_html()
 	hb.add_child(val)
 
-	if _is_dead(e):
-		_mark_dead(hb, cp)
 	cp.color_changed.connect(func(c: Color) -> void:
 		_write_prop(e, c)
-		val.text = "#" + c.to_html()
+		val.text = "#" + c.to_html(false)
 		_dirty = true)
-	_register(String(e["key"]), cp, val)
+	_register(String(e["key"]), cp, val, name)
 
 
-func _is_dead(e: Dictionary) -> bool:
-	return String(e["prop"]) in COMPAT_DEAD \
-		and _renderer_name() == "gl_compatibility"
+## A control that is live but currently inert, and why. A slider that moves and
+## changes nothing is worse than a missing one: it invites an afternoon of
+## tuning, and the panel is the only place that fact will ever be read.
+##
+## Exactly one property earns a note, and it was measured rather than assumed:
+## ambient_light_energy does nothing at all while the ambient term comes
+## entirely from the sky. `tools/menu_probe.gd` reports it NO CHANGE at sky
+## contribution 1.0 and changed at 0.0.
+func _note_for(e: Dictionary) -> String:
+	if String(e["key"]) == "light.ambient" and _env != null \
+			and _env.ambient_light_sky_contribution >= 1.0:
+		return "  (inert)"
+	return ""
 
 
-## A control the renderer never reads is worse than a missing one -- it invites
-## an afternoon of tuning that changes nothing. Disable it and say why in the
-## row, where it will be read, rather than only in a report nobody reopens.
-func _mark_dead(row: HBoxContainer, ctrl: Control) -> void:
-	# A Slider is greyed out with `editable`, a Button with `disabled`. They do
-	# not share the property, and setting the wrong one is a runtime error on a
-	# path that only runs when something is already broken.
-	if ctrl is BaseButton:
-		(ctrl as BaseButton).disabled = true
-	elif ctrl is Slider:
-		(ctrl as Slider).editable = false
-	ctrl.tooltip_text = "no effect under GL Compatibility"
-	ctrl.modulate = Color(1, 1, 1, 0.45)
-	for c in row.get_children():
-		if c is Label:
-			(c as Label).text += "  (no-op)"
-			break
+## Re-apply every row's note. Called after any change, because the thing that
+## makes a note stale is the slider two rows below it.
+func _update_notes() -> void:
+	for key in _rows:
+		var e := _binding(key)
+		if e.is_empty():
+			continue
+		for row in _rows[key]:
+			var lbl: Label = row["name"]
+			if lbl != null:
+				lbl.text = String(e["label"]) + _note_for(e)
 
 
 func _build_settings_extras(page: VBoxContainer) -> void:
 	_header(page, "Defaults")
-	var btn := Button.new()
-	btn.text = "Reset to defaults"
+	var btn := _button("Reset to defaults")
 	btn.pressed.connect(_reset_defaults)
 	page.add_child(btn)
-	var note := Label.new()
+	var note := _label("Restores the values the light rig set at startup. "
+		+ "The saved file only changes when you press Save.", HEAD_PX)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.text = "Restores the values vale_light.gd set at startup. " \
-		+ "The saved file only changes when you press Save."
 	page.add_child(note)
 
 
@@ -609,13 +673,11 @@ func _build_stress(page: VBoxContainer) -> void:
 	var hb := HBoxContainer.new()
 	page.add_child(hb)
 	for n in [1, 10, 50]:
-		var b := Button.new()
-		b.text = "+%d" % n
+		var b := _button("+%d" % n)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(_spawn.bind(n))
 		hb.add_child(b)
-	var clear := Button.new()
-	clear.text = "Clear"
+	var clear := _button("Clear")
 	clear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	clear.pressed.connect(_clear)
 	hb.add_child(clear)
@@ -623,15 +685,13 @@ func _build_stress(page: VBoxContainer) -> void:
 	var count_row := HBoxContainer.new()
 	page.add_child(count_row)
 	count_row.add_child(_name_label("Spawned"))
-	_lbl_count = Label.new()
-	_lbl_count.text = str(_spawned)
+	_lbl_count = _label(str(_spawned))
 	count_row.add_child(_lbl_count)
 
 	var fps_row := HBoxContainer.new()
 	page.add_child(fps_row)
 	fps_row.add_child(_name_label("Frame rate"))
-	_lbl_fps = Label.new()
-	_lbl_fps.text = "%d fps" % Engine.get_frames_per_second()
+	_lbl_fps = _label("%d fps" % Engine.get_frames_per_second())
 	fps_row.add_child(_lbl_fps)
 
 
