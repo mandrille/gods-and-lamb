@@ -56,6 +56,27 @@ On a mobile browser, triangles are rarely the ceiling. Watch, in this order:
 4. **Shadow map cost.** One directional light, and its shadow settings are worth
    more than a hundred triangles anywhere.
 
+## The web build, and what it actually costs
+
+`RUN web` prints the size report. Measured 2026-09-01:
+
+    index.wasm   38 MB raw   9.7 MB gzip   the engine, and it is FIXED
+    index.pck   569 KB raw   526 KB gzip   the entire game
+    total        39 MB raw    11 MB gzip
+
+The engine is 88% of the download. Judge a change against `index.pck`, never
+against the total -- a new building is tens of KB and moves the download by
+fractions of a percent. If someone asks you whether an asset is "too big for
+web", the answer is almost certainly no and the question is on the wrong axis.
+
+What IS worth your attention, in the order it bites: draw calls and fill rate
+(GL Compatibility on a phone is fill-bound long before it is vertex-bound, and
+the ground only survives because it batches -- 3255 tiles in 6 MultiMesh
+draws), then per-frame script work, then skinned-mesh count.
+
+Still unmeasured and worth saying so rather than guessing: frame rate in a real
+browser window, load time on a real connection, and anything at all on a phone.
+
 ## Traps that have cost real time here
 
 - **A count is not coverage.** "75 meshes, all under cap" says nothing about the

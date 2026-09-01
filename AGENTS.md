@@ -194,6 +194,22 @@ comments *why*, especially where a wrong-looking choice is deliberate and where
 a bug was paid for — match that. Do not add a comment restating what the line
 does.
 
+## 10. PC first, then price it for web
+
+Make the change for **PC**. Get it right there. Then run `RUN web`, read the
+size report, and decide whether it is affordable -- cut it or keep it. Desktop
+is where a change is judged as ART; the web build is where it is judged as
+COST, and those are two questions asked in that order.
+
+Measured on the first complete build: the engine wasm is **9.7 MB gzipped and
+fixed**, and the entire game -- every GLB, every script, the whole layout -- is
+**526 KB**, five percent of the download. So judge a change against
+`index.pck`, never against the total. "Will this art blow the download budget"
+is almost always no, and the honest costs are draw calls, fill rate and
+per-frame script work, none of which the size report can show you.
+
+Full numbers and the things still unmeasured: `docs/web-cost.md`.
+
 ## 9. How this file grows
 
 Every trap that costs real debugging time gets written down:
