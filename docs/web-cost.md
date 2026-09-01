@@ -102,6 +102,26 @@ count, and **+0.002 ms/frame** for the 500-particle simulation on a desktop
 GPU -- below the noise floor there, and untested on a phone, which is where
 alpha billboards are expected to bite.
 
+## A second worked example, 2026-09-01
+
+One session added: a full walkability grid over 6,912 cells with A*, per-prop
+footprint blocking, a needs-driven brain per follower, a connected-region flood
+fill, two new headless probes, and a rewrite of how settings persist.
+
+    before   index.pck  581,566 gzip     TOTAL 10,764,150 gzip
+    after    index.pck  593,505 gzip     TOTAL 10,776,089 gzip
+    delta               +11,939          +0.11% of the download
+
+**All of the simulation groundwork cost 12 KB.** It is pure code and one extra
+field per prop in `vale.json` (the declared footprint), which is exactly the
+cheap half of the axis — the pck grew by 2%, the download by a tenth of a
+percent.
+
+What it costs where it matters is a different question and is NOT answered by
+this number: A* runs once per follower per errand, not per frame, and the grid
+is a `PackedByteArray` of 6,912 bytes built once. The thing to watch is
+follower count, which is being measured separately.
+
 ## What is still unmeasured
 
 - **Frame rate**, desktop or mobile, in a real browser window.

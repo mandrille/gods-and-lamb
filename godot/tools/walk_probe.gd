@@ -87,6 +87,9 @@ func _process(_d: float) -> bool:
 	if not _routes_hold():
 		quit(1)
 		return true
+	if not _errands_differ():
+		quit(1)
+		return true
 	print("[WALK] ok")
 	quit(0)
 	return true
@@ -183,5 +186,38 @@ func _routes_hold() -> bool:
 		return false
 	if used_bridge == 0:
 		printerr("[WALK] FAIL: not one route crossed at a bridge.")
+		return false
+	return true
+
+
+## Do two followers standing in the same place want different things?
+##
+## "Individual per villager" is easy to believe and easy to get wrong: the
+## brain is per-follower, but if every brain runs the same deterministic
+## nearest-source rule then twenty followers on one doorstep walk to one tree
+## in single file. The seed being different does not help, because the seed
+## only feeds the need LEVELS -- the destination lookup never touched it.
+##
+## So pin everything except identity: same cell, same need, forty brains.
+func _errands_differ() -> bool:
+	var BrainScript := load("res://scripts/brain.gd")
+	var from: Vector2i = _grid.cell_of(Vector3(0.0, 0.5, 0.0))
+	if not _grid.is_walkable(from):
+		from = _grid.beside(from)
+	var seen := {}
+	var n := 40
+	for i in n:
+		var b = BrainScript.new(9000 + i)
+		# Force the same need on all of them, so any spread is the destination
+		# choice and not a difference in what they happened to want.
+		b.hunger = 0.95
+		b.rest = 0.0
+		var d: Vector2i = b.destination(_grid, from)
+		seen[d] = true
+	print("[WALK] %d brains, same cell, same need -> %d distinct destinations"
+		% [n, seen.size()])
+	if seen.size() < 3:
+		printerr("[WALK] FAIL: followers are walking in formation -- %d "
+			% seen.size() + "destination(s) for %d followers." % n)
 		return false
 	return true

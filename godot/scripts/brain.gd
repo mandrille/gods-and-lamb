@@ -25,6 +25,7 @@ enum Need { HUNGER, REST, WANDER }
 const RATES := {Need.HUNGER: 0.028, Need.REST: 0.018}
 const SATISFY := 0.85          ## how much arriving takes off the need
 const URGENT := 0.55           ## below this, nothing is worth crossing the map
+const NEAR_CHOICES := 5        ## how many of the nearest sources to choose among
 
 ## Where each need sends a follower. Kept as asset ids because that is what the
 ## grid indexes; a "kitchen" abstraction on top of two entries would be a layer
@@ -83,22 +84,35 @@ func destination(grid: WalkGrid, from: Vector2i) -> Vector2i:
 	if need == Need.WANDER:
 		return grid.random_cell(rng)
 
-	var best := Vector2i(-1, -1)
-	var best_d := 1 << 30
+	# Gather the candidates, then pick among the NEAREST FEW rather than the
+	# single nearest. Strictly-nearest is a rule, and a village where everyone
+	# obeys the same rule from the same starting positions walks in formation:
+	# the two followers who share a doorstep pick the same tree every time,
+	# forever. Choosing from a short list of near ones keeps the behaviour
+	# legible -- nobody crosses the map past three closer trees -- while making
+	# the choice that follower's own.
+	var ranked: Array = []
 	for aid in SOURCES[need]:
 		for c in grid.cells_of(aid):
 			var cell: Vector2i = c
-			var d: int = absi(cell.x - from.x) + absi(cell.y - from.y)
-			if d >= best_d:
-				continue
-			var stand := grid.beside(cell)
-			if stand.x < 0:
-				continue
-			best_d = d
-			best = stand
-	if best.x < 0:
+			ranked.append([absi(cell.x - from.x) + absi(cell.y - from.y), cell])
+	if ranked.is_empty():
 		return grid.random_cell(rng)
-	return best
+	ranked.sort_custom(func(a, b): return a[0] < b[0])
+
+	for i in mini(NEAR_CHOICES, ranked.size()):
+		# Sample without replacement from the head of the list, so a shortage of
+		# standing room next to the closest tree falls through to the next one
+		# instead of dumping the follower somewhere random across the map.
+		var pick: int = rng.randi_range(0, mini(NEAR_CHOICES, ranked.size()) - 1)
+		var target: Vector2i = ranked[pick][1]
+		var stand: Vector2i = grid.beside(target, rng)
+		if stand.x >= 0:
+			return stand
+		ranked.remove_at(pick)
+		if ranked.is_empty():
+			break
+	return grid.random_cell(rng)
 
 
 ## Arriving relieves whatever sent us. Wandering relieves nothing, which is

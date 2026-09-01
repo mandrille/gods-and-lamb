@@ -205,13 +205,29 @@ func cells_of(asset_id: String) -> Array:
 
 ## A walkable cell beside `c`, since the interesting things -- trees, doors --
 ## are themselves solid and cannot be stood on.
-func beside(c: Vector2i) -> Vector2i:
+##
+## Takes an optional rng and picks RANDOMLY among the cells at the nearest ring
+## that has any. Returning the first hit in scan order instead would send every
+## follower who ever wants this tree to the same cell on the same side of it,
+## and two of them standing in the same half-metre is the single most obvious
+## way for a village to stop looking alive.
+func beside(c: Vector2i, rng: RandomNumberGenerator = null) -> Vector2i:
 	for r in [1, 2, 3]:
+		var ring: Array[Vector2i] = []
 		for i in range(-r, r + 1):
 			for j in range(-r, r + 1):
-				var n := c + Vector2i(i, j)
+				# The ring only, not the filled square: the inner cells were
+				# already offered at a smaller radius and rejected.
+				if absi(i) != r and absi(j) != r:
+					continue
+				var n: Vector2i = c + Vector2i(i, j)
 				if is_walkable(n):
-					return n
+					ring.append(n)
+		if ring.is_empty():
+			continue
+		if rng == null:
+			return ring[0]
+		return ring[rng.randi_range(0, ring.size() - 1)]
 	return Vector2i(-1, -1)
 
 
