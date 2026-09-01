@@ -61,6 +61,7 @@ var ui: CanvasLayer
 var overhead: Overhead
 var panel: VillagerPanel
 var hud: HUD
+var floaters: Floaters
 var fxe: FXEvents
 var sfx: SFX
 var plots: PlotMarkers
@@ -337,12 +338,53 @@ func _wire_follower(f: Node) -> void:
 			_raise_structure(f, act, raises, spec)
 			return
 		_consume_target(f, spec, at)
-		if act == "chop" or act == "quarry":
-			fxe.burst("chips", at)
-			sfx.play("chop", 0.85)
-		elif act in ["harvest", "forage", "pick"]:
-			fxe.burst("chips", at, 0.5)
-			sfx.play("pick", 1.1))
+		_report_job(f, act, spec, at))
+
+
+## Tell the player what a finished job DID.
+##
+## Every action gets an effect, a sound and -- when it produced something -- a
+## token that flies from the villager to the counter it changed. The report was
+## that the village felt inert, and the cause was that work was invisible: an
+## animation played, a number in the corner moved, and nothing connected the
+## two. A token leaving the person who earned it is that connection.
+const JOB_LOOK := {
+	"chop":    {"fx": "chips", "sfx": "chop", "icon": "wood"},
+	"quarry":  {"fx": "chips", "sfx": "chop", "icon": "stone"},
+	"forage":  {"fx": "grove", "sfx": "pick", "icon": "food"},
+	"harvest": {"fx": "bounty", "sfx": "pick", "icon": "food"},
+	"pick":    {"fx": "revel", "sfx": "pick", "icon": "fun"},
+	"eat":     {"fx": "feast", "sfx": "pick", "icon": "hunger"},
+	"rest":    {"fx": "mend", "sfx": "chat", "icon": "energy"},
+	"wash":    {"fx": "splash", "sfx": "pick", "icon": "hygiene"},
+	"pray":    {"fx": "bless", "sfx": "miracle", "icon": "faith"},
+	"play":    {"fx": "revel", "sfx": "chat", "icon": "fun"},
+	"sow":     {"fx": "grove", "sfx": "pick", "icon": "wheat"},
+}
+
+const RESOURCE_ROW := {"wood": "wood", "stone": "stone", "food": "food"}
+
+
+func _report_job(f: Node, act: String, spec: Dictionary, at: Vector3) -> void:
+	var look: Dictionary = JOB_LOOK.get(act, {})
+	if not look.is_empty():
+		fxe.burst(String(look["fx"]), at, 0.7)
+		sfx.play(String(look["sfx"]), 1.0)
+
+	# What it produced, flying to the counter it changed.
+	var gave := false
+	for res in spec.get("gives", {}):
+		var key := String(res)
+		floaters.spawn(String(RESOURCE_ROW.get(key, "food")), key,
+					   int(spec["gives"][res]), at)
+		gave = true
+	if gave:
+		return
+	# Nothing for the ledger, but the villager still did something -- a need
+	# filled, a field sown. Say so where it happened and let it fade.
+	if not look.is_empty():
+		floaters.puff(String(look["icon"]),
+					  String(spec.get("verb", act)).capitalize(), at)
 
 
 ## Take away what was just worked on, and leave behind whatever replaces it.
@@ -378,7 +420,12 @@ func _consume_target(f: Node, spec: Dictionary, at: Vector3) -> void:
 
 	var col := int(best.get("col", -1))
 	var row := int(best.get("row", -1))
-	builder.remove_prop(best)
+	# Trees and rocks TOPPLE away from whoever worked them; small scatter just
+	# goes, because a flower falling over is not a moment.
+	if want in ["Nature/tree", "Nature/pine"]:
+		builder.fell_prop(best, f.position)
+	else:
+		builder.remove_prop(best)
 	var leaves := String(spec.get("leaves", ""))
 	if leaves != "" and col >= 0:
 		builder.add_prop(leaves, col, row, _rng.randf_range(0.0, 360.0))
@@ -398,7 +445,11 @@ func _raise_structure(f: Node, act: String, aid: String,
 	var cell: Vector2i = f.brain.target_cell
 	var ok := false
 	if cell.x >= 0:
-		ok = builder.add_prop(aid, cell.x, cell.y, _rng.randf_range(0.0, 360.0))
+		# SQUARE TO THE GRID. Buildings are rectangular, the ground is a grid,
+		# and a cottage at 37 degrees reads as something that fell out of the
+		# sky. Nature can sit at any angle; anything with a door cannot.
+		ok = builder.add_prop(aid, cell.x, cell.y,
+							  90.0 * float(_rng.randi_range(0, 3)))
 	if not ok:
 		village.give(spec.get("takes", {}))
 		return
@@ -464,6 +515,12 @@ func _add_ui() -> void:
 	hud.divinity = divinity
 	hud.rig = rig
 	ui.add_child(hud)
+
+	floaters = Floaters.new()
+	floaters.name = "Floaters"
+	floaters.host = self
+	floaters.hud = hud
+	ui.add_child(floaters)
 
 	overhead.follower_clicked.connect(panel.show_for)
 	panel.bless_pressed.connect(func(who): divinity.bless(who))
@@ -540,6 +597,11 @@ func rebuild_grid() -> void:
 	for f in folk:
 		if is_instance_valid(f):
 			f.grid = grid
+			# The BRAIN holds one too, for deciding whether a job has anywhere
+			# to be done. Updating only the body leaves every villager
+			# reasoning about the world as it was before the last miracle.
+			if f.brain != null:
+				f.brain.grid = grid
 	# The prop set changed too -- that is WHY the grid is being rebuilt -- so
 	# the picker's cached AABBs are stale in exactly the same way, and the
 	# structure census is what tells villagers whether to build another.
@@ -559,6 +621,11 @@ func rebuild_world() -> void:
 	for f in folk:
 		if is_instance_valid(f):
 			f.grid = grid
+			# The BRAIN holds one too, for deciding whether a job has anywhere
+			# to be done. Updating only the body leaves every villager
+			# reasoning about the world as it was before the last miracle.
+			if f.brain != null:
+				f.brain.grid = grid
 	village.census(builder.placed_props)
 	if pick != null:
 		# setup(), not a direct assignment. The picker builds a WORLD AABB per

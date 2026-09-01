@@ -73,13 +73,13 @@ const ACTIONS := {
 	# food is gone. A heap that stays forever is a permanent free lunch.
 	"forage":  {"need": "", "sources": ["Nature/apples", "Nature/bush"],
 				"seconds": 3.0, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 2}, "morality": 0.01, "verb": "foraging",
+				"gives": {"food": 3}, "morality": 0.01, "verb": "foraging",
 				# Only the apple heap is used up. A bush picked bare would
 				# leave the village one bad afternoon from no food at all.
 				"consumes_only": ["Nature/apples"]},
 	"harvest": {"need": "", "sources": ["Nature/crop_row"],
 				"seconds": 3.5, "anim": "pickup", "refill": 0.0,
-				"gives": {"food": 3}, "morality": 0.02, "verb": "harvesting",
+				"gives": {"food": 5}, "morality": 0.02, "verb": "harvesting",
 				"consumes": true},
 	# `consumes` removes what was worked on; `leaves` puts something in its
 	# place. This is what makes the world change under the villagers rather
@@ -182,6 +182,10 @@ var chatting_with := ""
 var last_action := ""
 
 var village = null                       ## Village, injected; may be null
+## The map, injected by the body. Needed at CHOOSING time, not only at routing
+## time: an action whose source does not exist anywhere is not a choice, it is
+## a wasted walk, and the difference is invisible from outside.
+var grid = null
 
 
 func _init(seed_value: int) -> void:
@@ -381,11 +385,48 @@ func _worst_actionable() -> Array:
 	return [key, low] if key != "" else ["", 1.0]
 
 
+## The action that answers a need -- but only if it can actually be DONE.
+##
+## Affordability is checked HERE, at the moment of choosing, not on arrival.
+## With fifty villagers and an empty granary, every one of them chose `eat`,
+## walked across the map, was refused at the larder, waited, and chose `eat`
+## again: 1160 of 1906 decisions ended in a refusal and only 13% produced any
+## work at all. From outside that is a village standing around doing nothing,
+## and the cause is not idleness -- it is a queue for food that does not exist.
+##
+## Returning "" when the store is empty makes hunger a NON-actionable need, so
+## `_worst_actionable` moves on, and the work branch below picks up foraging
+## with a shortage of 1.0 behind it. Hungry villagers go and find food instead
+## of queueing for it.
 func _action_for_need(key: String) -> String:
 	for a in ACTIONS:
-		if String(ACTIONS[a].get("need", "")) == key:
-			return a
+		var spec: Dictionary = ACTIONS[a]
+		if String(spec.get("need", "")) != key:
+			continue
+		if village != null:
+			var takes: Dictionary = spec.get("takes", {})
+			if not takes.is_empty() and not village.can_take(takes):
+				return ""
+		# And the PLACE has to exist. Praying needs a shrine; with none built,
+		# every villager whose Faith ran low chose `pray`, found no
+		# destination, wandered, and chose it again -- 2473 dead decisions in
+		# one run, which from outside is a village milling about.
+		if not _somewhere_to_do(spec):
+			return ""
+		return a
 	return ""
+
+
+## Is there anywhere in the world to perform this action?
+func _somewhere_to_do(spec: Dictionary) -> bool:
+	if bool(spec.get("anywhere", false)):
+		return true
+	if grid == null:
+		return true                    # no map yet; do not veto on ignorance
+	for aid in spec.get("sources", []):
+		if not (grid.cells_of(String(aid)) as Array).is_empty():
+			return true
+	return false
 
 
 ## How much the village wants this work done.
@@ -414,6 +455,8 @@ func _demand(a: String) -> float:
 		# should build one rather than keep stacking wood.
 		return 0.6 + need * 2.2
 
+	if not _somewhere_to_do(spec):
+		return 0.0
 	var gives: Dictionary = spec.get("gives", {})
 	var want := 0.0
 	for res in gives:
@@ -514,10 +557,15 @@ func _open_spot(grid, from: Vector2i, clear: float) -> Vector2i:
 	return best
 
 
+## Room for a building: plain grass all the way round, not merely walkable.
+##
+## `is_walkable` is true of the road, the ploughed field and the river bank,
+## so a site test built on it put huts across the highway and wells in the
+## middle of the crops.
 func _has_room(grid, centre: Vector2i, radius: int) -> bool:
 	for i in range(-radius, radius + 1):
 		for j in range(-radius, radius + 1):
-			if not grid.is_walkable(centre + Vector2i(i, j)):
+			if not grid.is_plain(centre + Vector2i(i, j)):
 				return false
 	return true
 
@@ -554,6 +602,10 @@ func begin_action(act: String) -> bool:
 		return false
 	action = act
 	action_left = float(spec["seconds"])
+	# Claim the structure so nobody else starts a second one meanwhile.
+	var raises := String(spec.get("builds", ""))
+	if raises != "" and village != null:
+		village.claim(raises)
 	return true
 
 

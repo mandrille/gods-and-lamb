@@ -51,7 +51,7 @@ const FOUR_WAY: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
 const FOOTPRINTS := {
 	"Buildings/hut": [2.0, 2.0], "Buildings/cottage": [2.2, 2.2],
 	"Buildings/market_stall": [1.6, 1.2], "Buildings/well": [1.0, 1.0],
-	"Buildings/shrine": [1.6, 1.6], "Buildings/bridge": [0.5, 0.68],
+	"Buildings/shrine": [1.6, 1.6], "Buildings/bridge": [0.5, 0.62],
 }
 
 ## How often a road runs, in tiles, and how wide. Global lines, so roads line
@@ -260,7 +260,7 @@ func _roads(ground: Array, props: Array, n: int) -> void:
 			or _char_at(ground, c.x, c.y + 1) == "W"
 		props.append({"id": "Buildings/bridge", "col": c.x, "row": c.y,
 					  "yaw": 90.0 if vertical else 0.0, "scale": 1.0,
-					  "fp": [0.5, 0.68]})
+					  "fp": [0.5, 0.62]})
 
 
 ## Farmland and raised shelves, on a JITTERED LATTICE.
@@ -369,8 +369,10 @@ func _scatter(props: Array, ground: Array, upper: Array,
 			if _too_close(taken, cell, clear):
 				continue
 			taken[cell] = clear
+			# Buildings square to the grid; nature at any angle it likes.
+			var yaw: float = 90.0 * float(r.randi_range(0, 3)) 				if aid.begins_with("Buildings/") else r.randf_range(0.0, 360.0)
 			props.append({"id": aid, "col": col, "row": row,
-						  "yaw": r.randf_range(0.0, 360.0), "scale": 1.0,
+						  "yaw": yaw, "scale": 1.0,
 						  "fp": FOOTPRINTS.get(aid, [0.5, 0.5])})
 			placed += 1
 

@@ -46,6 +46,13 @@ var extent_max := Vector3.ZERO
 ## still comes off disk, and both go through exactly one builder.
 var source_doc: Dictionary = {}
 
+## Props mid-topple: {node, axis, spin, t}. A tree that vanishes the instant
+## the axe lands reads as a bug -- the player sees the swing and then a hole.
+## It falls instead, and the RECORD is removed immediately so the walk grid and
+## the picker are correct from the first frame while the body is still moving.
+var _falling: Array[Dictionary] = []
+const FALL_SECONDS := 0.85
+
 
 func _ready() -> void:
 	if source_doc.is_empty():
@@ -338,6 +345,50 @@ func add_prop(aid: String, col: int, row: int, yaw := 0.0,
 ## Take one out. The entry is removed from `placed_props` FIRST, so nothing can
 ## observe the list holding a freed node -- queue_free is deferred, and a picker
 ## running this frame would happily test its AABB.
+## Take a prop out of the world by TIPPING IT OVER, away from `from`.
+##
+## The entry leaves `placed_props` at once -- pathing and picking must agree
+## with the rules immediately -- and only the visual body lingers. Doing it the
+## other way round would leave a felled tree still blocking the tile it fell
+## off.
+func fell_prop(entry: Dictionary, from: Vector3) -> void:
+	placed_props.erase(entry)
+	var node = entry.get("node")
+	if not is_instance_valid(node):
+		return
+	var away: Vector3 = node.position - from
+	away.y = 0.0
+	if away.length_squared() < 0.001:
+		away = Vector3(1, 0, 0)
+	away = away.normalized()
+	# Rotate about the horizontal axis PERPENDICULAR to the fall direction, so
+	# the trunk lies down away from whoever was chopping it.
+	_falling.append({"node": node, "axis": Vector3(-away.z, 0.0, away.x),
+					 "t": 0.0, "base": node.position.y})
+
+
+func _process(delta: float) -> void:
+	if _falling.is_empty():
+		return
+	var kept: Array[Dictionary] = []
+	for e in _falling:
+		var node = e["node"]
+		if not is_instance_valid(node):
+			continue
+		var t: float = float(e["t"]) + delta / FALL_SECONDS
+		e["t"] = t
+		if t >= 1.0:
+			node.queue_free()
+			continue
+		# Accelerating fall, then a short sink so it leaves rather than lying
+		# there forever accumulating.
+		var ang: float = deg_to_rad(84.0) * minf(1.0, t * t * 1.6)
+		node.basis = Basis(e["axis"], ang)
+		node.position.y = float(e["base"]) - maxf(0.0, (t - 0.75) * 1.6)
+		kept.append(e)
+	_falling = kept
+
+
 func remove_prop(entry: Dictionary) -> void:
 	placed_props.erase(entry)
 	var node = entry.get("node")

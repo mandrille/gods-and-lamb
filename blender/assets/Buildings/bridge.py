@@ -10,8 +10,11 @@ gaps are the only thing that says "planks" at forty pixels -- a solid slab in
 faces land exactly on +/-0.25, which is what fixes the module; everything else
 about the spacing is free.
 
-Rails get one post per section at the LEFT end, for the reason fence.py gives:
-a post at each end doubles into a lump at every joint.
+There are no rails. Every placement of this asset got the yaw wrong in a new
+way while it had them -- handrails cutting through their own planks, rails
+laid across the span instead of along it -- and a flat deck simply has no
+wrong orientation available. Rotate it ninety degrees and it is still a
+correct bridge.
 
 The stringers underneath are `wood_dark` and run the full module. They are not
 decoration -- without them you see daylight between the planks straight down to
@@ -30,9 +33,9 @@ ASSET = dict(
     family="bridge",
     variant="bridge",
     category=CATEGORY,
-    # MEASURED. X is the module by construction; Y is the rail posts, which sit
-    # outboard of the deck.
-    footprint=(0.50, 0.68),
+    # MEASURED. X is the module by construction; Y is now just the deck, since
+    # the rails that used to stand outboard of it are gone.
+    footprint=(0.50, 0.62),
     anchor="floor",
     slots=(),
 )
@@ -42,9 +45,6 @@ PLANKS = 4
 PLANK_GAP = 0.022
 STRINGER_Z, STRINGER_T = 0.035, 0.070
 DECK_Z, DECK_T = 0.098, 0.056
-POST_W, POST_D, POST_H = 0.060, 0.060, 0.46
-RAIL_T = 0.045
-RAIL_Z = (0.26, 0.40)     # top rail top must clear POST_H, see below
 
 
 def build(tag="BRIDGE", **kw):
@@ -67,26 +67,15 @@ def build(tag="BRIDGE", **kw):
         P.append(box("%s_Plank%d" % (tag, i), (x, 0.0, DECK_Z),
                      (plank_w, DECK_D, DECK_T), M["wood"]))
 
-    # Rails. One post per side, flush to the left edge of the module.
-    px = -TILE * 0.5 + POST_W * 0.5
-    post_top = DECK_Z + POST_H
-    for sy, side in ((-1, "F"), (1, "B")):
-        # Overlapping the deck edge by 3 cm, not standing clear of it. Set
-        # outboard with an 18 mm air gap the post had nothing under it and
-        # nothing beside it, and the first render was a rail hanging in space
-        # next to the planks.
-        py = sy * (DECK_D * 0.5 + POST_D * 0.5 - 0.030)
-        # Down to z=0. These are piles: a bridge post that starts at deck level
-        # is standing on the water.
-        P.append(box("%s_Post%s" % (tag, side), (px, py, post_top * 0.5),
-                     (POST_W, POST_D, post_top), M["wood_dark"]))
-        # The top rail sits BELOW the post top, not level with it. At 0.44 its
-        # rounded top stood 2.5 mm proud of the post and the post stopped
-        # reading as a post -- a newel that does not cap its rail looks like a
-        # rail that has been stabbed.
-        for j, z in enumerate(RAIL_Z):
-            P.append(box("%s_Rail%s%d" % (tag, side, j), (0.0, py, DECK_Z + z),
-                         (TILE, 0.038, RAIL_T), M["wood"]))
+    # NO RAILS. They were posts and two handrails outboard on Y, and every
+    # time this asset was placed the yaw was wrong in some new way -- rails
+    # cutting through the planks, rails running across the span instead of
+    # along it. A flat deck has no wrong orientation to get wrong: rotate it
+    # ninety degrees and it is still a correct bridge.
+    #
+    # It also matches what the deck is FOR here. These are short crossings
+    # over a shallow stream, not a viaduct, and the reference art has a plain
+    # plank causeway.
 
     soften_all(P, width=0.022, segments=2)
     return P

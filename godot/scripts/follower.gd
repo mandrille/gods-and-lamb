@@ -62,6 +62,16 @@ var _shown_scale := -1.0
 ## -- the perf harness gives followers a brain AND a fixed path.
 var _loop := false
 
+## Diagnostics. Cheap counters, read by tools/idle_probe.gd, because "they look
+## idle" is a symptom with at least four different causes -- no destination, no
+## route, the job refused, or simply a long walk -- and they are indistinguish-
+## able from outside.
+var n_replans := 0
+var n_no_target := 0
+var n_no_route := 0
+var n_refused := 0
+var n_started := 0
+
 
 ## Give the follower a mind and a map and it decides for itself.
 func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0,
@@ -70,6 +80,7 @@ func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0,
 	brain = Brain.new(seed_value)
 	brain.name = NAMES[seed_value % NAMES.size()]
 	brain.village = village
+	brain.grid = walk_grid
 	name = "Follower_%s" % brain.name
 	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * walk_speed_scale
 	_walk_scale = walk_speed_scale
@@ -90,6 +101,7 @@ func _replan() -> void:
 			return
 		position = grid.world_of(here)
 
+	n_replans += 1
 	var act := brain.choose_action()
 	# "talk" is not a place. The social layer pairs people up when they happen
 	# to be near each other, so wanting company means wandering where company
@@ -101,12 +113,18 @@ func _replan() -> void:
 	# Up to a few tries: a destination can be genuinely unreachable -- the far
 	# bank without a bridge in range, or high ground with no ramp -- and
 	# treating that as an error would freeze the follower forever.
+	var had_target := false
 	for attempt in 3:
 		var to := brain.destination_for(grid, here, act)
 		if to.x < 0:
 			break
+		had_target = true
 		if _route_to(to, act):
 			return
+	if had_target:
+		n_no_route += 1
+	else:
+		n_no_target += 1
 	_route_to(grid.random_cell(brain.rng), "")
 
 
@@ -136,9 +154,14 @@ func _begin_work() -> void:
 	var act := _pending
 	_pending = ""
 	path.clear()
-	if act == "" or brain == null or not brain.begin_action(act):
+	if act == "" or brain == null:
 		_wait()
 		return
+	if not brain.begin_action(act):
+		n_refused += 1
+		_wait()
+		return
+	n_started += 1
 	state = State.WORK
 	var spec: Dictionary = Brain.ACTIONS[act]
 	_play(String(spec.get("anim", "idle")))

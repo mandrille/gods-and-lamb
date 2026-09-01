@@ -115,6 +115,15 @@ const KINDS := {
 		"speed": [0.8, 1.6], "spread": 50.0, "up": 1.2, "gravity": -1.0,
 		"life": 1.8, "drag": 1.0, "spin": 0.0, "shape": "point",
 	},
+	"splash": {
+		# ONE villager at a basin, not weather. Washing borrowed the `rain`
+		# effect and got a four-metre column of falling water over a single
+		# person, which reads as a storm the player did not cast.
+		"mesh": "quad", "size": Vector2(0.05, 0.05), "count": 18,
+		"colour": Color(0.62, 0.86, 1.00), "add": true,
+		"speed": [1.1, 2.0], "spread": 60.0, "up": 1.0, "gravity": 5.0,
+		"life": 0.8, "drag": 0.6, "spin": 0.0, "shape": "point",
+	},
 	"build": {
 		"mesh": "chunk", "size": Vector2(0.07, 0.07), "count": 28,
 		"colour": Color(0.80, 0.72, 0.58), "add": false,

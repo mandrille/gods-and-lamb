@@ -443,6 +443,42 @@ def _plant(arm, mesh, act, frames):
     bpy.context.scene.frame_set(1)
 
 
+def assert_bends_forward(arm, mesh, name, frame, rest_frame=1, tol=0.012):
+    """The upper body must move FORWARD at `frame`, not backward.
+
+    Reasoned sign conventions are exactly the kind of thing that comes out
+    backwards and still builds, renders and exports -- the villagers arched
+    away from the tree they were chopping for a whole session because the
+    torso copied the walk's leg sign. So it is measured: take the mean Y of
+    the vertices above the hip at the bent frame and at rest, and require the
+    bent one to be further toward -Y, which is the way this character faces.
+    """
+    sc = bpy.context.scene
+
+    def upper_mean_y(f):
+        sc.frame_set(f)
+        bpy.context.view_layer.update()
+        pts = [p for p in evaluated_points(mesh) if p.z > 0.42]
+        if not pts:
+            raise SystemExit("FAIL: %s has no vertices above the hip to "
+                             "measure a lean with." % name)
+        return sum(p.y for p in pts) / len(pts)
+
+    rest = upper_mean_y(rest_frame)
+    bent = upper_mean_y(frame)
+    sc.frame_set(1)
+    if bent > rest - tol:
+        raise SystemExit(
+            "FAIL: %s leans the WRONG WAY at frame %d. The upper body sits at "
+            "y=%.4f and rest is y=%.4f; the character fronts -Y, so a forward "
+            "bend must be MORE negative by at least %.3f. Torso and Head take "
+            "POSITIVE rotation to lean forward (their tails are above the "
+            "pivot); Arms and Legs take NEGATIVE (theirs hang below)."
+            % (name, frame, bent, rest, tol))
+    print("  %s leans forward %.1f mm at frame %d"
+          % (name, (rest - bent) * 1000.0, frame))
+
+
 def _finish(arm, act, last):
     curves = action_fcurves(act)
     if not curves:
@@ -477,7 +513,7 @@ def idle_action(arm, mesh, name="idle", length=48):
     """
     act = _begin(arm, name)
     pb = arm.pose.bones
-    keys = ((1, 0.0, 1.5), (1 + length // 2, -2.0, -1.5), (1 + length, 0.0, 1.5))
+    keys = ((1, 0.0, 1.5), (1 + length // 2, 2.0, -1.5), (1 + length, 0.0, 1.5))
     for f, torso, arms in keys:
         _key_rot(pb["Torso"], f, torso)
         _key_rot(pb["Head"], f, -torso * 0.5)
@@ -497,18 +533,28 @@ def pickup_action(arm, mesh, name="pickup", length=30):
     """
     act = _begin(arm, name)
     pb = arm.pose.bones
-    #     frame          torso   arms    head
-    keys = ((1,            -4.0,  -6.0,   0.0),
-            (1 + length // 4,  -42.0, -62.0, -12.0),
-            (1 + length // 2,  -46.0, -74.0, -14.0),   # the hold
-            (1 + 3 * length // 4, -20.0, -30.0,  -6.0),
-            (1 + length,       -4.0,  -6.0,   0.0))
+    # SIGNS ARE NOT THE SAME FOR EVERY BONE, and getting this backwards is
+    # what made them arch away from the thing they were picking up.
+    #
+    # Rx(theta) sends a point at (0,0,+1) to (0,-sin, cos) and a point at
+    # (0,0,-1) to (0,+sin,-cos). The character fronts -Y. So for a bone whose
+    # tail is ABOVE its head -- Torso, Head -- POSITIVE leans forward; for one
+    # whose tail hangs BELOW -- Arms, Legs -- NEGATIVE swings forward. The walk
+    # only ever moves legs and arms, so it never had to state the other half of
+    # the rule, and the first version of this action copied its sign.
+    #     frame              torso   arms    head
+    keys = ((1,               5.0,  -10.0,   2.0),
+            (1 + length // 4,    46.0,  -68.0,  14.0),
+            (1 + length // 2,    50.0,  -78.0,  16.0),   # the hold, down low
+            (1 + 3 * length // 4, 24.0,  -34.0,   8.0),
+            (1 + length,          5.0,  -10.0,   2.0))
     for f, torso, arms, head in keys:
         _key_rot(pb["Torso"], f, torso)
         _key_rot(pb["Head"], f, head)
         _key_rot(pb["ArmL"], f, arms)
         _key_rot(pb["ArmR"], f, arms)
     _plant(arm, mesh, act, range(1, length + 2))
+    assert_bends_forward(arm, mesh, name, 1 + length // 2)
     return _finish(arm, act, length)
 
 
@@ -520,19 +566,24 @@ def chop_action(arm, mesh, name="chop", length=24):
     """
     act = _begin(arm, name)
     pb = arm.pose.bones
+    # Same sign rule as pickup: +torso leans FORWARD, -arms swing forward.
+    # So the windup leans back with the arms raised behind, and the strike
+    # throws the torso forward while the arms come down in front.
     #     frame       torso   arms
-    keys = ((1,          -6.0,  -20.0),   # ready
-            (1 + 9,       6.0, -128.0),   # windup, arms overhead and back
-            (1 + 11,      4.0, -120.0),   # the tiny hitch before the strike
-            (1 + 13,    -30.0,   -4.0),   # STRIKE, one frame of travel
-            (1 + 17,    -22.0,  -10.0),   # follow through
-            (1 + length, -6.0,  -20.0))
+    keys = ((1,           5.0,  -25.0),   # ready, axe low in front
+            (1 + 9,     -14.0,  105.0),   # windup: lean back, axe up behind
+            (1 + 11,    -11.0,   99.0),   # the tiny hitch before the strike
+            (1 + 13,     34.0,  -55.0),   # STRIKE, one frame of travel
+            (1 + 17,     24.0,  -40.0),   # follow through
+            (1 + length,  5.0,  -25.0))
     for f, torso, arms in keys:
         _key_rot(pb["Torso"], f, torso)
         _key_rot(pb["Head"], f, torso * 0.4)
         _key_rot(pb["ArmL"], f, arms)
         _key_rot(pb["ArmR"], f, arms)
     _plant(arm, mesh, act, range(1, length + 2))
+    # Frame 14 is the strike -- the one frame the whole action is about.
+    assert_bends_forward(arm, mesh, name, 1 + 13)
     return _finish(arm, act, length)
 
 

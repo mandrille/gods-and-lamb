@@ -221,23 +221,43 @@ func _draw() -> void:
 	_reticle()
 
 
-## Resources as ICONS with numbers, in one row. The old version was three lines
-## of "Food 8 / 24" and read as a debug printout.
-func _ledger() -> void:
+## Where a ledger counter sits on screen, so a resource token can fly to it.
+## Computed from the same row table `_ledger` draws from -- a second copy of
+## the layout is how a token ends up landing next to the counter it means.
+func ledger_icon_pos(key: String) -> Vector2:
+	var x := PAD + 12.0
+	for e in _ledger_rows():
+		if String(e[0]) == key:
+			return Vector2(x + 8.0, PAD + 17.0)
+		x += _row_width(String(e[1]))
+	return Vector2(PAD + 20.0, PAD + 17.0)
+
+
+func _row_width(text: String) -> float:
+	return 22.0 + float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
+											  -1, 15).x) + 16.0
+
+
+func _ledger_rows() -> Array:
 	var v = host.village
-	var row := [
+	return [
 		["faith", "%d" % int(divinity.faith), GOLD],
 		["food", "%d/%d" % [v.amount("food"), v.capacity("food")], INK],
 		["wood", "%d/%d" % [v.amount("wood"), v.capacity("wood")], INK],
 		["stone", "%d/%d" % [v.amount("stone"), v.capacity("stone")], INK],
 		["pop", "%d/%d" % [v.population, v.pop_cap], INK],
 	]
+
+
+## Resources as ICONS with numbers, in one row. The old version was three lines
+## of "Food 8 / 24" and read as a debug printout.
+func _ledger() -> void:
+	var row := _ledger_rows()
 	var h := 34.0
 	var x := PAD + 12.0
 	var widths: Array[float] = []
 	for e in row:
-		widths.append(22.0 + float(_font.get_string_size(String(e[1]),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x) + 16.0)
+		widths.append(_row_width(String(e[1])))
 	var total := 0.0
 	for w in widths:
 		total += w

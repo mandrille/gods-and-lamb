@@ -50,6 +50,10 @@ var _solid: PackedByteArray = PackedByteArray()
 var _astar := AStarGrid2D.new()
 var _by_id: Dictionary = {}          ## asset id -> Array[Vector2i] of its cells
 var _walkable_cells: Array[Vector2i] = []
+## The ground layer, kept so callers can ask what KIND of tile a cell is and
+## not merely whether it can be stood on. Building sites need that: a hut in
+## the middle of the road is walkable ground and still the wrong place.
+var _lower: Array = []
 
 
 func build(doc: Dictionary) -> void:
@@ -59,6 +63,7 @@ func build(doc: Dictionary) -> void:
 	lift = float(doc.get("lift", 0.5))
 	var lower: Array = doc.get("lower", [])
 	var upper: Array = doc.get("upper", [])
+	_lower = lower
 
 	_solid.resize(cols * rows)
 	_solid.fill(1)
@@ -177,6 +182,20 @@ func _block_footprint(centre: Vector2i, w: float, d: float) -> void:
 	for i in range(-hc, hc + 1):
 		for j in range(-hr, hr + 1):
 			_block_cell(centre + Vector2i(i, j))
+
+
+## The ground code at a cell: "G" grass, "P" road, "C" ploughed, "W" water...
+func code_of(c: Vector2i) -> String:
+	return _code(_lower, c.x, c.y)
+
+
+## Plain open grass: walkable, and not a road, a field, a bank or water.
+##
+## What a BUILDING SITE has to be. Anything walkable will do for standing on,
+## which is why huts ended up straddling the road -- the site test asked the
+## wrong question.
+func is_plain(c: Vector2i) -> bool:
+	return is_walkable(c) and _code(_lower, c.x, c.y) == "G"
 
 
 func is_walkable(c: Vector2i) -> bool:

@@ -45,6 +45,16 @@ var total_eaten := 0
 ## villager asks this several times a second.
 var structures: Dictionary = {}
 
+## Building work already under way: asset id -> Array of expiry timestamps.
+##
+## Without this, every villager who checks "do we want a well?" before the
+## first one finishes gets the same answer, and a village of fifty raises four
+## wells it wanted one of. Reservations EXPIRE rather than being released,
+## because the alternative is tracking which villager holds which claim and
+## leaking one every time somebody is despawned mid-job.
+var _claims: Dictionary = {}
+const CLAIM_SECONDS := 25.0
+
 
 func _init() -> void:
 	stores = START.duplicate()
@@ -113,6 +123,27 @@ func count_of(aid: String) -> int:
 	return int(structures.get(aid, 0))
 
 
+## Somebody has started building one of these.
+func claim(aid: String) -> void:
+	if not _claims.has(aid):
+		_claims[aid] = []
+	(_claims[aid] as Array).append(Time.get_ticks_msec() * 0.001
+								   + CLAIM_SECONDS)
+
+
+## How many are under way right now, dropping any that have gone stale.
+func claimed(aid: String) -> int:
+	if not _claims.has(aid):
+		return 0
+	var now := Time.get_ticks_msec() * 0.001
+	var live: Array = []
+	for t in _claims[aid]:
+		if float(t) > now:
+			live.append(t)
+	_claims[aid] = live
+	return live.size()
+
+
 ## 0 = we have enough, 1 = we have none and want one. Drives whether building
 ## is worth a villager's time at all.
 func wants(aid: String) -> float:
@@ -121,7 +152,8 @@ func wants(aid: String) -> float:
 	var spec: Dictionary = WANTED[aid]
 	var target: float = maxf(float(spec["min"]),
 							 float(spec["per_head"]) * float(maxi(1, population)))
-	var have := float(count_of(aid))
+	# Standing ones PLUS the ones being built right now.
+	var have := float(count_of(aid) + claimed(aid))
 	if have >= target:
 		return 0.0
 	return clampf((target - have) / target, 0.0, 1.0)

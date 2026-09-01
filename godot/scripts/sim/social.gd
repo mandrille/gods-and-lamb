@@ -23,7 +23,7 @@ signal chat_ended(a, b, verdict: String)
 
 const RANGE := 2.2               ## metres; roughly two tiles
 const DURATION := 4.5
-const COOLDOWN := 9.0            ## before the same follower will chat again
+const COOLDOWN := 26.0            ## before the same follower will chat again
 ## Per good conversation between two willing parents. Low: this fires often
 ## enough to matter over a session and rarely enough that a happy village does
 ## not double in a minute.
@@ -84,10 +84,11 @@ func _match(folk: Array) -> void:
 				continue
 			if a.position.distance_to(b.position) > RANGE:
 				continue
-			# Both have to actually want it. A follower with a full Social bar
-			# walking past is not stopped, which is what keeps the village from
-			# gridlocking into permanent conversation.
-			if not (_wants(a) or _wants(b)):
+			# BOTH have to want it, not either. With fifty villagers on one
+			# plot somebody always wanted a chat, and conversation took a fifth
+			# of the whole village's day -- an `or` here is effectively "stop
+			# every pair that passes".
+			if not (_wants(a) and _wants(b)):
 				continue
 			_start(a, b)
 			break
@@ -106,7 +107,7 @@ func _available(f) -> bool:
 
 
 func _wants(f) -> bool:
-	return float(f.brain.stats["social"]) < 0.75
+	return float(f.brain.stats["social"]) < 0.55
 
 
 func _start(a, b) -> void:
