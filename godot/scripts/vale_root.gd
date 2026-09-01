@@ -98,12 +98,14 @@ func _ready() -> void:
 	rig.name = "CameraRig"
 	add_child(rig)
 	# Centred on the home island, which is the middle slot of the grid.
-	var home_mid: int = Islands.MARGIN + (Islands.GRID / 2) * Islands.PITCH 						+ Islands.SPAN / 2
+	var home_mid: int = (Islands.MARGIN
+						+ (Islands.GRID / 2) * Islands.PITCH
+						+ Islands.SPAN / 2)
 	rig.focus = builder.world_of(home_mid, home_mid)
 	# Framed on ONE plot, not on the whole archipelago. The plot is 10.5 m
 	# across and the default 30 m pull-back was set for a 48 m landscape, which
 	# left the village a postage stamp in a field of blue.
-	rig.dist = 23.0
+	rig.dist = 27.0
 	# Clamp panning to the ground, with a margin so the edge can be inspected
 	# but not left behind entirely.
 	var pad := 4.0

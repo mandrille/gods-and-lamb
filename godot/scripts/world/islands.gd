@@ -1,49 +1,48 @@
 extends RefCounted
 class_name Islands
 
-## The archipelago: plain square plots you expand onto.
+## ONE landmass that grows. Not an archipelago.
 ##
-## Squares, not blobs. An organic coastline looked like landscape and read like
-## nothing you could reason about -- the player could not tell where one plot
-## ended, which side was buyable, or how much land a purchase actually bought.
-## A square with a sand border answers all three at a glance, and "click the
-## water on that side" becomes an obvious gesture instead of a menu.
+## The land is a grid of square PLOTS sitting flush against each other, with no
+## water between them and no bridges joining them. Buying a plot extends the
+## landmass in that direction -- the new ground simply continues from the old,
+## and the seam is invisible because nothing about the terrain is drawn
+## per-plot.
 ##
-## Emitted in EXACTLY the schema `data/vale.json` uses -- same keys, same tile
-## codes, same prop records -- so the ground builder, walk grid, hover picker
-## and FX layer all keep reading one shape of document and none of them needs
-## to know the world is procedural.
+## That last part is the whole trick, and it is why the previous version read
+## as islands. When each plot generated its own beach, its own road cross and
+## its own stream, buying a neighbour produced a SECOND island bolted on: two
+## coasts meeting, two road systems that did not line up, two streams that
+## stopped at the seam. So the features are GLOBAL now. One river meanders
+## across the whole world; one road grid runs across the whole world; cliffs
+## and fields sit at fixed world positions. A plot does not draw any of them --
+## it only says which cells EXIST, and every feature is clipped to whatever
+## land is currently there. Buy a plot and the river you can already see simply
+## carries on into it.
 ##
-## THE FIRST PLOT HAS NO BUILDINGS. Two people, trees, bushes and stone. Every
-## structure in the village is one the villagers put up themselves out of wood
-## they cut, which is the whole point of a god who cannot give orders: you
-## cannot place a hut, you can only make hut-building worth their while.
+## Emitted in EXACTLY the schema `data/vale.json` uses, so the ground builder,
+## walk grid, hover picker and FX layer all keep reading one shape of document
+## and none of them needs to know the world is procedural.
+##
+## NOTHING IS BUILT FOR YOU. Every structure is one the villagers raise.
 
-## Tiles across one plot, sand border included.
-##
-## Big enough to hold a LANDSCAPE and not just a lawn: a path crossing both
-## ways, a stream with banks, a raised shelf and room to scatter between them.
-## At 21 the path and the stream used the same tiles and the plot read as a
-## board game.
-const SPAN := 27
-const GAP := 5            ## tiles of water between neighbours
-const PITCH := SPAN + GAP
-const GRID := 4           ## GRID x GRID plots
-const MARGIN := 3         ## water border around the whole archipelago
-const SAND := 2           ## width of the beach ring, in tiles
+## Tiles across one plot. Big: the opening should be a landscape you look
+## around in, not a tile you look at.
+const SPAN := 34
+## FLUSH -- no gap. A gap here is what made plots read as separate islands.
+const PITCH := SPAN
+const GRID := 3           ## GRID x GRID plots
+const MARGIN := 2         ## empty border, so edge tiles are not clipped
 
 const TILE := 0.5
 const LIFT := 0.5
 
 ## Rising, so the second plot is a goal and the last is an achievement.
-const PRICE := [0, 35, 80, 140, 220, 320, 440, 580, 740, 920]
-const POP_PER_ISLAND := 5
+const PRICE := [0, 40, 95, 170, 265, 380, 520, 690, 880]
+const POP_PER_ISLAND := 6
 
 const FOUR_WAY: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
 								   Vector2i(0, 1), Vector2i(0, -1)]
-## Only two directions when laying bridges: a bridge is shared between two
-## plots and doing all four would build every span twice.
-const EAST_SOUTH: Array[Vector2i] = [Vector2i(1, 0), Vector2i(0, 1)]
 
 ## Declared footprints, matching what the Blender export stamps into vale.json.
 ## A generated prop has no declaration travelling with it, and the walk grid
@@ -54,6 +53,11 @@ const FOOTPRINTS := {
 	"Buildings/market_stall": [1.6, 1.2], "Buildings/well": [1.0, 1.0],
 	"Buildings/shrine": [1.6, 1.6], "Buildings/bridge": [0.5, 0.68],
 }
+
+## How often a road runs, in tiles, and how wide. Global lines, so roads line
+## up across a plot seam instead of each plot drawing its own cross.
+const ROAD_EVERY := 17
+const ROAD_WIDE := 2
 
 var unlocked: Dictionary = {}      ## Vector2i slot -> true
 var _seed := 20260901
@@ -69,7 +73,7 @@ static func home() -> Vector2i:
 
 
 func cols() -> int:
-	return GRID * PITCH - GAP + MARGIN * 2
+	return GRID * PITCH + MARGIN * 2
 
 
 func rows() -> int:
@@ -89,9 +93,7 @@ func price_next() -> int:
 	return PRICE[n] if n < PRICE.size() else PRICE[PRICE.size() - 1] + 220
 
 
-## Plots that are not owned but touch one that is. The only ones you may buy:
-## a plot across open water with no neighbour would be unreachable, and selling
-## the player something nobody can walk to is a bug with a price tag.
+## Plots that are not owned but touch one that is.
 func buyable() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for s in unlocked:
@@ -117,8 +119,6 @@ func origin(slot: Vector2i) -> Vector2i:
 	return Vector2i(MARGIN + slot.x * PITCH, MARGIN + slot.y * PITCH)
 
 
-## The tile at the middle of a plot, which is where its marker floats and where
-## a newly-bought plot is centred for the camera.
 func centre_cell(slot: Vector2i) -> Vector2i:
 	return origin(slot) + Vector2i(SPAN / 2, SPAN / 2)
 
@@ -134,41 +134,48 @@ func slot_of_cell(cell: Vector2i) -> Vector2i:
 
 ## --- generation -------------------------------------------------------------
 
-## Build the whole document from scratch. Cheap -- a grid of characters -- and
-## regenerating everything rather than patching in the new plot means the two
-## paths cannot diverge, because there is only one path.
+## Build the whole document from scratch.
+##
+## Cheap -- a grid of characters -- and regenerating everything rather than
+## patching in the new plot means the two paths cannot diverge, because there
+## is only one path. Every feature is computed from the WORLD seed at world
+## coordinates and then clipped to the land that exists, so buying a plot
+## reveals more of the same landscape rather than generating a new one.
 func build_doc() -> Dictionary:
 	var n := cols()
 	var ground: Array = []
-	var flat: Array = []
+	var upper: Array = []
 	for r in n:
-		var line := ""
-		var blank := ""
+		var a := ""
+		var b := ""
 		for c in n:
-			line += "W"
-			blank += "."
-		ground.append(line)
-		flat.append(blank)
+			a += "."
+			b += "."
+		ground.append(a)
+		upper.append(b)
+
+	# 1. The land itself: every cell of every owned plot, and nothing else.
+	for s in unlocked:
+		var o := origin(s)
+		for j in SPAN:
+			for i in SPAN:
+				_put(ground, o.x + i, o.y + j, "G")
+
+	# 2. Global features, in the order things sit on top of each other: water
+	#    cuts the ground, roads cross it on bridges, fields and shelves take
+	#    what is left.
+	var river := _river_cells(n)
+	for cell in river:
+		var c: Vector2i = cell
+		if _char_at(ground, c.x, c.y) == "G":
+			_put(ground, c.x, c.y, String(river[cell]))
 
 	var props: Array = []
-	var spans: Array = []
+	_roads(ground, props, n)
+	_fields(ground, n)
+	_cliffs(ground, upper, n)
 	for s in unlocked:
-		for cell in _carve(ground, flat, s):
-			spans.append(cell)
-	# Bridges over a plot's OWN stream, where its road crosses. Yaw follows the
-	# road direction for the same reason the inter-plot spans do.
-	for cell in spans:
-		var c: Vector2i = cell
-		var vertical := _char_at(ground, c.x, c.y - 1) == "W" 			or _char_at(ground, c.x, c.y + 1) == "W"
-		props.append({"id": "Buildings/bridge", "col": c.x, "row": c.y,
-					  "yaw": 90.0 if vertical else 0.0, "scale": 1.0,
-					  "fp": [0.5, 0.68]})
-	# Bridges after all the land exists, or a span would be laid toward a coast
-	# that has not been carved yet.
-	for s in unlocked:
-		_bridge(ground, props, s)
-	for s in unlocked:
-		_scatter(props, ground, s)
+		_scatter(props, ground, upper, s)
 
 	return {
 		"cols": n, "rows": n, "tile": TILE, "lift": LIFT,
@@ -178,103 +185,8 @@ func build_doc() -> Dictionary:
 				 "W": "Terrain/water", "A": "Terrain/sand",
 				 "C": "Terrain/soil"},
 		"fill": "Terrain/dirt",
-		"lower": ground, "upper": flat, "props": props,
+		"lower": ground, "upper": upper, "props": props,
 	}
-
-
-## One plot's terrain: beach, grass, a stone path both ways, sometimes a stream
-## with sand banks, sometimes a raised shelf.
-##
-## The plot is still a SQUARE -- you can see where it ends and which side to
-## buy -- but the inside is a landscape rather than a lawn. A flat green square
-## with props dropped on it reads as a board, and that is what the report
-## meant by wanting the old look back: the old map had roads, water, banks and
-## a cliff, and those are what make it read as a place.
-##
-## Returns the cells where the path crosses water and therefore needs a bridge.
-func _carve(ground: Array, upper: Array, slot: Vector2i) -> Array:
-	var o := origin(slot)
-	var r := RandomNumberGenerator.new()
-	r.seed = _seed + slot.x * 7919 + slot.y * 104729
-
-	# 1. Beach ring, grass interior, notched corners.
-	for j in SPAN:
-		for i in SPAN:
-			var edge: int = mini(mini(i, j), mini(SPAN - 1 - i, SPAN - 1 - j))
-			if edge == 0 and (i == j or i == SPAN - 1 - j):
-				continue                      # the four corner notches
-			_put(ground, o.x + i, o.y + j, "A" if edge < SAND else "G")
-
-	# 2. A stream, on about half the plots -- but ALWAYS on the starting one.
-	#    The first plot is the only one most players will look at closely, and
-	#    a home plot that rolled a bare lawn teaches them the world is a lawn.
-	#    Laid BEFORE the paths so the paths can bridge it; the other order has
-	#    water erasing road.
-	var home_plot := slot == home()
-	var has_stream := home_plot or r.randf() < 0.5
-	var stream_vertical := r.randf() < 0.5
-	var stream_at := SPAN / 2 + (5 if r.randf() < 0.5 else -5)
-	if has_stream:
-		var wobble := r.randf_range(0.0, TAU)
-		for t in SPAN:
-			# A meander, so the stream is not a canal. Two tiles wide plus a
-			# bank each side, which is what makes water read as a river rather
-			# than as blue floor.
-			var drift := int(round(sin(float(t) * 0.30 + wobble) * 2.0))
-			var mid := stream_at + drift
-			for k in range(-3, 4):
-				var pos := mid + k
-				if pos < SAND or pos >= SPAN - SAND:
-					continue
-				var ch := "W" if absi(k) <= 1 else "A"
-				var col := (o.x + pos) if stream_vertical else (o.x + t)
-				var row := (o.y + t) if stream_vertical else (o.y + pos)
-				# Never eat the beach: the coast has to stay a clean square.
-				if _char_at(ground, col, row) == "G":
-					_put(ground, col, row, ch)
-
-	# 3. Paths, both ways through the middle, two tiles wide. They run to the
-	#    EDGE MIDPOINTS, which is exactly where the inter-plot bridges land, so
-	#    the road network joins up across the archipelago on its own.
-	var need_bridge: Array = []
-	var mid_i := SPAN / 2
-	for t in SPAN:
-		# `for w in 2`, not `for w in [0, 1]`: a bare array literal yields
-		# Variant elements and every bit of arithmetic off one is untyped.
-		for w in 2:
-			for axis in 2:
-				var col: int = (o.x + mid_i - 1 + w) if axis == 0 else (o.x + t)
-				var row: int = (o.y + t) if axis == 0 else (o.y + mid_i - 1 + w)
-				var ch := _char_at(ground, col, row)
-				if ch == "W":
-					need_bridge.append(Vector2i(col, row))
-				elif ch == "G" or ch == "A":
-					# Sand stays sand where the path crosses the beach -- a
-					# stone road running into the sea looks like a pier.
-					if ch == "G":
-						_put(ground, col, row, "P")
-
-	# 4. A raised shelf on some plots, in whichever corner the paths do not
-	#    use. This is the cliff from the old map: `upper` carries the top and
-	#    the builder fills the blocks beneath it, so the edge is a real drop.
-	if home_plot or r.randf() < 0.45:
-		var qx: int = 0 if r.randf() < 0.5 else 1
-		var qy: int = 0 if r.randf() < 0.5 else 1
-		var lo_i := SAND + 1 + qx * (mid_i + 1)
-		var lo_j := SAND + 1 + qy * (mid_i + 1)
-		var size := mini(mid_i - SAND - 3, 8)
-		for j in size:
-			for i in size:
-				# Rounded corner, so the shelf is not a second square inside
-				# the first.
-				if i + j < 2 or (size - 1 - i) + (size - 1 - j) < 2:
-					continue
-				var col := o.x + lo_i + i
-				var row := o.y + lo_j + j
-				if _char_at(ground, col, row) != "G":
-					continue
-				_put(upper, col, row, "G")
-	return need_bridge
 
 
 func _put(ground: Array, col: int, row: int, ch: String) -> void:
@@ -288,50 +200,133 @@ func _put(ground: Array, col: int, row: int, ch: String) -> void:
 
 func _char_at(ground: Array, col: int, row: int) -> String:
 	if row < 0 or row >= ground.size():
-		return "W"
+		return "."
 	var line: String = ground[row]
 	if col < 0 or col >= line.length():
-		return "W"
+		return "."
 	return line[col]
 
 
-## Lay a bridge to the neighbour east and south, if those are owned.
+## One river for the whole world, as {cell: "W" or "A"}.
 ##
-## YAW IS THE WHOLE THING HERE. One bridge section is a plank deck whose module
-## runs along its LOCAL X, with the rails outboard on Y. So a span travelling
-## east-west wants yaw 0, and one travelling north-south wants yaw 90. This had
-## the two swapped, which laid every deck ACROSS its own span -- the planks ran
-## the wrong way and the handrails cut through them.
-func _bridge(ground: Array, props: Array, slot: Vector2i) -> void:
-	for d in EAST_SOUTH:
-		if not unlocked.has(slot + d):
+## Computed over the FULL grid regardless of what is unlocked and then clipped,
+## so the river never moves when land is bought -- it is revealed further. A
+## river generated per plot jumps at every seam, which is exactly what made
+## the last version look like separate islands stuck together.
+func _river_cells(n: int) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = _seed + 5150
+	var out := {}
+	var phase := r.randf_range(0.0, TAU)
+	var phase2 := r.randf_range(0.0, TAU)
+	var base := float(n) * 0.5 + r.randf_range(-4.0, 4.0)
+	for row in n:
+		var t := float(row)
+		var mid := base + sin(t * 0.055 + phase) * 7.0 \
+				   + sin(t * 0.019 + phase2) * 4.0
+		for k in range(-3, 4):
+			# Three tiles of water with ONE of sand each side. At four tiles of
+			# bank the river read as a beach with a stripe of water down it.
+			out[Vector2i(int(round(mid)) + k, row)] = "W" if absi(k) <= 2 else "A"
+	return out
+
+
+## A road grid across the whole world, and a bridge wherever a road meets the
+## river. Roads sit on fixed global lines, so two plots either side of a seam
+## share the same road instead of each drawing its own cross.
+func _roads(ground: Array, props: Array, n: int) -> void:
+	var crossings: Array[Vector2i] = []
+	for axis in 2:
+		var line := ROAD_EVERY / 2
+		while line < n:
+			for w in ROAD_WIDE:
+				var fixed: int = line + w
+				for t in n:
+					var col: int = fixed if axis == 0 else t
+					var row: int = t if axis == 0 else fixed
+					var ch := _char_at(ground, col, row)
+					if ch == "G" or ch == "A" or ch == "C":
+						_put(ground, col, row, "P")
+					elif ch == "W":
+						crossings.append(Vector2i(col, row))
+			line += ROAD_EVERY
+
+	for c in crossings:
+		# A bridge deck's plank module runs along its LOCAL X with the rails
+		# outboard on Y, so a north-south span wants yaw 90 and an east-west
+		# one wants yaw 0. Swapping these lays every deck across its own span
+		# and the handrails cut through the planks.
+		var vertical := _char_at(ground, c.x, c.y - 1) == "W" \
+			or _char_at(ground, c.x, c.y + 1) == "W"
+		props.append({"id": "Buildings/bridge", "col": c.x, "row": c.y,
+					  "yaw": 90.0 if vertical else 0.0, "scale": 1.0,
+					  "fp": [0.5, 0.68]})
+
+
+## Farmland and raised shelves, on a JITTERED LATTICE.
+##
+## Both were scattered at random points over the whole world grid, and with
+## only one plot owned almost every one of them landed on empty space -- so
+## the opening had no fields and no cliffs at all despite the code placing
+## seven of each. A lattice with a seeded offset per cell guarantees that
+## wherever land appears there are some, and keeps them in exactly the same
+## world positions as more land is bought.
+func _lattice(n: int, step: int, salt: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var r := RandomNumberGenerator.new()
+	var gx := 0
+	while gx < n:
+		var gy := 0
+		while gy < n:
+			# Seeded from the CELL, so a given lattice cell always jitters the
+			# same way no matter what order things are generated in.
+			r.seed = _seed + salt + gx * 73856093 + gy * 19349663
+			out.append(Vector2i(gx + r.randi_range(0, step - 1),
+								gy + r.randi_range(0, step - 1)))
+			gy += step
+		gx += step
+	return out
+
+
+func _fields(ground: Array, n: int) -> void:
+	var r := RandomNumberGenerator.new()
+	for spot in _lattice(n, 21, 3307):
+		r.seed = _seed + spot.x * 7919 + spot.y * 104729
+		if r.randf() < 0.45:
+			continue                      # not every lattice cell gets one
+		var w := r.randi_range(5, 10)
+		var h := r.randi_range(4, 8)
+		for j in h:
+			for i in w:
+				if _char_at(ground, spot.x + i, spot.y + j) == "G":
+					_put(ground, spot.x + i, spot.y + j, "C")
+
+
+func _cliffs(ground: Array, upper: Array, n: int) -> void:
+	var r := RandomNumberGenerator.new()
+	for spot in _lattice(n, 29, 8291):
+		r.seed = _seed + spot.x * 31337 + spot.y * 6971
+		if r.randf() < 0.4:
 			continue
-		var a := origin(slot)
-		var mid := SPAN / 2
-		var col := a.x + mid
-		var row := a.y + mid
-		var guard := PITCH * 2
-		# Walk out to the first water tile, then deck every one until land
-		# resumes. Measuring the span rather than assuming GAP tiles keeps it
-		# correct whatever the coast does.
-		while guard > 0 and _char_at(ground, col, row) != "W":
-			col += d.x
-			row += d.y
-			guard -= 1
-		while guard > 0 and _char_at(ground, col, row) == "W":
-			props.append({"id": "Buildings/bridge", "col": col, "row": row,
-						  "yaw": 0.0 if d.x != 0 else 90.0, "scale": 1.0,
-						  "fp": [0.5, 0.68]})
-			col += d.x
-			row += d.y
-			guard -= 1
+		var w := r.randi_range(8, 13)
+		var h := r.randi_range(7, 11)
+		for j in h:
+			for i in w:
+				# Notched corners, so a shelf is not a rectangle stamped on
+				# the grass.
+				if i + j < 2 or (w - 1 - i) + (h - 1 - j) < 2:
+					continue
+				if _char_at(ground, spot.x + i, spot.y + j) != "G":
+					continue
+				_put(upper, spot.x + i, spot.y + j, "G")
 
 
-## What grows on a plot. NO BUILDINGS ANYWHERE -- every structure in this game
-## is one the villagers raise themselves. The starting plot is a little kinder
-## than the rest (more bushes, which are food they can reach on day one) but it
-## is still bare ground and trees.
-func _scatter(props: Array, ground: Array, slot: Vector2i) -> void:
+## Everything that stands on the land. Seeded per plot so a plot keeps its own
+## character, and placed only where it belongs -- reeds line the bank, lily
+## pads float, everything else keeps to open grass and off the roads, the
+## fields and the shelves, all of which want to stay legible.
+func _scatter(props: Array, ground: Array, upper: Array,
+			  slot: Vector2i) -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = _seed + slot.x * 31337 + slot.y * 6971
 	var o := origin(slot)
@@ -339,32 +334,36 @@ func _scatter(props: Array, ground: Array, slot: Vector2i) -> void:
 	for p in props:
 		taken[Vector2i(int(p["col"]), int(p["row"]))] = 2.0
 
-	var first := slot == home()
-	var plan: Array = []
-	if first:
-		plan = [["Nature/tree", 7, 1.5], ["Nature/bush", 9, 1.0],
-				["Nature/rock", 4, 1.0], ["Nature/flowers", 8, 0.7],
-				["Nature/tall_grass", 14, 0.5], ["Nature/log", 2, 1.0],
-				["Nature/stump", 2, 0.9]]
-	else:
-		plan = [["Nature/tree", 9, 1.5], ["Nature/pine", 5, 1.5],
-				["Nature/bush", 6, 1.0], ["Nature/rock", 5, 1.0],
-				["Nature/log", 2, 1.0], ["Nature/flowers", 6, 0.7],
-				["Nature/tall_grass", 12, 0.5], ["Nature/stump", 3, 0.9]]
+	var plan := [["Nature/tree", 18, 1.5], ["Nature/pine", 7, 1.5],
+				 ["Nature/bush", 14, 1.0], ["Nature/rock", 9, 1.0],
+				 ["Nature/log", 3, 1.0], ["Nature/stump", 3, 0.9],
+				 ["Nature/flowers", 16, 0.7], ["Nature/tall_grass", 24, 0.5],
+				 ["Nature/reeds", 12, 0.6], ["Nature/lily_pad", 7, 0.6],
+				 # Wild grain on the ploughed ground. The villagers sow more.
+				 ["Nature/crop_row", 26, 0.55]]
 
 	for entry in plan:
 		var aid := String(entry[0])
 		var want := int(entry[1])
 		var clear := float(entry[2])
+		var wants_water := aid == "Nature/lily_pad"
+		var wants_bank := aid == "Nature/reeds"
+		var wants_soil := aid == "Nature/crop_row"
 		var placed := 0
 		for attempt in want * 40:
 			if placed >= want:
 				break
-			var col := o.x + r.randi_range(SAND, SPAN - 1 - SAND)
-			var row := o.y + r.randi_range(SAND, SPAN - 1 - SAND)
-			# Grass only. The beach is left clear so the plot has a visible
-			# edge and so villagers always have a way round the outside.
-			if _char_at(ground, col, row) != "G":
+			var col := o.x + r.randi_range(0, SPAN - 1)
+			var row := o.y + r.randi_range(0, SPAN - 1)
+			var ch := _char_at(ground, col, row)
+			var ok := ch == "G"
+			if wants_water:
+				ok = ch == "W"
+			elif wants_bank:
+				ok = ch == "A"
+			elif wants_soil:
+				ok = ch == "C"
+			if not ok or _char_at(upper, col, row) != ".":
 				continue
 			var cell := Vector2i(col, row)
 			if _too_close(taken, cell, clear):

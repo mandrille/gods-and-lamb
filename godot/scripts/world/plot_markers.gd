@@ -14,13 +14,13 @@ class_name PlotMarkers
 
 signal plot_clicked(slot: Vector2i)
 
-## Just above the WATER SURFACE, which is not y=0.
+## Level with the LAND SURFACE, which is not y=0.
 ##
-## A ground tile is `lift` tall standing on y=0, so its top is at 0.5, and
-## water is sunk by `water_drop` to 0.44. The first version put the plates at
-## 0.06 -- comfortably inside the seabed -- so nothing rendered at all and only
-## the floating price labels gave any sign the plots were there.
-const PLATE_Y := 0.47
+## A ground tile is `lift` tall standing on y=0, so its top is at 0.5. The
+## plate is a ghost of the ground that will appear, so it belongs at exactly
+## that height -- flush with the land it will join. An earlier version put it
+## at 0.06, comfortably inside the terrain, and nothing rendered at all.
+const PLATE_Y := 0.50
 const READY := Color(0.55, 0.92, 0.62, 0.30)
 const HOVER := Color(0.75, 1.00, 0.80, 0.46)
 const POOR := Color(0.85, 0.72, 0.45, 0.20)
@@ -48,8 +48,9 @@ func rebuild() -> void:
 		var plane := PlaneMesh.new()
 		# A tile short on each side, so neighbouring plates never touch and the
 		# gap between plots stays readable as water.
-		plane.size = Vector2(span - Islands.TILE * 2.0,
-							 span - Islands.TILE * 2.0)
+		# FULL size. The plots sit flush now, so a plate inset by a tile would
+		# promise a gap that does not exist once the ground arrives.
+		plane.size = Vector2(span, span)
 		var mat := StandardMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -78,7 +79,7 @@ func rebuild() -> void:
 		add_child(tag)
 
 		_plates[slot] = {"mesh": mi, "mat": mat, "label": tag,
-						 "centre": centre, "half": span * 0.5 - Islands.TILE}
+						 "centre": centre, "half": span * 0.5}
 	_repaint()
 
 

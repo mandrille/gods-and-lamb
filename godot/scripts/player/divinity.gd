@@ -363,15 +363,15 @@ func _grow_trees(at: Vector3, count: int) -> int:
 func buy_island(slot: Vector2i) -> bool:
 	var price := float(islands.price_next())
 	if not can_afford(price):
-		notice.emit("That island costs %d Faith." % int(price))
+		notice.emit("That ground costs %d Faith." % int(price))
 		return false
 	if not islands.unlock(slot):
-		notice.emit("You cannot reach that island.")
+		notice.emit("That ground does not touch yours.")
 		return false
 	add_faith(-price)
 	host.rebuild_world()
 	village.pop_cap = islands.pop_cap()
-	_remember_all("New land, across the water.", 0.5)
-	notice.emit("New land rises. Room for %d." % village.pop_cap)
+	_remember_all("The land goes further than it did.", 0.5)
+	notice.emit("The land extends. Room for %d." % village.pop_cap)
 	island_bought.emit(slot)
 	return true
