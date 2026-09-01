@@ -305,33 +305,80 @@ func _apply_saved() -> void:
 					push_warning("DebugMenu: '%s' is not a colour: %s" % [key, s])
 
 
+## Persist only what the player actually MOVED.
+##
+## The obvious version -- write all 23 bindings -- cost a real hour. Someone
+## nudged one fog slider, pressed Save, and the file thereafter pinned the sun
+## energy, the ambient sky contribution and everything else to whatever the
+## code happened to say that day. Editing vale_light.gd then changed nothing on
+## screen, including a fix to the ambient energy that the saved sky
+## contribution of 1.0 quietly re-broke.
+##
+## So a value equal to its code default is ERASED rather than written. The file
+## becomes a list of deviations, and every value not in it follows the source
+## forever. "Save" means "keep my changes", not "freeze the whole rig".
 func _save_values() -> void:
 	if _settings == null:
 		return
+	var kept: Array[String] = []
 	for e in BINDINGS:
 		var v: Variant = _read_prop(e)
 		if v == null:
 			continue
-		if String(e["kind"]) == "color":
-			_settings.set_value(e["key"], (v as Color).to_html())
-		else:
-			_settings.set_value(e["key"], v)
+		var key: String = e["key"]
+		var is_colour := String(e["kind"]) == "color"
+		var store: Variant = (v as Color).to_html() if is_colour else v
+		if _defaults.has(key) and _same_as_default(v, _defaults[key]):
+			_settings.erase_value(key)
+			continue
+		_settings.set_value(key, store)
+		kept.append(key)
 	_settings.save_all()
 	_dirty = false
-	_status("saved %d values to %s" % [BINDINGS.size(), Settings.PATH])
-	print("[DEBUG] saved %d values to %s" % [BINDINGS.size(), Settings.PATH])
+	var msg := "saved %d change(s) of %d settings" % [kept.size(), BINDINGS.size()]
+	_status(msg)
+	print("[DEBUG] %s to %s%s"
+		% [msg, Settings.PATH,
+		   "" if kept.is_empty() else "  [" + ", ".join(kept) + "]"])
 
 
+## Floats need a tolerance -- a slider that lands on 0.35000001 is at 0.35 --
+## and a Colour compares as a Colour, not as the string it is stored as.
+func _same_as_default(now: Variant, code: Variant) -> bool:
+	if typeof(now) == TYPE_FLOAT and typeof(code) == TYPE_FLOAT:
+		return is_equal_approx(float(now), float(code))
+	if now is Color and code is Color:
+		return (now as Color).is_equal_approx(code as Color)
+	return now == code
+
+
+## Reset puts the code values back on the live objects AND forgets the file.
+## Without the erase, a reset looks right until the next launch, when the
+## still-present file overrides everything again -- which is the exact failure
+## this panel is supposed to make visible.
 func _reset_defaults() -> void:
 	for e in BINDINGS:
 		if _defaults.has(e["key"]):
 			_write_prop(e, _defaults[e["key"]])
+	# Forget the file too, immediately. "Reset, then relaunch, and it is all
+	# back" is the failure this panel exists to prevent, and leaving the erase
+	# behind a Save press is exactly how it happens.
+	var forgotten := 0
+	if _settings != null:
+		for e in BINDINGS:
+			if _settings.has_value(e["key"]):
+				_settings.erase_value(e["key"])
+				forgotten += 1
+		_settings.save_all()
+	_dirty = false
 	# Only rebuild if there is a panel to rebuild. Reset is reachable from code
 	# as well as from its button, and building a panel while closed would leave
 	# one on screen that Escape does not own.
 	if _open:
 		_build()
-		_status("reset to the rig's own values (press Save to persist)")
+		_status("reset to the rig's own values; forgot %d saved override(s)"
+			% forgotten)
+	print("[DEBUG] reset: forgot %d saved override(s)" % forgotten)
 
 
 func _on_setting_changed(_key: String, _value: Variant) -> void:

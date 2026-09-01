@@ -539,16 +539,37 @@ func _finish() -> void:
 	check.load_all()
 	var got: Variant = check.get_value("light.energy", null)
 	var fog: Variant = check.get_value("fx.fog_enabled", null)
-	var col: Variant = check.get_value("light.color", null)
-	print("[PROBE] round-trip from disk: light.energy=%s fx.fog_enabled=%s "
-		% [str(got), str(fog)] + "light.color=%s" % str(col))
+	print("[PROBE] round-trip from disk: light.energy=%s fx.fog_enabled=%s"
+		% [str(got), str(fog)])
 	if typeof(got) != TYPE_FLOAT or not is_equal_approx(float(got), 2.5):
 		_faults.append("light.energy did not round-trip as 2.5 (got %s)"
 			% str(got))
 	if fog != true:
 		_faults.append("fx.fog_enabled did not round-trip as true")
-	if typeof(col) != TYPE_STRING or not Color.html_is_valid(String(col)):
-		_faults.append("light.color did not round-trip as a colour string")
+
+	# The file must hold DEVIATIONS ONLY. Two values were moved above, so two
+	# keys is the whole correct answer -- and light.color, which nothing
+	# touched, must be absent rather than pinned to whatever the rig said today.
+	# Writing all 23 is the bug this asserts against: it froze the sun energy
+	# and the ambient sky contribution for someone who only nudged the fog.
+	var saved: Array = check.keys()
+	print("[PROBE] saved keys after moving 2 of %d: %s"
+		% [DebugMenuScript.BINDINGS.size(), str(saved)])
+	if saved.size() != 2:
+		_faults.append("save wrote %d keys after 2 changes -- it should write "
+			% saved.size() + "only deviations, not the whole rig")
+	if check.has_value("light.color"):
+		_faults.append("light.color was never moved but got persisted anyway")
+
+	# ... and Reset must FORGET them, not merely restore the live objects. A
+	# reset that leaves the file behind looks right until the next launch.
+	_menu._reset_defaults()
+	var after: Settings = SettingsScript.new()
+	after.load_all()
+	print("[PROBE] saved keys after reset: %s" % str(after.keys()))
+	if not after.keys().is_empty():
+		_faults.append("reset left %d key(s) in the file: %s"
+			% [after.keys().size(), str(after.keys())])
 
 	if _faults.is_empty():
 		print("[PROBE] all checks ok")

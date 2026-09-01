@@ -79,6 +79,24 @@ func set_value(key: String, v: Variant) -> void:
 	changed.emit(key, v)
 
 
+## Forget a key entirely, so the file stops speaking about it.
+##
+## Needed because "back to the code default" and "pinned to a value that
+## happens to equal the code default today" are different states, and only the
+## first one should follow a later edit to the source.
+func erase_value(key: String) -> void:
+	if _values.erase(key):
+		_dirty = true
+
+
+func has_value(key: String) -> bool:
+	return _values.has(key)
+
+
+func keys() -> Array:
+	return _values.keys()
+
+
 func _is_json_native(v: Variant) -> bool:
 	match typeof(v):
 		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING, \
