@@ -33,7 +33,20 @@ const SKY_HORIZON := Color(0.66, 0.80, 0.93)
 ## instead of stopping.
 const GROUND_HORIZON := Color(0.52, 0.62, 0.45)
 const GROUND_BOTTOM := Color(0.44, 0.54, 0.40)
-const AMBIENT_ENERGY := 0.36       ## the shadow-depth knob
+## Shadow depth. This was a DEAD CONSTANT until 2026-09-01 and the comment
+## calling it "the shadow-depth knob" was simply false: with
+## `ambient_light_sky_contribution` at 1.0 the ambient term comes wholly from
+## the sky radiance and `ambient_light_energy` is never applied. Measured, not
+## reasoned: moving it changed mean luma by 0.0000, while dropping the
+## contribution to 0 changed it by 0.086.
+##
+## So the fill is now an explicit COLOUR at an explicit energy. It costs the
+## sky's directional variation, which under Compatibility is coarse anyway, and
+## it buys a knob that does what its name says -- which matters because it is
+## on the debug panel and a slider that moves nothing is worse than no slider.
+const AMBIENT_ENERGY := 0.55
+const AMBIENT_COLOR := Color(0.60, 0.72, 0.86)   ## the sky, roughly, as a flat fill
+const AMBIENT_SKY_MIX := 0.0       ## 1.0 makes AMBIENT_ENERGY inert. See above.
 
 ## DEPTH fog, and depth fog only.
 ##
@@ -85,8 +98,9 @@ func _add_sky() -> void:
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 1.0
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = AMBIENT_COLOR
+	env.ambient_light_sky_contribution = AMBIENT_SKY_MIX
 	env.ambient_light_energy = AMBIENT_ENERGY
 	# Standard, not Filmic and not AgX. The palette is authored in sRGB and
 	# converted once; a tonemapper that desaturates undoes the thing the

@@ -326,8 +326,12 @@ func _reset_defaults() -> void:
 	for e in BINDINGS:
 		if _defaults.has(e["key"]):
 			_write_prop(e, _defaults[e["key"]])
-	_build()
-	_status("reset to the rig's own values (press Save to persist)")
+	# Only rebuild if there is a panel to rebuild. Reset is reachable from code
+	# as well as from its button, and building a panel while closed would leave
+	# one on screen that Escape does not own.
+	if _open:
+		_build()
+		_status("reset to the rig's own values (press Save to persist)")
 
 
 func _on_setting_changed(_key: String, _value: Variant) -> void:

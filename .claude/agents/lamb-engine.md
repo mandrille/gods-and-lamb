@@ -109,6 +109,28 @@ unchanged.
 
 ## Traps this half has already paid for
 
+- **`ambient_light_energy` is INERT while `ambient_light_sky_contribution` is
+  1.0.** The ambient term then comes wholly from the sky radiance and the
+  energy is never applied. `vale_light.gd` shipped a constant called "the
+  shadow-depth knob" that moved mean luma by 0.0000 for a whole session.
+  Measured, not reasoned -- dropping the contribution to 0 moved it by 0.086.
+  The fill is an explicit colour at an explicit energy now.
+- **Glow IS alive under GL Compatibility.** Received wisdom says Forward+ only;
+  the measurement says `glow_enabled` at intensity 8 moves mean luma by +0.350.
+  Do not grey out a glow control on reputation. What genuinely is missing is
+  VOLUMETRIC fog -- depth fog works.
+- **Godot 4.7's `glow_intensity` default is 0.3, not the 0.8 the docs are
+  remembered for.** A probe that "restored" 0.8 silently falsified every
+  screenshot taken after it. Snapshot and restore; never write down a default.
+- **UI sizes are device pixels through the stretch transform.** The project
+  stretches a 720x1280 portrait canvas with `expand`, so on a 1280x800 window
+  the layout runs in a 2048x1280 logical space and a literal `offset_right =
+  480` draws 300 px across with 10 px text. Convert; never write a raw pixel
+  literal into a Control.
+- `_get` and `_set` are `Object` virtuals -- naming your own accessors that
+  collides with the parent signature and fails at parse time.
+- `HSlider` greys out with `editable`, not `disabled`.
+
 - **`Camera3D.fov` is VERTICAL; a Blender lens is horizontal.** Setting one
   from the other made the Godot shot far wider than the render it was supposed
   to match -- wide enough to see past the edge of the map. Set

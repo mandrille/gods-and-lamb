@@ -192,137 +192,105 @@ func _mat(c: Color) -> StandardMaterial3D:
 
 
 func _build_tests() -> void:
-	# Each test turns one thing on hard enough that a real effect cannot be
-	# mistaken for noise, then puts it back.
+	# Declarative on purpose. The first version wrote an `off` lambda per test
+	# that put each property back to a value typed in by hand, and one of those
+	# was wrong: glow_intensity was "restored" to 0.8 when Godot 4.7's default
+	# is 0.3, so every screenshot after the glow test showed a value the engine
+	# had never chosen. The harness now snapshots whatever is there and puts
+	# exactly that back, and no default is written down anywhere.
+	#
+	# Each test names an object and the properties to push, hard enough that a
+	# real effect cannot be mistaken for noise.
 	_tests = [
-		{"name": "fog_enabled", "on": func() -> void:
-			_env.fog_enabled = true
-			_env.fog_density = 0.08,
-		 "off": func() -> void:
-			_env.fog_enabled = false
-			_env.fog_density = 0.01},
-		{"name": "fog_density", "on": func() -> void:
-			_env.fog_enabled = true
-			_env.fog_density = 0.6,
-		 "off": func() -> void:
-			_env.fog_enabled = false
-			_env.fog_density = 0.01},
-		{"name": "fog_light_color", "on": func() -> void:
-			_env.fog_enabled = true
-			_env.fog_density = 0.2
-			_env.fog_light_color = Color(1.0, 0.1, 0.1),
-		 "off": func() -> void:
-			_env.fog_enabled = false
-			_env.fog_density = 0.01
-			_env.fog_light_color = Color(0.518, 0.553, 0.608)},
-		{"name": "fog_sun_scatter", "on": func() -> void:
-			_env.fog_enabled = true
-			_env.fog_density = 0.2
-			_env.fog_sun_scatter = 1.0,
-		 "off": func() -> void:
-			_env.fog_enabled = false
-			_env.fog_density = 0.01
-			_env.fog_sun_scatter = 0.0},
-		{"name": "fog_aerial_perspective", "on": func() -> void:
-			_env.fog_enabled = true
-			_env.fog_density = 0.2
-			_env.fog_aerial_perspective = 1.0,
-		 "off": func() -> void:
-			_env.fog_enabled = false
-			_env.fog_density = 0.01
-			_env.fog_aerial_perspective = 0.0},
+		{"name": "fog_enabled", "who": "env",
+		 "set": {"fog_enabled": true, "fog_density": 0.08}},
+		{"name": "fog_density", "who": "env",
+		 "set": {"fog_enabled": true, "fog_density": 0.6}},
+		{"name": "fog_light_color", "who": "env",
+		 "set": {"fog_enabled": true, "fog_density": 0.2,
+			"fog_light_color": Color(1.0, 0.1, 0.1)}},
+		{"name": "fog_sun_scatter", "who": "env",
+		 "set": {"fog_enabled": true, "fog_density": 0.2,
+			"fog_sun_scatter": 1.0}},
+		{"name": "fog_aerial_perspective", "who": "env",
+		 "set": {"fog_enabled": true, "fog_density": 0.2,
+			"fog_aerial_perspective": 1.0}},
 		# Glow gets every advantage: enabled, maximum intensity, and an HDR
 		# threshold of 0 so it does not need a float buffer to find something
-		# bright. If it is still identical, it is not there.
-		{"name": "glow_enabled", "on": func() -> void:
-			_env.glow_enabled = true
-			_env.glow_intensity = 8.0
-			_env.glow_bloom = 1.0
-			_env.glow_hdr_threshold = 0.0,
-		 "off": func() -> void:
-			_env.glow_enabled = false
-			_env.glow_intensity = 0.8
-			_env.glow_bloom = 0.0
-			_env.glow_hdr_threshold = 1.0},
-		{"name": "adjustment_enabled", "on": func() -> void:
-			_env.adjustment_enabled = true
-			_env.adjustment_saturation = 0.0,
-		 "off": func() -> void:
-			_env.adjustment_enabled = false
-			_env.adjustment_saturation = 1.0},
-		{"name": "adjustment_brightness", "on": func() -> void:
-			_env.adjustment_enabled = true
-			_env.adjustment_brightness = 2.0,
-		 "off": func() -> void:
-			_env.adjustment_enabled = false
-			_env.adjustment_brightness = 1.0},
-		{"name": "adjustment_contrast", "on": func() -> void:
-			_env.adjustment_enabled = true
-			_env.adjustment_contrast = 1.25,
-		 "off": func() -> void:
-			_env.adjustment_enabled = false
-			_env.adjustment_contrast = 1.0},
-		{"name": "tonemap_exposure", "on": func() -> void:
-			_env.tonemap_exposure = 2.0,
-		 "off": func() -> void:
-			_env.tonemap_exposure = 1.0},
+		# bright. If it were still identical, it would not be there.
+		{"name": "glow_enabled", "who": "env",
+		 "set": {"glow_enabled": true, "glow_intensity": 8.0,
+			"glow_bloom": 1.0, "glow_hdr_threshold": 0.0}},
+		{"name": "adjustment_enabled", "who": "env",
+		 "set": {"adjustment_enabled": true, "adjustment_saturation": 0.0}},
+		{"name": "adjustment_brightness", "who": "env",
+		 "set": {"adjustment_enabled": true, "adjustment_brightness": 2.0}},
+		{"name": "adjustment_contrast", "who": "env",
+		 "set": {"adjustment_enabled": true, "adjustment_contrast": 1.25}},
+		{"name": "tonemap_exposure", "who": "env",
+		 "set": {"tonemap_exposure": 2.0}},
 		# Ambient, four ways. The Light tab exposes ambient_light_energy and
 		# vale_light.gd calls it "the shadow-depth knob", so whether it is
 		# actually wired under this renderer AND this sky configuration is
 		# worth four A/Bs rather than one.
-		{"name": "ambient_energy @sky=1", "on": func() -> void:
-			_env.ambient_light_energy = 4.0,
-		 "off": func() -> void:
-			_env.ambient_light_energy = 0.36},
-		{"name": "ambient sky_contrib 1->0", "on": func() -> void:
-			_env.ambient_light_sky_contribution = 0.0
-			_env.ambient_light_color = Color(1, 0, 0),
-		 "off": func() -> void:
-			_env.ambient_light_sky_contribution = 1.0
-			_env.ambient_light_color = Color(0, 0, 0)},
-		{"name": "ambient_energy @sky=0", "on": func() -> void:
-			_env.ambient_light_sky_contribution = 0.0
-			_env.ambient_light_color = Color(1, 0, 0)
-			_env.ambient_light_energy = 4.0,
-		 "off": func() -> void:
-			_env.ambient_light_sky_contribution = 1.0
-			_env.ambient_light_color = Color(0, 0, 0)
-			_env.ambient_light_energy = 0.36},
-		{"name": "ambient_energy @source=COLOR", "on": func() -> void:
-			_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-			_env.ambient_light_color = Color(0.4, 0.5, 0.6)
-			_env.ambient_light_energy = 4.0,
-		 "off": func() -> void:
-			_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-			_env.ambient_light_color = Color(0, 0, 0)
-			_env.ambient_light_energy = 0.36},
-		{"name": "sun light_energy", "on": func() -> void:
-			_sun.light_energy = 3.0,
-		 "off": func() -> void:
-			_sun.light_energy = 1.0},
-		{"name": "sun light_color", "on": func() -> void:
-			_sun.light_color = Color(1.0, 0.2, 0.1),
-		 "off": func() -> void:
-			_sun.light_color = Color(1.0, 0.945, 0.87)},
-		{"name": "sun yaw/pitch", "on": func() -> void:
-			_sun.rotation_degrees = Vector3(-20.0, 40.0, 0.0),
-		 "off": func() -> void:
-			_sun.rotation_degrees = Vector3(-48.0, -128.0, 0.0)},
-		{"name": "shadow_enabled", "on": func() -> void:
-			_sun.shadow_enabled = false,
-		 "off": func() -> void:
-			_sun.shadow_enabled = true},
-		{"name": "scaling_3d_scale", "on": func() -> void:
-			get_root().scaling_3d_scale = 0.25,
-		 "off": func() -> void:
-			get_root().scaling_3d_scale = 1.0},
+		{"name": "ambient_energy @sky=1", "who": "env",
+		 "set": {"ambient_light_energy": 4.0}},
+		{"name": "ambient sky_contrib 1->0", "who": "env",
+		 "set": {"ambient_light_sky_contribution": 0.0,
+			"ambient_light_color": Color(1, 0, 0)}},
+		{"name": "ambient_energy @sky=0", "who": "env",
+		 "set": {"ambient_light_sky_contribution": 0.0,
+			"ambient_light_color": Color(1, 0, 0),
+			"ambient_light_energy": 4.0}},
+		{"name": "ambient_energy @src=COLOR", "who": "env",
+		 "set": {"ambient_light_source": Environment.AMBIENT_SOURCE_COLOR,
+			"ambient_light_color": Color(0.4, 0.5, 0.6),
+			"ambient_light_energy": 4.0}},
+		{"name": "sun light_energy", "who": "sun",
+		 "set": {"light_energy": 3.0}},
+		{"name": "sun light_color", "who": "sun",
+		 "set": {"light_color": Color(1.0, 0.2, 0.1)}},
+		{"name": "sun yaw/pitch", "who": "sun",
+		 "set": {"rotation_degrees": Vector3(-20.0, 40.0, 0.0)}},
+		{"name": "shadow_enabled", "who": "sun",
+		 "set": {"shadow_enabled": false}},
+		{"name": "scaling_3d_scale", "who": "vp",
+		 "set": {"scaling_3d_scale": 0.25}},
 		# LIVENESS. This one cannot fail to change the picture. If it reports NO
 		# CHANGE the swapchain is stale and nothing above it means anything.
-		{"name": "LIVENESS camera move", "on": func() -> void:
-			_cam.position += Vector3(0, 3.0, 4.0),
-		 "off": func() -> void:
-			_cam.position -= Vector3(0, 3.0, 4.0)},
+		{"name": "LIVENESS camera move", "who": "cam",
+		 "set": {"position": Vector3(3.4, 7.2, 12.0)}},
 	]
+
+
+func _who(which: String) -> Object:
+	match which:
+		"env":
+			return _env
+		"sun":
+			return _sun
+		"cam":
+			return _cam
+		"vp":
+			return get_root()
+	return null
+
+
+## Apply a test's properties, remembering what was there. Nothing is restored
+## from a written-down default; the snapshot is the only source.
+func _apply_test(t: Dictionary) -> void:
+	var o := _who(String(t["who"]))
+	var was: Dictionary = {}
+	for k in t["set"]:
+		was[k] = o.get(k)
+		o.set(k, t["set"][k])
+	t["was"] = was
+
+
+func _revert_test(t: Dictionary) -> void:
+	var o := _who(String(t["who"]))
+	for k in t["was"]:
+		o.set(k, t["was"][k])
 
 
 func _process(_d: float) -> bool:
@@ -343,22 +311,22 @@ func _phase_effects() -> bool:
 		print("[PROBE] baseline captured, mean luma %.4f" % _base_luma)
 		_step = 1
 		_next = _frame + SETTLE
-		_tests[0]["on"].call()
+		_apply_test(_tests[0])
 		return false
 
 	var t: Dictionary = _tests[_step - 1]
 	var data := _grab()
 	var same := data == _base
 	var dl: float = _luma(data) - _base_luma
-	print("[PROBE] %-26s %s (d-luma %+.4f)"
+	print("[PROBE] %-25s %s (d-luma %+.4f)"
 		% [t["name"], "NO CHANGE" if same else "changed", dl])
 	if same:
 		_faults.append(String(t["name"]) + " did nothing")
-	t["off"].call()
+	_revert_test(t)
 
 	_step += 1
 	if _step - 1 < _tests.size():
-		_tests[_step - 1]["on"].call()
+		_apply_test(_tests[_step - 1])
 		_next = _frame + SETTLE
 		return false
 
