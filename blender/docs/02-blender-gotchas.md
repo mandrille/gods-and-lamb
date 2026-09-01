@@ -1198,3 +1198,92 @@ also what a glTF skin is.
 The guard is a triangle-count comparison against the loose parts. It is worth
 having because the fault produces a correct-looking character; only the number
 says anything is wrong.
+
+
+## Godot drops the vertex-colour flag on surface 0 of every glTF
+
+Measured 2026-09-01 across four assets, imported into Godot 4.7 Compatibility:
+
+    Buildings/hut   Plaster false   Hollow/Wood/Thatch/WoodDark true
+    Terrain/grass   Dirt    false   Grass true
+    Nature/tree     Trunk   false   LeafDark/LeafLight/Leaf true
+    Folk/villager   the single folded material, false
+
+Every primitive in those GLBs carries a COLOR_0 attribute -- checked by
+parsing the JSON chunk -- and Blender wires every material to read it. Godot
+imports the colour data correctly (`ARRAY_COLOR` reads back with the right
+values) but leaves `vertex_color_use_as_albedo` clear on the material of
+SURFACE 0, and sets it on every later surface.
+
+So every tree trunk, every dirt tile and every hut wall in this village was
+rendering without its baked AO, and it was invisible because the other
+surfaces of the same asset looked right. It only became undeniable when the
+folk were folded to ONE surface and the villager came back as a flat blue
+silhouette with no colour whatsoever.
+
+Fixed in `godot/scripts/vale_builder.gd::_normalise_vertex_colour()`, which
+sets the flag on every material of every library asset at load. Not in an
+import script: an `.import` sidecar has to be written twice for a brand-new
+GLB before Godot will attach a post-import script to it, and the loader is one
+place that headless tools, the editor and the exported build all go through.
+
+**If a bake looks like it did nothing, check the flag before you re-bake.**
+
+
+## COLOR_0 and albedo_color are not in the same colour space
+
+Godot's Compatibility renderer uses a material's `albedo_color` as linear, but
+runs COLOR_0 through an sRGB->linear conversion on its way into the shader --
+and it does that with `vertex_color_is_srgb` reading FALSE, so the flag does
+not tell you.
+
+This never mattered while COLOR_0 carried only AO: a near-white greyscale
+value shifts by little and the art was tuned by eye against whatever came out.
+It matters enormously the moment albedo moves into that channel. Folding the
+villager's eight materials into COLOR_0 with a plain multiply gave:
+
+    unfolded, 8 surfaces   mean rgb 0.2798 0.2433 0.1698
+    folded, plain multiply mean rgb 0.1756 0.0934 0.0563
+
+Far too dark AND skewed per channel -- the signature of a gamma applied once
+too often, as against a uniform brightness error.
+
+`aobake._encode()` stores the inverse-transformed product so the folded mesh
+renders what the unfolded one did:
+
+    stored = linear_to_srgb(albedo_linear * srgb_to_linear(ao))
+
+which measured 0.2536 0.2166 0.1509 -- the hue skew gone. The residual ~10%
+is specular: the unfolded asset had five different roughness values and its
+smoother surfaces threw highlights that one averaged roughness cannot. It is
+not visible at play distance, and the comparison renders are in
+`godot/shots/folk_villager_BEFORE.png` and `_AFTER.png`.
+
+Verify a change here by RENDERING both and comparing means -- see
+`godot/tools/folk_colour.gd`. Two traps live in that tool's own history: a
+`look_at()` on a camera not yet in the tree silently aims down -Z, and
+comparing pixels against the AUTHORED background colour excludes nothing
+because tonemapping moves it, so every sky pixel counts as subject and two
+different assets measure identically.
+
+
+## One surface per material is free on static meshes and 5x on skinned ones
+
+The house style -- one mesh, one material per flat colour -- costs nothing on
+the 27 static assets. The 353-prop, 7338-tile Vale draws in 1.05 ms.
+
+On a SKINNED mesh, GL Compatibility runs a skinning update per surface per
+frame. The villager's 8 surfaces therefore cost 8 of them. Measured at n=400
+followers, sandwiched against baselines taken before and after each window:
+
+    8 surfaces (before)   +52.75 ms    0.132 ms/follower
+    1 surface  (after)    +10.13 ms    0.025 ms/follower
+
+Folding is done in `aobake.fold_to_vertex_colour()` and applied ONLY to
+`cls == "folk"` in `build.py`. Static assets keep their slots deliberately:
+the split is how the whole library is authored and it costs nothing there.
+
+Note the fold is lossless only because parts are `join()`ed rather than
+welded, so no vertex is shared between two materials. That is CHECKED, not
+assumed -- a shared vertex would average two albedos into a seam and nothing
+downstream would notice.

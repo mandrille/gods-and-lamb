@@ -122,6 +122,25 @@ this number: A* runs once per follower per errand, not per frame, and the grid
 is a `PackedByteArray` of 6,912 bytes built once. The thing to watch is
 follower count, which is being measured separately.
 
+## The one that made the download smaller, 2026-09-01
+
+Folding the two skinned folk assets from 8 and 11 surfaces down to 1 each, and
+setting the vertex-colour flag at load:
+
+    before   index.pck  593,505 gzip
+    after    index.pck  591,641 gzip
+    delta               -1,864
+
+A **5.2x** cut in per-follower frame cost that also shrank the download,
+because eight materials collapsed into one and the colour they carried moved
+into a vertex channel that was already being shipped for the AO bake.
+
+Worth stating plainly, since it cuts against the usual shape: **the axis that
+mattered here was not bytes at all.** Nothing in this size report would ever
+have found it. The measurement that did is in `godot/tools/perf_followers.gd`,
+and it needed a WINDOWED run -- `--headless` uses the dummy rendering driver
+and reports every draw call and GPU millisecond as zero.
+
 ## What is still unmeasured
 
 - **Frame rate**, desktop or mobile, in a real browser window.

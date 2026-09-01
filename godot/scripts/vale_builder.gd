@@ -112,8 +112,50 @@ func _packed_of(asset_id: String) -> PackedScene:
 		_scenes[asset_id] = null
 		return null
 	var packed: PackedScene = load(path)
+	_normalise_vertex_colour(packed)
 	_scenes[asset_id] = packed
 	return packed
+
+
+## Make every material in a library asset multiply COLOR_0 into its albedo.
+##
+## That is the pipeline's invariant -- the Blender side bakes AO into COLOR_0
+## and wires every material to read it, and glTF defines COLOR_0 as multiplying
+## into base colour. Godot's glTF importer does not carry it across reliably:
+## measured across four assets, the material on SURFACE 0 comes in with the
+## flag clear and every later surface comes in with it set.
+##
+##     Buildings/hut   Plaster false, Hollow/Wood/Thatch/WoodDark true
+##     Terrain/grass   Dirt    false, Grass true
+##     Nature/tree     Trunk   false, LeafDark/LeafLight/Leaf true
+##     Folk/villager   the single folded material, false
+##
+## So every tree trunk, every dirt tile and every hut wall in this village has
+## been rendering without its baked AO, and nobody could see it because the
+## other surfaces of the same asset looked right. It only became obvious when
+## the folk were folded to ONE surface and a villager came back as a flat blue
+## silhouette with no colour at all.
+##
+## Setting the flag here rather than in an import script keeps it in one place
+## that headless tools, the editor and the exported build all go through --
+## an .import sidecar has to be written twice for a new GLB before Godot will
+## even attach a post-import script to it.
+func _normalise_vertex_colour(packed: PackedScene) -> void:
+	var state := packed.get_state()
+	var seen := {}
+	for i in state.get_node_count():
+		for j in state.get_node_property_count(i):
+			if String(state.get_node_property_name(i, j)) != "mesh":
+				continue
+			var mesh: Mesh = state.get_node_property_value(i, j) as Mesh
+			if mesh == null:
+				continue
+			for k in mesh.get_surface_count():
+				var mat := mesh.surface_get_material(k) as BaseMaterial3D
+				if mat == null or seen.has(mat.get_instance_id()):
+					continue
+				seen[mat.get_instance_id()] = true
+				mat.vertex_color_use_as_albedo = true
 
 
 func _walk(n: Node) -> Array:

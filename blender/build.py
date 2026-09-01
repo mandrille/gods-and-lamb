@@ -628,6 +628,15 @@ def target_glb(rest):
         subjects = [mesh]
 
     aobake.bake(subjects)
+    if rigged:
+        # Skinned meshes only. GL Compatibility runs a skinning update per
+        # SURFACE per frame, so eight flat-colour materials on a villager cost
+        # eight of them -- measured at 88.8% of a follower's entire frame cost.
+        # Static assets keep their material slots: the same split costs nothing
+        # there (353 props and 7338 tiles draw in 1.05 ms) and the per-material
+        # authoring is how the whole library is written.
+        for nm, was, now in aobake.fold_to_vertex_colour(subjects):
+            print("  folded %s: %d surfaces -> %d" % (nm, was, now))
     aobake.wire_all()
 
     # The vocabulary the engine reads. Custom properties become glTF extras,
