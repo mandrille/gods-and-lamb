@@ -96,6 +96,31 @@ func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0,
 	_replan()
 
 
+## HOW MANY VILLAGERS MAY THINK IN ONE FRAME.
+##
+## A replan runs A* across a ~100x100 grid, and fifty villagers spawned
+## together drift into step: their idle timers expire on the same frame, fifty
+## paths are solved at once and the frame takes 38 ms instead of 7. The work is
+## not too expensive, it is too BUNCHED.
+##
+## Deferred villagers retry on the very next frame, so at 60 fps the whole
+## village still re-decides several times a second and nothing visibly waits.
+const REPLAN_BUDGET := 6
+static var _replan_frame := -1
+static var _replans_now := 0
+
+
+static func _claim_replan_slot() -> bool:
+	var f := int(Engine.get_process_frames())
+	if f != _replan_frame:
+		_replan_frame = f
+		_replans_now = 0
+	if _replans_now >= REPLAN_BUDGET:
+		return false
+	_replans_now += 1
+	return true
+
+
 func _replan() -> void:
 	if grid == null or brain == null:
 		return
@@ -345,7 +370,10 @@ func _process(delta: float) -> void:
 		State.IDLE:
 			_idle -= delta
 			if _idle <= 0.0:
-				_replan()
+				if _claim_replan_slot():
+					_replan()
+				else:
+					_idle = 0.001      # somebody else is thinking; next frame
 		State.WORK, State.TALK:
 			pass
 

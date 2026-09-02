@@ -96,7 +96,35 @@ func _commune_rect() -> Rect2:
 func _process(delta: float) -> void:
 	if _notice_left > 0.0:
 		_notice_left -= delta
-	var m := get_viewport().get_mouse_position()
+	_refresh_hot(get_local_mouse_position())
+	# Show WHO can be targeted, for as long as a villager-only aim is live.
+	var folk_aim := false
+	if _aiming >= 0 and _aiming < divinity.hand.size():
+		folk_aim = String(divinity.hand[_aiming]["target"]) == "folk"
+	if host != null and host.overhead != null:
+		host.overhead.highlight_all = folk_aim
+	queue_redraw()
+
+
+## COORDINATE SPACES.
+##
+## project.godot stretches with `canvas_items` from a 720x1280 base into
+## whatever the window is, so there are TWO mouse positions and they are not
+## the same number:
+##
+##   get_viewport().get_mouse_position()  raw viewport pixels
+##   get_local_mouse_position()           canvas space, where Controls live
+##
+## Everything drawn or laid out here -- get_viewport_rect(), and every
+## Camera3D.unproject_position -- is in canvas space, so the raw one is always
+## wrong and wrong by a factor that changes with the window size. Symptoms
+## were a boon card that could not be clicked, an aiming reticle beside the
+## cursor rather than on it, and villagers that were "super hard to click".
+##
+## An InputEvent carries raw viewport coordinates too, so it goes through
+## make_input_local() before being compared with anything.
+	var m := get_local_mouse_position()
+func _refresh_hot(m: Vector2) -> void:
 	var was := _hot
 	_hot = -1
 	var rects := _hand_rects()
@@ -112,13 +140,6 @@ func _process(delta: float) -> void:
 			break
 	_hot_wrath = _wrath_rect().has_point(m)
 	_hot_commune = _commune_rect().has_point(m)
-	# Show WHO can be targeted, for as long as a villager-only aim is live.
-	var folk_aim := false
-	if _aiming >= 0 and _aiming < divinity.hand.size():
-		folk_aim = String(divinity.hand[_aiming]["target"]) == "folk"
-	if host != null and host.overhead != null:
-		host.overhead.highlight_all = folk_aim
-	queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -131,6 +152,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 		return
+	# Recompute the hover from THIS event rather than trusting _process: a
+	# click that arrives in the same frame the pointer moved would otherwise be
+	# tested against where the mouse used to be.
+	_refresh_hot(make_input_local(mb).position)
 
 	# A click on the hand or the wrath button, first: these sit on top.
 	if _hot >= 0:
@@ -422,7 +447,8 @@ func _toast() -> void:
 func _reticle() -> void:
 	if _aiming < 0 and not _smiting:
 		return
-	var m := get_viewport().get_mouse_position()
+	# Canvas space, or the reticle is drawn beside the cursor instead of on it.
+	var m := get_local_mouse_position()
 	var tint := DANGER if _smiting else GOLD
 	var t := float(Time.get_ticks_msec()) * 0.004
 	draw_arc(m, 26.0 + sin(t) * 2.0, 0.0, TAU, 40, tint, 2.0)

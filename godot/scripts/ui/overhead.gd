@@ -60,7 +60,10 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if host == null or rig == null or rig.cam == null:
 		return
-	_mouse = get_viewport().get_mouse_position()
+	# CANVAS space. under() compares against Camera3D.unproject_position, which
+	# is in canvas space, so the raw viewport position missed by the stretch
+	# factor -- which is most of why villagers were "super hard to click".
+	_mouse = get_local_mouse_position()
 	var was = hovered
 	hovered = under(_mouse)
 	if hovered != was:
@@ -124,7 +127,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 		return
-	var hit = under(mb.position)
+	var hit = under(make_input_local(mb).position)
 	if hit == null:
 		return
 	selected = hit

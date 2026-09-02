@@ -19,17 +19,36 @@ signal depleted(res: String)
 const PER_HEAD := {"food": 6, "wood": 8, "stone": 5}
 ## What two people wash up on a bare plot with. Deliberately thin: the first
 ## hut has to be EARNED, because watching them earn it is the whole opening.
-const START := {"food": 3, "wood": 0, "stone": 0}
+## The founding pair arrive with a little in hand.
+##
+## Starting at nothing meant the first chop landed at 54 s and the first hut at
+## 82 s, and a hut costs six wood against a yield of four -- so the opening was
+## always two chops long before anything could be built. Three wood makes the
+## FIRST chop enough to raise the first roof, which is the moment the whole
+## opening is supposed to be about. It is still zero buildings, which is what
+## the opening asks for; they simply did not walk in empty-handed.
+##
+## The stone matters as much as the wood, for a reason that is easy to miss.
+## `shortage` reads 1.0 for an EMPTY store, so leaving stone at zero while
+## seeding wood handed the opening straight back to the pick: wood scored
+## 1 - 3/16 = 0.81 and stone scored a flat 1.0, so the first thing the founders
+## did was quarry for a well nobody had asked for. Starting both shelves off
+## zero lets purpose -- what the first hut actually needs -- decide.
+const START := {"food": 6, "wood": 3, "stone": 3}
 
 ## How many of each structure the settlement wants, given its size. This is
 ## what stops a village raising a third well and what makes the first hut
 ## urgent -- `shortage` is about resources, this is about buildings.
+## `priority` breaks ties. Without it a well and the FIRST ROOF were wanted
+## exactly as much -- both "min 1, have 0" -- so an opening village split its
+## effort between wood and stone and took 147 s to put up any building at all.
+## A settlement builds shelter first and digs a well afterwards.
 const WANTED := {
-	"Buildings/hut": {"per_head": 0.5, "min": 1},
-	"Buildings/well": {"per_head": 0.0, "min": 1},
-	"Buildings/market_stall": {"per_head": 0.0, "min": 1},
-	"Buildings/shrine": {"per_head": 0.0, "min": 1},
-	"Nature/crop_row": {"per_head": 3.0, "min": 4},
+	"Buildings/hut": {"per_head": 0.5, "min": 1, "priority": 1.0},
+	"Buildings/well": {"per_head": 0.0, "min": 1, "priority": 0.55},
+	"Buildings/market_stall": {"per_head": 0.0, "min": 1, "priority": 0.45},
+	"Buildings/shrine": {"per_head": 0.0, "min": 1, "priority": 0.5},
+	"Nature/crop_row": {"per_head": 3.0, "min": 4, "priority": 0.8},
 }
 
 var stores: Dictionary = {}
@@ -177,17 +196,27 @@ func claimed(aid: String) -> int:
 
 ## 0 = we have enough, 1 = we have none and want one. Drives whether building
 ## is worth a villager's time at all.
-func wants(aid: String) -> float:
+## `count_claims` exists for one caller: Brain._needed_for_wants, which asks
+## how badly a MATERIAL is wanted.
+##
+## Counting claims is right for "should I start building one of these" -- it is
+## what stops four villagers all raising the same well. It is exactly wrong for
+## "should I go and fetch wood", because a claimed hut still needs its six wood
+## and has not been built yet. With claims counted, the first claim dropped the
+## demand for wood to nothing, nobody chopped, the claim expired unbuilt and it
+## began again: measured, one run took 246 s to fell its first tree.
+func wants(aid: String, count_claims := true) -> float:
 	if not WANTED.has(aid):
 		return 0.0
 	var spec: Dictionary = WANTED[aid]
 	var target: float = maxf(float(spec["min"]),
 							 float(spec["per_head"]) * float(maxi(1, population)))
 	# Standing ones PLUS the ones being built right now.
-	var have := float(count_of(aid) + claimed(aid))
+	var have := float(count_of(aid) + (claimed(aid) if count_claims else 0))
 	if have >= target:
 		return 0.0
-	return clampf((target - have) / target, 0.0, 1.0)
+	return (clampf((target - have) / target, 0.0, 1.0)
+			* float(spec.get("priority", 1.0)))
 
 
 ## --- building sites ---------------------------------------------------------

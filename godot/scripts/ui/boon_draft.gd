@@ -43,9 +43,27 @@ var _hot_reroll := false
 
 func _ready() -> void:
 	_font = ThemeDB.fallback_font
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fit()
+	get_viewport().size_changed.connect(_fit)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
+
+
+## Fill the screen FOR REAL.
+##
+## set_anchors_preset(PRESET_FULL_RECT) resolves anchors against a parent
+## CONTROL, and this node's parent is a CanvasLayer, which does no layout at
+## all -- so the anchors resolved against nothing and the rect stayed (0, 0).
+##
+## Drawing still worked, because a Control does not clip its own _draw, so the
+## draft LOOKED right and was completely dead: the viewport picks the topmost
+## control whose RECT contains the pointer, an empty rect contains nothing,
+## _gui_input was never called, and the reported symptom was "got my first boon
+## but I could not select it". The same emptiness meant the overlay swallowed
+## no clicks either, so the world was still being clicked underneath it.
+func _fit() -> void:
+	position = Vector2.ZERO
+	size = get_viewport_rect().size
 
 
 func open(options: Array, source: String) -> void:
@@ -76,7 +94,7 @@ func _card_rects() -> Array[Rect2]:
 	var n := _options.size()
 	if n == 0:
 		return out
-	var vp := get_viewport_rect().size
+	var vp := size
 	var total := float(n) * (CARD_W + GAP) - GAP
 	var x := (vp.x - total) * 0.5
 	var y := (vp.y - CARD_H) * 0.5
@@ -86,7 +104,7 @@ func _card_rects() -> Array[Rect2]:
 
 
 func _reroll_rect() -> Rect2:
-	var vp := get_viewport_rect().size
+	var vp := size
 	return Rect2(vp.x * 0.5 - 90.0, (vp.y + CARD_H) * 0.5 + 22.0, 180.0, 36.0)
 
 
@@ -96,10 +114,27 @@ func reroll_cost() -> int:
 
 ## --- input ------------------------------------------------------------------
 
+## COORDINATE SPACES.
+##
+## project.godot stretches with `canvas_items` from a 720x1280 base into
+## whatever the window is, so there are TWO mouse positions and they are not
+## the same number:
+##
+##   get_viewport().get_mouse_position()  raw viewport pixels
+##   get_local_mouse_position()           canvas space, where Controls live
+##
+## Everything drawn or laid out here -- get_viewport_rect(), and every
+## Camera3D.unproject_position -- is in canvas space, so the raw one is always
+## wrong and wrong by a factor that changes with the window size. Symptoms
+## were a boon card that could not be clicked, an aiming reticle beside the
+## cursor rather than on it, and villagers that were "super hard to click".
+##
+## An InputEvent carries raw viewport coordinates too, so it goes through
+## make_input_local() before being compared with anything.
 func _process(_d: float) -> void:
 	if not is_open():
 		return
-	var m := get_viewport().get_mouse_position()
+	var m := get_local_mouse_position()
 	var was := _hot
 	_hot = -1
 	var rects := _card_rects()
@@ -118,11 +153,21 @@ func _gui_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
 		return
-	if _hot >= 0:
-		chosen.emit(String(_options[_hot]["id"]))
-		accept_event()
-		return
-	if _hot_reroll and divinity.can_afford(float(reroll_cost())):
+	# Hit-test THIS CLICK, rather than trusting the hover state _process left
+	# behind. _gui_input hands us a position already local to this control, so
+	# the click works even on the first frame the draft is open and even if
+	# _process has not run since the pointer last moved.
+	var at: Vector2 = mb.position
+	var rects := _card_rects()
+	for i in rects.size():
+		var r: Rect2 = rects[i]
+		if i == _hot:
+			r.position.y -= 8.0        # hovered cards rise; so must their box
+		if r.has_point(at):
+			chosen.emit(String(_options[i]["id"]))
+			accept_event()
+			return
+	if _reroll_rect().has_point(at) and divinity.can_afford(float(reroll_cost())):
 		rerolled.emit()
 		accept_event()
 
@@ -132,7 +177,7 @@ func _gui_input(event: InputEvent) -> void:
 func _draw() -> void:
 	if not is_open():
 		return
-	var vp := get_viewport_rect().size
+	var vp := size
 	draw_rect(Rect2(Vector2.ZERO, vp), DIM, true)
 
 	var title := "Commune" if _source == "commune" else "A gift"

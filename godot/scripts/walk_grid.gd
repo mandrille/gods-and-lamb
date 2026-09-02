@@ -61,6 +61,11 @@ var _built: PackedByteArray = PackedByteArray()
 ## Which connected walkable region each cell belongs to, -1 for none. Filled by
 ## the same flood fill that counts them.
 var _region: PackedInt32Array = PackedInt32Array()
+## Solidity from the GROUND alone, before any prop is considered. Terrain only
+## changes when land is bought; props change every time a tree falls. Keeping
+## the two apart is what lets rebuild_props be cheap.
+var _terrain: PackedByteArray = PackedByteArray()
+var _quiet := false
 
 
 func build(doc: Dictionary) -> void:
@@ -85,10 +90,43 @@ func build(doc: Dictionary) -> void:
 			# all solid at this stage. Bridges open the water again below.
 			var ok := lo != "." and lo != "W" and up == "."
 			_solid[row * cols + col] = 0 if ok else 1
+	_terrain = _solid.duplicate()
 
 	# Props. Bridges FIRST, so a bridge deck beats the water underneath it, and
 	# blockers after, so nothing re-opens ground a building stands on.
-	var props: Array = doc.get("props", [])
+	_apply_props(doc.get("props", []))
+
+	_astar.region = Rect2i(0, 0, cols, rows)
+	_astar.cell_size = Vector2(1, 1)
+	# Diagonals only where both orthogonal neighbours are open, or a follower
+	# cuts the corner of a cottage and walks through its wall.
+	_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	_astar.update()
+	for row in rows:
+		for col in cols:
+			if _solid[row * cols + col] == 1:
+				_astar.set_point_solid(Vector2i(col, row), true)
+			else:
+				_walkable_cells.append(Vector2i(col, row))
+
+	if not _quiet:
+		print("[WALK] %d of %d cells walkable, %d blocked, %d bridge decks"
+			% [_walkable_cells.size(), cols * rows,
+			   (cols * rows) - _walkable_cells.size(),
+			   (_by_id.get(BRIDGE, []) as Array).size()])
+	_report_regions()
+
+
+## How many DISCONNECTED walkable regions are there, and how big.
+##
+## This is the check that catches a bridge which does not actually reach both
+## banks. A pathfinder cannot tell you that: it simply returns no route, the
+## follower shrugs and wanders locally, and the village looks fine while half
+## of it is quietly unreachable. A flood fill says it out loud at startup.
+## The prop layer, on top of whatever the terrain already said.
+func _apply_props(props: Array) -> void:
+	# Bridges FIRST, so a bridge deck beats the water underneath it, and
+	# blockers after, so nothing re-opens ground a building stands on.
 	for p in props:
 		var aid := String(p["id"])
 		var cell := Vector2i(int(p["col"]), int(p["row"]))
@@ -110,32 +148,42 @@ func build(doc: Dictionary) -> void:
 		elif aid in BLOCK_SINGLE:
 			_block_cell(cell)
 
-	_astar.region = Rect2i(0, 0, cols, rows)
-	_astar.cell_size = Vector2(1, 1)
-	# Diagonals only where both orthogonal neighbours are open, or a follower
-	# cuts the corner of a cottage and walks through its wall.
-	_astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
-	_astar.update()
-	for row in rows:
-		for col in cols:
-			if _solid[row * cols + col] == 1:
-				_astar.set_point_solid(Vector2i(col, row), true)
-			else:
-				_walkable_cells.append(Vector2i(col, row))
 
-	print("[WALK] %d of %d cells walkable, %d blocked, %d bridge decks"
-		% [_walkable_cells.size(), cols * rows,
-		   (cols * rows) - _walkable_cells.size(),
-		   (_by_id.get(BRIDGE, []) as Array).size()])
+## Redo the PROPS only, keeping the terrain, the AStar grid and its settings.
+##
+## A tree falling changes one cell, and rebuilding the whole grid for it cost
+## 30 ms -- a two-frame stall, more than once a second in a busy village, which
+## is what "the game just runs slow" was. The expensive parts of build() are
+## AStarGrid2D.update(), which reallocates all ~10,000 points, and the 10,000
+## set_point_solid calls that follow it. Neither depends on the props.
+##
+## So the terrain solidity is kept from the last full build, the prop layer is
+## laid on top of a copy of it, and only the cells whose solidity ACTUALLY
+## CHANGED are pushed into the pathfinder.
+func rebuild_props(doc: Dictionary) -> void:
+	if _terrain.is_empty():
+		build(doc)
+		return
+	_quiet = true
+	var was := _solid.duplicate()
+	_solid = _terrain.duplicate()
+	_built.fill(0)
+	_by_id.clear()
+	_apply_props(doc.get("props", []))
+
+	_walkable_cells.clear()
+	for row in rows:
+		var base := row * cols
+		for col in cols:
+			var i := base + col
+			var solid := _solid[i] == 1
+			if not solid:
+				_walkable_cells.append(Vector2i(col, row))
+			if (was[i] == 1) != solid:
+				_astar.set_point_solid(Vector2i(col, row), solid)
 	_report_regions()
 
 
-## How many DISCONNECTED walkable regions are there, and how big.
-##
-## This is the check that catches a bridge which does not actually reach both
-## banks. A pathfinder cannot tell you that: it simply returns no route, the
-## follower shrugs and wanders locally, and the village looks fine while half
-## of it is quietly unreachable. A flood fill says it out loud at startup.
 ## The fill also RECORDS which region each cell is in, and that is the half
 ## that matters. Reporting alone left the problem exactly as described above:
 ## measured on a live village, 620 of 1078 decisions -- 57% -- ended in "no
@@ -172,10 +220,11 @@ func _report_regions() -> void:
 	var head: Array[String] = []
 	for i in mini(4, sizes.size()):
 		head.append(str(sizes[i]))
-	print("[WALK] %d disconnected region(s); largest: %s%s"
-		% [sizes.size(), ", ".join(head),
-		   "" if sizes.size() == 1 else
-		   "  <- anything not in the largest is unreachable from it"])
+	if not _quiet:
+		print("[WALK] %d disconnected region(s); largest: %s%s"
+			% [sizes.size(), ", ".join(head),
+			   "" if sizes.size() == 1 else
+			   "  <- anything not in the largest is unreachable from it"])
 
 
 ## Which connected region a cell is in. -1 when it is not walkable at all, or

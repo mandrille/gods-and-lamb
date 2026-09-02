@@ -80,6 +80,14 @@ const NEWCOMER_SECONDS := 75.0
 var _newcomer_timer := NEWCOMER_SECONDS
 ## Settlers owed because ground was opened for them. See _maybe_newcomer.
 var _settlers_due := 0
+## A grid rebuild that has been asked for but not yet paid for. See
+## queue_grid_rebuild.
+var _grid_dirty := false
+var _grid_wait := 0.0
+## Counted so a probe can show the coalescing working rather than assert it.
+var n_grid_requests := 0
+var n_grid_rebuilds := 0
+const GRID_MIN_GAP := 0.35
 const SETTLER_DELAY := 6.0
 ## Population counts that have already paid out a free draft, so a village
 ## that dips and recovers is not paid twice for the same milestone.
@@ -282,13 +290,48 @@ func _add_followers() -> void:
 		# water that nobody has any business being born on.
 		if islands.slot_of_cell(cell) != home:
 			continue
+		# THEY START BY THE WOODS.
+		#
+		# A random walkable cell put the founding pair anywhere on a 34-metre
+		# plot, and most of the opening was then two people walking to the
+		# first tree -- the first chop landed at 29.5 s with almost all of it
+		# spent on the journey. Opening in a clearing at the edge of the trees
+		# is both a better first shot and a faster first axe-swing.
+		#
+		# The requirement is relaxed if it cannot be met, so a plot generated
+		# with no trees near open ground still spawns its villagers.
+		if tries < 300 and not _near_trees(cell, 4):
+			continue
 		var asset := "Folk/adventurer" if made % 3 == 2 else "Folk/villager"
 		var at := grid.world_of(cell)
 		if _spawn_thinker(asset, at, _rng.randf_range(WALK_MIN, WALK_MAX)) != null:
 			made += 1
+	# THE FOUNDERS START RESTED.
+	#
+	# Brain gives everyone 0.55-1.0 on each need so a village does not queue at
+	# the same stall in the same second -- right for a newcomer, wrong for the
+	# two people the game opens on. One of them would start a hair above URGENT
+	# (0.45) and be hungry within seconds, so the first thing the player ever
+	# saw was somebody looking for lunch. These two have just arrived: they are
+	# fed, rested and clean, and the first thing they do is work.
+	for f in folk:
+		if f.brain == null:
+			continue
+		for k in Brain.STAT_ORDER:
+			f.brain.stats[k] = _rng.randf_range(0.92, 1.0)
 	village.population = made
 	print("[VALE] followers: %d of %d cap, %s"
 		% [made, islands.pop_cap(), village.summary()])
+
+
+## Is there something to chop within `span` cells of here?
+func _near_trees(cell: Vector2i, span: int) -> bool:
+	for aid in ["Nature/tree", "Nature/pine"]:
+		for c in grid.cells_of(aid):
+			var t: Vector2i = c
+			if absi(t.x - cell.x) <= span and absi(t.y - cell.y) <= span:
+				return true
+	return false
 
 
 func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
@@ -485,7 +528,7 @@ func _consume_target(f: Node, spec: Dictionary, at: Vector3) -> void:
 	var leaves := String(spec.get("leaves", ""))
 	if leaves != "" and col >= 0:
 		builder.add_prop(leaves, col, row, _rng.randf_range(0.0, 360.0))
-	rebuild_grid()
+	queue_grid_rebuild()
 
 
 ## A villager finished building something. THE BUILDER places it, not the
@@ -535,7 +578,7 @@ func _raise_structure(f: Node, act: String, aid: String,
 		return
 	n_build_ok += 1
 	var at := builder.world_of(cell.x, cell.y) + Vector3(0, builder.lift, 0)
-	rebuild_grid()
+	queue_grid_rebuild()
 	village.census(builder.placed_props)
 	fxe.burst("grow", at + Vector3(0, 0.6, 0))
 	sfx.play("coin", 0.8)
@@ -719,6 +762,34 @@ func _check_milestones() -> void:
 			return
 
 
+## Ask for a grid rebuild soon, rather than paying for one right now.
+##
+## rebuild_grid() allocates a fresh WalkGrid, re-walks every prop, rebuilds a
+## ~100x100 AStarGrid2D and floods it for connected regions. Measured at
+## 29.75 ms -- a two-frame stall -- and it was being called on EVERY chop and
+## EVERY building raised. Two dozen villagers fell a tree every few seconds
+## each, so the game spent a large fraction of its time rebuilding a map that
+## had changed by one cell, which is what "the game just runs slow" was.
+##
+## Nothing needs the grid to be correct in the same frame the tree falls: the
+## villager who felled it is standing still playing an animation, and every
+## target is re-validated on arrival anyway. So changes are coalesced -- ten
+## trees felled across a third of a second cost one rebuild instead of ten.
+func queue_grid_rebuild() -> void:
+	n_grid_requests += 1
+	_grid_dirty = true
+
+
+func _service_grid(delta: float) -> void:
+	_grid_wait = maxf(0.0, _grid_wait - delta)
+	if not _grid_dirty or _grid_wait > 0.0:
+		return
+	_grid_dirty = false
+	_grid_wait = GRID_MIN_GAP
+	n_grid_rebuilds += 1
+	rebuild_grid()
+
+
 ## Push every boon that lives on a follower back out to all of them.
 ##
 ## Called when a boon is taken. Boons are READ wherever possible -- drains and
@@ -739,7 +810,13 @@ func apply_boons() -> void:
 ## Called whenever the world changes under the villagers -- a miracle grows a
 ## grove, wrath flattens a cottage. Skipping it leaves followers routing around
 ## trees that no longer exist and walking through the space a felled one left.
+## Terrain is unchanged here -- only props moved -- so the existing grid is
+## updated in place rather than a new one built and handed to everybody. See
+## WalkGrid.rebuild_props for why that matters.
 func rebuild_grid() -> void:
+	if grid != null:
+		grid.rebuild_props(builder.live_doc())
+		return
 	grid = WALKGRID.new()
 	grid.build(builder.live_doc())
 	divinity.grid = grid
@@ -822,6 +899,7 @@ func _process(delta: float) -> void:
 			live.append(f)
 	folk = live
 	village.tick(delta)
+	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)
 	_check_milestones()

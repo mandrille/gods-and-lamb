@@ -100,8 +100,11 @@ const ACTIONS := {
 
 	# Building. `wants` names the structure the village is short of, and the
 	# village decides that -- a villager will not put up a third well.
+	# The quickest build in the game, deliberately. It is the first thing the
+	# player ever sees finished, and at 7.0 s the opening was: chop at 24 s,
+	# hut standing at 35 s. A first shelter is a lean-to, not a joinery job.
 	"build_hut":   {"need": "", "sources": [], "anywhere": true,
-					"seconds": 7.0, "anim": "chop", "refill": 0.0,
+					"seconds": 4.5, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 6}, "builds": "Buildings/hut",
 					"wants": "Buildings/hut", "clear": 2.0,
 					"morality": 0.05, "verb": "building a hut"},
@@ -451,6 +454,42 @@ func _somewhere_to_do(spec: Dictionary) -> bool:
 	return false
 
 
+## How badly this resource is wanted BY SOMETHING THE VILLAGE IS TRYING TO
+## BUILD, as opposed to being merely absent from the store.
+##
+## `Village.shortage` treats every empty store as equally urgent, so an opening
+## village with nothing at all rated wood and stone the same and spent its
+## first minute quarrying. Measured: first quarry at 12 s, first chop at 47 s,
+## first building at 147 s -- with stone at 6/10 and wood at 4/16, while the
+## only thing anyone wanted was a hut, which needs no stone whatsoever.
+##
+## Returns 0 when nothing wanted needs this, so it can only ever promote the
+## material that is actually standing in the way of the next building.
+func _needed_for_wants(res: String) -> float:
+	if village == null:
+		return 0.0
+	var worst := 0.0
+	for a in ACTIONS:
+		var spec: Dictionary = ACTIONS[a]
+		var aid := String(spec.get("wants", ""))
+		if aid == "":
+			continue
+		# Claims deliberately NOT counted -- see Village.wants.
+		var want: float = village.wants(aid, false)
+		if want <= 0.0:
+			continue
+		var takes: Dictionary = spec.get("takes", {})
+		if not takes.has(res):
+			continue
+		var need := float(takes[res])
+		if need <= 0.0:
+			continue
+		var missing := clampf((need - float(village.amount(res))) / need,
+							  0.0, 1.0)
+		worst = maxf(worst, want * missing)
+	return worst
+
+
 ## How much the village wants this work done.
 ##
 ## Two different questions behind one number. For gathering it is "are we short
@@ -483,6 +522,20 @@ func _demand(a: String) -> float:
 	var want := 0.0
 	for res in gives:
 		want = maxf(want, village.shortage(String(res)))
+		# Gathering for a PURPOSE beats gathering because a bar is low. This is
+		# what puts an axe in the first villager's hands instead of a pick.
+		#
+		# The multiplier clears 1.0, because `shortage` reads 1.0 for ANY empty
+		# store, so without a margin stone ties with wood on an opening plot
+		# and a founder spends the first minute quarrying for a well nobody
+		# asked for. It is deliberately a SMALL margin: pushed to 2.2 the
+		# village became unstable -- work piled onto whatever was momentarily
+		# scarcest and the openings measured worse across four runs (pop 3-4
+		# and 3-5 buildings at five minutes, against 5-6 and 5-6 at 1.35).
+		# Raising this term rather than lowering `shortage` keeps food -- which
+		# no building needs, and is therefore purely shortage-driven -- exactly
+		# as urgent as it was.
+		want = maxf(want, _needed_for_wants(String(res)) * 1.35)
 		# Gathering pulls TOWARD what the village is trying to build. Without
 		# this, wanting a hut makes hut-building attractive and does nothing
 		# about the wood -- so two villagers stand around at six wood, needing
