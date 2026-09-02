@@ -56,7 +56,7 @@ const FOOTPRINTS := {
 
 ## How often a road runs, in tiles, and how wide. Global lines, so roads line
 ## up across a plot seam instead of each plot drawing its own cross.
-const ROAD_EVERY := 17
+const ROAD_EVERY := 23
 const ROAD_WIDE := 2
 
 var unlocked: Dictionary = {}      ## Vector2i slot -> true

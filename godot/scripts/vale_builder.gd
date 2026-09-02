@@ -15,6 +15,14 @@ class_name ValeBuilder
 const DATA := "res://data/vale.json"
 const LIBRARY := "res://assets/library/%s.glb"
 
+## Scatter that nothing has to build around. Flowers, grass, reeds and lily
+## pads are dressing: a villager walks through them and a hut is raised over
+## them. Treating them as obstacles made a 7x7 building site need 49 cells
+## clear of every tuft of grass on the map, and forty villagers with unlimited
+## materials managed to raise ONE building in a whole run.
+const SOFT := ["Nature/flowers", "Nature/tall_grass", "Nature/reeds",
+			   "Nature/lily_pad", "Nature/crop_row", "Nature/apples"]
+
 ## Ground goes through MultiMesh, one per tile type. Hundreds of separate tile
 ## nodes is the single most likely way to kill a mobile browser, and this map
 ## has three thousand of them.
@@ -328,6 +336,14 @@ func add_prop(aid: String, col: int, row: int, yaw := 0.0,
 		return false
 	if code_at(lower, col, row) in [".", "W"]:
 		return false
+	# NOTHING MAY STAND ON SOMETHING ELSE.
+	#
+	# This checked only the tile CODE, never whether a prop was already there,
+	# which is why buildings were seen stacked on each other in play. The tile
+	# test answers "is this ground" and was being asked "is this free" -- two
+	# different questions, and the second one was never asked at all.
+	if would_overlap(aid, col, row):
+		return false
 	var packed := _packed_of(aid)
 	if packed == null:
 		return false
@@ -339,7 +355,73 @@ func add_prop(aid: String, col: int, row: int, yaw := 0.0,
 	placed_props.append({"id": aid, "node": node, "pos": node.position,
 						 "col": col, "row": row,
 						 "fp": Islands.FOOTPRINTS.get(aid, [0.5, 0.5])})
+	if aid.begins_with("Buildings/"):
+		_clear_site(aid, col, row)
 	return true
+
+
+## Clear the ground a new building now stands on.
+##
+## Everything inside the footprint goes -- dressing AND trees. Flowers growing
+## up through a cottage floor is the tell that two systems never spoke, and
+## refusing to build because a sapling is in the way is why a hut had zero
+## valid sites on the whole map.
+func _clear_site(aid: String, col: int, row: int) -> void:
+	var fp: Array = Islands.FOOTPRINTS.get(aid, [0.5, 0.5])
+	var hc := int(ceil(float(fp[0]) / tile / 2.0))
+	var hr := int(ceil(float(fp[1]) / tile / 2.0))
+	for e in placed_props.duplicate():
+		if String(e["id"]).begins_with("Buildings/"):
+			continue                     # would_overlap already refused these
+		var near_col := absi(int(e.get("col", -999)) - col) <= hc
+		var near_row := absi(int(e.get("row", -999)) - row) <= hr
+		if near_col and near_row:
+			remove_prop(e)
+
+
+## Would a prop of this kind at this cell collide with something standing?
+##
+## Rectangle overlap between declared footprints, in CELLS. Buildings are the
+## ones that matter -- a hut is 5x5 cells and two of them 3 cells apart look
+## like one broken building -- but scatter is tested too, so trees do not grow
+## inside each other.
+##
+## `ceil` on the half-extent for the same reason the walk grid uses it: a
+## 2.15 m building spans more than four 0.5 m tiles, and rounding down leaves
+## an overlap the test says is fine.
+func would_overlap(aid: String, col: int, row: int) -> bool:
+	var mine: Array = Islands.FOOTPRINTS.get(aid, [0.5, 0.5])
+	var hc := int(ceil(float(mine[0]) / tile / 2.0))
+	var hr := int(ceil(float(mine[1]) / tile / 2.0))
+	# A BUILDING only collides with other BUILDINGS.
+	#
+	# It clears its own site of trees, stumps and dressing when it goes up
+	# (`_clear_site`), so those must not veto it here -- and `is_buildable`,
+	# which chose the site, already ignores them. The two disagreed: the site
+	# test said yes and this said no, and 113 of 197 placements were refused
+	# after a villager had walked there with the materials.
+	#
+	# Anything else -- a miracle-grown tree, a scattered rock -- avoids
+	# everything solid, because nothing clears the ground for it.
+	var mine_is_building := aid.begins_with("Buildings/")
+	for e in placed_props:
+		if not is_instance_valid(e.get("node")):
+			continue
+		var theirs_is_building := String(e["id"]).begins_with("Buildings/")
+		if mine_is_building and not theirs_is_building:
+			continue
+		if String(e["id"]) in SOFT:
+			continue                     # dressing; built over, not around
+		var oc := int(e.get("col", -999))
+		var orow := int(e.get("row", -999))
+		if oc < -900:
+			continue
+		var theirs: Array = e.get("fp", [0.5, 0.5])
+		var ohc := int(ceil(float(theirs[0]) / tile / 2.0))
+		var ohr := int(ceil(float(theirs[1]) / tile / 2.0))
+		if absi(col - oc) <= hc + ohc and absi(row - orow) <= hr + ohr:
+			return true
+	return false
 
 
 ## Take one out. The entry is removed from `placed_props` FIRST, so nothing can

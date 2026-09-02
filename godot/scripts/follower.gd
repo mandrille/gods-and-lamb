@@ -107,7 +107,7 @@ func _replan() -> void:
 	# to be near each other, so wanting company means wandering where company
 	# is, not walking to a Conversation Building.
 	if act == "talk" or act == "":
-		_route_to(grid.random_cell(brain.rng), "")
+		_wander()
 		return
 
 	# Up to a few tries: a destination can be genuinely unreachable -- the far
@@ -125,7 +125,19 @@ func _replan() -> void:
 		n_no_route += 1
 	else:
 		n_no_target += 1
-	_route_to(grid.random_cell(brain.rng), "")
+	_wander()
+
+
+## Drift somewhere NEARBY when there is nothing to do.
+##
+## This used to be `grid.random_cell()`. On one plot that is ~9 m of pointless
+## walking; the moment a second plot is bought it is a 34 m map, and a villager
+## with no valid job walks twenty seconds to nowhere and then re-decides. At
+## eight villagers that is a village that looks broken, right at the minute the
+## player has just spent Faith on the land.
+func _wander() -> void:
+	var here := grid.cell_of(position)
+	_route_to(brain.near_cell(grid, here, 10), "")
 
 
 func _route_to(to: Vector2i, act: String) -> bool:
@@ -147,6 +159,15 @@ func _route_to(to: Vector2i, act: String) -> bool:
 	_pending = act
 	state = State.WALK
 	_play("walk")
+	# COMMITTED: hold the ground until we get there, so no one else is sent to
+	# the same spot. Claimed here rather than when the site was chosen, because
+	# choosing happens far more often than going.
+	if act != "" and brain.village != null:
+		var spec: Dictionary = Brain.ACTIONS.get(act, {})
+		if String(spec.get("builds", "")) != "":
+			var radius: int = maxi(1, int(ceil(
+				float(spec.get("clear", 2.0)) / grid.tile / 2.0)))
+			brain.village.claim_site(to, radius)
 	return true
 
 

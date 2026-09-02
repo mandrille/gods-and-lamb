@@ -54,6 +54,10 @@ var _walkable_cells: Array[Vector2i] = []
 ## not merely whether it can be stood on. Building sites need that: a hut in
 ## the middle of the road is walkable ground and still the wrong place.
 var _lower: Array = []
+## Cells covered by a BUILDING footprint, as distinct from cells blocked by a
+## tree. A building site may not sit on another building; a tree standing in
+## the way is cleared to make room, the way clearing land actually works.
+var _built: PackedByteArray = PackedByteArray()
 
 
 func build(doc: Dictionary) -> void:
@@ -67,6 +71,8 @@ func build(doc: Dictionary) -> void:
 
 	_solid.resize(cols * rows)
 	_solid.fill(1)
+	_built.resize(cols * rows)
+	_built.fill(0)
 
 	for row in rows:
 		for col in cols:
@@ -97,6 +103,7 @@ func build(doc: Dictionary) -> void:
 			var fp: Array = p.get("fp", [0.5, 0.5])
 			var sc := float(p.get("scale", 1.0))
 			_block_footprint(cell, float(fp[0]) * sc, float(fp[1]) * sc)
+			_mark_built(cell, float(fp[0]) * sc, float(fp[1]) * sc)
 		elif aid in BLOCK_SINGLE:
 			_block_cell(cell)
 
@@ -187,6 +194,33 @@ func _block_footprint(centre: Vector2i, w: float, d: float) -> void:
 ## The ground code at a cell: "G" grass, "P" road, "C" ploughed, "W" water...
 func code_of(c: Vector2i) -> String:
 	return _code(_lower, c.x, c.y)
+
+
+func _mark_built(centre: Vector2i, w: float, d: float) -> void:
+	var hc := int(ceil(w / tile / 2.0))
+	var hr := int(ceil(d / tile / 2.0))
+	for i in range(-hc, hc + 1):
+		for j in range(-hr, hr + 1):
+			var c := centre + Vector2i(i, j)
+			if _inside(c):
+				_built[c.y * cols + c.x] = 1
+
+
+## Could a building stand here?
+##
+## Grass, and not already inside another building. Deliberately NOT
+## `is_walkable` -- that also refuses any cell holding a tree or a rock, and
+## with ~25 of those scattered per plot the strictest requirement (a 7x7 clear
+## for a hut) had **zero** valid sites on the entire starting map. A hut could
+## never be built anywhere, and the failure was silent: build actions were
+## chosen, no destination was found, and the villagers wandered.
+##
+## Clearing a tree to raise a house is what actually happens, so a tree does
+## not veto a site -- `ValeBuilder.add_prop` removes what stands in the
+## footprint when the building goes up.
+func is_buildable(c: Vector2i) -> bool:
+	return (_inside(c) and _code(_lower, c.x, c.y) == "G"
+			and _built[c.y * cols + c.x] == 0)
 
 
 ## Plain open grass: walkable, and not a road, a field, a bank or water.

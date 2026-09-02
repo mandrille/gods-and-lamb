@@ -77,6 +77,8 @@ const DECK := [
 var faith := 25.0
 var hand: Array[Dictionary] = []
 var _draw_timer := DRAW_SECONDS
+## Said once per full-hand state, not once per attempt.
+var _said_full := false
 var rng := RandomNumberGenerator.new()
 
 ## Injected by the scene root. Untyped because Divinity is built before some of
@@ -111,8 +113,20 @@ func _process(delta: float) -> void:
 
 	_draw_timer -= delta
 	if _draw_timer <= 0.0:
-		_draw_timer = DRAW_SECONDS
-		draw_card()
+		# HOLD the draw, do not destroy it. The timer used to be reset before
+		# the attempt, and draw_card bails on a full hand -- so a player
+		# concentrating on the village lost a card every ten seconds and was
+		# told about it six times a minute. Now the card arrives the instant a
+		# slot opens.
+		if hand.size() >= HAND_MAX:
+			_draw_timer = 0.0
+			if not _said_full:
+				_said_full = true
+				notice.emit("Your hand is full.")
+		else:
+			_draw_timer = DRAW_SECONDS
+			_said_full = false
+			draw_card()
 
 
 func add_faith(amount: float) -> void:
@@ -130,8 +144,8 @@ func draw_card() -> void:
 	if hand.size() >= HAND_MAX:
 		# A full hand stops drawing rather than discarding the oldest. Silently
 		# binning a card the player was saving is the kind of thing they notice
-		# only as "the game ate my miracle".
-		notice.emit("Your hand is full.")
+		# only as "the game ate my miracle". The TIMER announces this now, once
+		# per full-hand state -- saying it here said it on every attempt.
 		return
 	var card: Dictionary = DECK[rng.randi_range(0, DECK.size() - 1)].duplicate()
 	hand.append(card)
@@ -152,6 +166,7 @@ func play(index: int, at := Vector3.ZERO, who = null) -> bool:
 	if not _cast(String(card["id"]), at, who):
 		return false
 	hand.remove_at(index)
+	_said_full = false
 	hand_changed.emit()
 	miracle_cast.emit(String(card["id"]), at)
 	return true

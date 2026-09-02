@@ -77,6 +77,11 @@ var _next_seed := 1
 ## arrival should feel like an event, not a spawn timer.
 const NEWCOMER_SECONDS := 75.0
 var _newcomer_timer := NEWCOMER_SECONDS
+## Diagnostics for the build path, read by tools/build_probe.gd.
+var n_build_try := 0
+var n_build_ok := 0
+var n_build_moved := 0
+var n_build_fail := 0
 var _rng := RandomNumberGenerator.new()
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
@@ -123,6 +128,7 @@ func _ready() -> void:
 	grid.build(builder.doc)
 
 	village = Village.new()
+	village.islands = islands
 	village.pop_cap = islands.pop_cap()
 	village.census(builder.placed_props)
 	social = Social.new(20260901)
@@ -321,6 +327,12 @@ func _wire_feedback() -> void:
 	social.chat_started.connect(func(a, _b): sfx.play("chat",
 		1.0 + a.brain.rng.randf_range(-0.1, 0.1)))
 	social.child_wanted.connect(_on_child_wanted)
+	# A silent economy failure is the worst kind. `depleted` and `land_full`
+	# were both declared and connected to nothing.
+	village.depleted.connect(func(res):
+		divinity.notice.emit("The %s is gone." % res))
+	village.land_full.connect(func():
+		divinity.notice.emit("There is no room left to build. Buy land."))
 
 
 ## Per-follower feedback, connected as each one is made.
@@ -442,17 +454,42 @@ func _consume_target(f: Node, spec: Dictionary, at: Vector3) -> void:
 ## nothing reports.
 func _raise_structure(f: Node, act: String, aid: String,
 					  spec: Dictionary) -> void:
+	# RE-VALIDATE ON ARRIVAL. The site was chosen at decision time and the
+	# villager then WALKED to it -- twenty seconds during which a miracle may
+	# have grown a grove on it, wrath may have levelled something into it, or
+	# another builder may have got there first. Nothing re-checked, which is
+	# the third reason buildings ended up stacked.
+	n_build_try += 1
 	var cell: Vector2i = f.brain.target_cell
 	var ok := false
+	# SQUARE TO THE GRID. Buildings are rectangular, the ground is a grid, and
+	# a cottage at 37 degrees reads as something that fell out of the sky.
+	var yaw := 90.0 * float(_rng.randi_range(0, 3))
 	if cell.x >= 0:
-		# SQUARE TO THE GRID. Buildings are rectangular, the ground is a grid,
-		# and a cottage at 37 degrees reads as something that fell out of the
-		# sky. Nature can sit at any angle; anything with a door cannot.
-		ok = builder.add_prop(aid, cell.x, cell.y,
-							  90.0 * float(_rng.randi_range(0, 3)))
+		ok = builder.add_prop(aid, cell.x, cell.y, yaw)
+		if not ok:
+			# Taken while they walked. Look nearby before giving up -- the
+			# villager is standing right here with the materials in hand.
+			for i in 24:
+				var near := cell + Vector2i(_rng.randi_range(-4, 4),
+											_rng.randi_range(-4, 4))
+				if not grid.is_plain(near):
+					continue
+				if builder.add_prop(aid, near.x, near.y, yaw):
+					cell = near
+					ok = true
+					n_build_moved += 1
+					break
 	if not ok:
+		# The cost was taken when the job completed, so a placement that fails
+		# must REFUND. Otherwise a villager spends six wood on a hut that never
+		# appears and the village quietly starves of materials for no reason
+		# anything reports.
+		n_build_fail += 1
 		village.give(spec.get("takes", {}))
+		divinity.notice.emit("%s found nowhere to build." % f.brain.name)
 		return
+	n_build_ok += 1
 	var at := builder.world_of(cell.x, cell.y) + Vector3(0, builder.lift, 0)
 	rebuild_grid()
 	village.census(builder.placed_props)
@@ -570,8 +607,16 @@ func _maybe_newcomer(delta: float) -> void:
 	for f in folk:
 		mood += f.brain.mood()
 	mood /= float(folk.size())
-	if mood < 0.15 or village.amount("food") < 3:
-		_newcomer_timer = NEWCOMER_SECONDS
+	# DECAY, do not reset.
+	#
+	# This reset the full 75 s the instant mean mood dipped under the gate --
+	# and mood() weights the WORST stat at 0.45, so one villager going
+	# desperate on any of seven stats tripped it. A run where the village never
+	# grew past its two starting people was entirely possible, and population
+	# multiplies every income channel there is. A dip now costs twice the time
+	# it lasted, which is pressure without a cliff.
+	if mood < 0.15 or village.amount("food") < 2:
+		_newcomer_timer = minf(NEWCOMER_SECONDS, _newcomer_timer + delta * 2.0)
 		return
 	_newcomer_timer -= delta
 	if _newcomer_timer > 0.0:
@@ -669,6 +714,7 @@ func _process(delta: float) -> void:
 		if is_instance_valid(f):
 			live.append(f)
 	folk = live
+	village.tick(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)
 

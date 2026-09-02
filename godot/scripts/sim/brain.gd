@@ -103,7 +103,7 @@ const ACTIONS := {
 	"build_hut":   {"need": "", "sources": [], "anywhere": true,
 					"seconds": 7.0, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 6}, "builds": "Buildings/hut",
-					"wants": "Buildings/hut", "clear": 2.6,
+					"wants": "Buildings/hut", "clear": 2.0,
 					"morality": 0.05, "verb": "building a hut"},
 	"build_well":  {"need": "", "sources": [], "anywhere": true,
 					"seconds": 6.0, "anim": "chop", "refill": 0.0,
@@ -115,12 +115,12 @@ const ACTIONS := {
 					"takes": {"wood": 6},
 					"builds": "Buildings/market_stall",
 					"wants": "Buildings/market_stall",
-					"clear": 2.2, "morality": 0.04, "verb": "raising a stall"},
+					"clear": 1.6, "morality": 0.04, "verb": "raising a stall"},
 	"build_shrine":{"need": "", "sources": [], "anywhere": true,
 					"seconds": 8.0, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 5, "stone": 5},
 					"builds": "Buildings/shrine", "wants": "Buildings/shrine",
-					"clear": 2.4, "morality": 0.10,
+					"clear": 2.0, "morality": 0.10,
 					"verb": "raising a shrine"},
 	"sow":         {"need": "", "sources": [], "anywhere": true,
 					"seconds": 4.0, "anim": "pickup", "refill": 0.0,
@@ -550,27 +550,49 @@ func _open_spot(grid, from: Vector2i, clear: float) -> Vector2i:
 		var c: Vector2i = _near(grid, from, 14)
 		if c.x < 0 or not _has_room(grid, c, radius):
 			continue
+		# Somebody is already walking here with a building in mind. Two
+		# villagers sent to overlapping ground is half of why buildings ended
+		# up stacked -- the kind was claimed, the SITE was not.
+		if village != null and village.site_claimed(c, radius):
+			continue
 		var d: int = absi(c.x - from.x) + absi(c.y - from.y)
 		if d < best_d:
 			best_d = d
 			best = c
+	# NOTE the outcome, but do NOT claim here.
+	#
+	# `_open_spot` runs at DECISION time, up to three times per replan, for
+	# every villager who merely considers building. Claiming here meant forty
+	# villagers blanketed the map in 25-second reservations within seconds and
+	# then none of them could find anywhere to build -- forty builders with
+	# unlimited materials raised two buildings in a whole run. The claim
+	# belongs where the villager COMMITS, in Follower._route_to.
+	if village != null:
+		village.note_site(best.x >= 0)
 	return best
 
 
-## Room for a building: plain grass all the way round, not merely walkable.
+## Room for a building: grass all the way round, and clear of other buildings.
 ##
-## `is_walkable` is true of the road, the ploughed field and the river bank,
-## so a site test built on it put huts across the highway and wells in the
-## middle of the crops.
+## `is_walkable` is true of the road, the field and the bank -- a site test on
+## it put huts across the highway. But `is_plain` was too strict in the other
+## direction: it also refuses any cell holding a tree, and with scatter across
+## the whole plot a 7x7 hut site had ZERO valid centres on the starting map.
+## `is_buildable` asks the right question, and the trees get cleared.
 func _has_room(grid, centre: Vector2i, radius: int) -> bool:
 	for i in range(-radius, radius + 1):
 		for j in range(-radius, radius + 1):
-			if not grid.is_plain(centre + Vector2i(i, j)):
+			if not grid.is_buildable(centre + Vector2i(i, j)):
 				return false
 	return true
 
 
-## A walkable cell within `span` tiles of `from`.
+## A walkable cell within `span` tiles of `from`. Public: the body calls this
+## when it has nothing to do and should drift locally rather than cross the map.
+func near_cell(grid, from: Vector2i, span: int) -> Vector2i:
+	return _near(grid, from, span)
+
+
 func _near(grid, from: Vector2i, span: int) -> Vector2i:
 	for attempt in 40:
 		var c: Vector2i = from + Vector2i(rng.randi_range(-span, span),
@@ -622,7 +644,16 @@ func _finish_action() -> void:
 			return                     # someone else got the last loaf
 		var gives: Dictionary = spec.get("gives", {})
 		if not gives.is_empty():
-			village.give(gives)
+			# Scaled by how tired this ground is, and the ground is worn a
+			# little by the taking. Never reaches zero -- a worked-out plot
+			# pays badly, which is what sends the village looking for new land
+			# instead of stopping dead.
+			#
+			# A COPY, never the const table: ACTIONS is shared by every brain
+			# in the game and mutating it would make the change permanent and
+			# global.
+			village.give(village.scaled_gives(gives, target_cell))
+			village.extract_at(target_cell)
 
 	var need := String(spec.get("need", ""))
 	if need != "":

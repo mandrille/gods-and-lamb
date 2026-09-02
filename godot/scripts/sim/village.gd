@@ -55,6 +55,31 @@ var structures: Dictionary = {}
 var _claims: Dictionary = {}
 const CLAIM_SECONDS := 25.0
 
+## Ground somebody is already walking toward with a building in mind.
+##
+## `_claims` reserves the KIND -- it stops a second well being WANTED. It does
+## nothing about two villagers both told to build a hut walking to overlapping
+## ground, which is half of why buildings were seen stacked. This reserves the
+## CELLS, with the same expiry so a despawned builder cannot leak a claim.
+var _sites: Array[Dictionary] = []       ## {cell, radius, expiry}
+
+## How rich each plot still is. Extraction wears it down and time restores it,
+## and it NEVER reaches zero -- a worked-out plot pays badly rather than not at
+## all, and fresh land starts rich, which is what makes expansion the answer to
+## diminishing returns instead of a population cap you bump into.
+const RICH_FLOOR := 0.25
+const RICH_PER_EXTRACT := 0.02
+const RICH_REGROW := 0.01
+var _richness: Dictionary = {}           ## Vector2i slot -> float
+
+## Injected: needed to turn a cell into the plot that owns it.
+var islands = null
+
+## Consecutive failures to find anywhere to build, so "the land is full" is a
+## state that gets ANNOUNCED rather than a silent stall in the decision pool.
+var _site_misses := 0
+signal land_full()
+
 
 func _init() -> void:
 	stores = START.duplicate()
@@ -124,24 +149,21 @@ func count_of(aid: String) -> int:
 
 
 ## Somebody has started building one of these.
+##
+## Claims hold a REMAINING TIME counted down by `tick(delta)`, not a wall-clock
+## expiry. `Time.get_ticks_msec()` ignores `Engine.time_scale`, so a 25-second
+## claim survived 300 game-seconds in a probe running at 12x -- long enough to
+## suppress demand for building entirely and make the village look idle. Game
+## state should be measured in game time.
 func claim(aid: String) -> void:
 	if not _claims.has(aid):
 		_claims[aid] = []
-	(_claims[aid] as Array).append(Time.get_ticks_msec() * 0.001
-								   + CLAIM_SECONDS)
+	(_claims[aid] as Array).append(CLAIM_SECONDS)
 
 
-## How many are under way right now, dropping any that have gone stale.
+## How many are under way right now.
 func claimed(aid: String) -> int:
-	if not _claims.has(aid):
-		return 0
-	var now := Time.get_ticks_msec() * 0.001
-	var live: Array = []
-	for t in _claims[aid]:
-		if float(t) > now:
-			live.append(t)
-	_claims[aid] = live
-	return live.size()
+	return (_claims.get(aid, []) as Array).size()
 
 
 ## 0 = we have enough, 1 = we have none and want one. Drives whether building
@@ -157,6 +179,89 @@ func wants(aid: String) -> float:
 	if have >= target:
 		return 0.0
 	return clampf((target - have) / target, 0.0, 1.0)
+
+
+## --- building sites ---------------------------------------------------------
+
+func claim_site(cell: Vector2i, radius: int) -> void:
+	_sites.append({"cell": cell, "radius": radius, "left": CLAIM_SECONDS})
+
+
+func site_claimed(cell: Vector2i, radius: int) -> bool:
+	for e in _sites:
+		var c: Vector2i = e["cell"]
+		var reach: int = int(e["radius"]) + radius
+		if absi(cell.x - c.x) <= reach and absi(cell.y - c.y) <= reach:
+			return true
+	return false
+
+
+func note_site(found: bool) -> void:
+	if found:
+		_site_misses = 0
+		return
+	_site_misses += 1
+	# Enough villagers in a row failing means it is the LAND, not luck.
+	if _site_misses == 8:
+		land_full.emit()
+
+
+## --- richness ---------------------------------------------------------------
+
+func richness_at(cell: Vector2i) -> float:
+	if islands == null:
+		return 1.0
+	var slot: Vector2i = islands.slot_of_cell(cell)
+	if slot.x < 0:
+		return 1.0
+	return float(_richness.get(slot, 1.0))
+
+
+func extract_at(cell: Vector2i) -> void:
+	if islands == null:
+		return
+	var slot: Vector2i = islands.slot_of_cell(cell)
+	if slot.x < 0:
+		return
+	_richness[slot] = maxf(RICH_FLOOR,
+						   float(_richness.get(slot, 1.0)) - RICH_PER_EXTRACT)
+
+
+## Land recovers on its own. Called once per frame by the host.
+func tick(delta: float) -> void:
+	# Claims age in GAME time, so they behave the same however fast the world
+	# is running.
+	for aid in _claims.keys():
+		var live: Array = []
+		for t in _claims[aid]:
+			var left: float = float(t) - delta
+			if left > 0.0:
+				live.append(left)
+		if live.is_empty():
+			_claims.erase(aid)
+		else:
+			_claims[aid] = live
+	var sites: Array[Dictionary] = []
+	for e in _sites:
+		e["left"] = float(e["left"]) - delta
+		if float(e["left"]) > 0.0:
+			sites.append(e)
+	_sites = sites
+
+	for slot in _richness:
+		var v: float = float(_richness[slot])
+		if v < 1.0:
+			_richness[slot] = minf(1.0, v + RICH_REGROW * delta)
+
+
+## Scale a yield by how tired the ground is. Never returns 0 for a positive
+## input -- that is the whole promise of the richness model.
+func scaled_gives(gives: Dictionary, cell: Vector2i) -> Dictionary:
+	var r := richness_at(cell)
+	var out := {}
+	for res in gives:
+		out[res] = maxi(1, int(round(float(gives[res]) * r)))
+	return out
 
 
 func has_room() -> bool:
