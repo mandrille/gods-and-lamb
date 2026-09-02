@@ -178,6 +178,7 @@ var rng := RandomNumberGenerator.new()
 ## Injected by the scene root. Untyped because Divinity is built before some of
 ## them exist and a typed null is not more honest than an untyped one.
 var host = null                          ## ValeRoot
+var cursor: MiracleCursor = null         ## the held miracle, if any
 var village = null
 var islands = null
 var builder = null
@@ -314,11 +315,30 @@ func play(index: int, at := Vector3.ZERO, who = null) -> bool:
 	if index < 0 or index >= hand.size():
 		return false
 	var card: Dictionary = hand[index]
+	var cid := String(card["id"])
+
+	# CHANNELLED CARDS ARE HELD, NOT DROPPED.
+	#
+	# The card is spent the moment it is picked up and the effect then follows
+	# the cursor for a few seconds, paying for each soul and each patch of
+	# ground it actually passes over. That is what makes WHERE you sweep it the
+	# mechanic rather than a formality -- see MiracleCursor.
+	if cursor != null and MiracleCursor.handles(cid):
+		if cursor.is_active():
+			notice.emit("One miracle at a time.")
+			return false
+		cursor.begin(cid, boons.card_radius())
+		hand.remove_at(index)
+		_said_full = false
+		hand_changed.emit()
+		miracle_cast.emit(cid, at)
+		return true
+
 	var kind := String(card["target"])
 	if kind == "folk" and (who == null or not is_instance_valid(who)):
 		notice.emit("%s needs a villager." % card["name"])
 		return false
-	if not _cast(String(card["id"]), at, who):
+	if not _cast(cid, at, who):
 		return false
 	hand.remove_at(index)
 	_said_full = false
@@ -462,18 +482,52 @@ func punish(who) -> bool:
 		return false
 	judge_cd = JUDGE_COOLDOWN
 	bless_radius = boons.bless_radius()
-	for f in _judge_area(who):
+	var caught := _judge_area(who)
+	# JUSTICE, counted before the blow lands -- punish() clears the record.
+	var guilty := 0
+	var crime := ""
+	for f in caught:
+		if _is_guilty(f):
+			guilty += 1
+			if f == who or crime == "":
+				crime = String(Brain.ACTIONS[f.brain.last_sin].get("verb", ""))
+	for f in caught:
 		f.brain.punish(1.0 if f == who else 0.6)
-	# Punishment never pays. It normally breaks the chain too -- a steering
-	# tool with a real cost, not a second way to earn -- until Open Hand's
-	# third rank, which makes correction part of the rhythm rather than an
-	# interruption of it.
-	if not boons.punish_keeps_chain():
-		_break_combo()
-	notice.emit("%s is struck down%s." % [who.brain.name,
-		"" if who.brain.last_action == "" else " for " + who.brain.last_action])
+
+	# A DESERVED punishment pays, and keeps the chain.
+	#
+	# This used to read "punishment never pays", which was true and hollow:
+	# nothing in the game could make a follower do anything wrong, so the whole
+	# left half of judgement was a button that hurt somebody at random. Now
+	# that there are sins to catch, catching one is the exact mirror of a
+	# witnessed blessing -- you are watching for a moment either way, and the
+	# village only stays good if somebody is looking.
+	if guilty > 0:
+		_extend_combo(who)
+		var mult := 1.0 + boons.combo_step() * float(combo_chain - 1)
+		var gain: float = (boons.witness_faith()
+						   * pow(float(guilty), 0.75) * mult)
+		add_faith(gain)
+		earned.emit(gain, who.position + Vector3(0, 0.9, 0), "punish")
+		notice.emit("%s is struck down for %s.%s"
+			% [who.brain.name, crime,
+			   "" if combo_chain < 2 else "  x%.2f" % mult])
+	else:
+		# Striking the innocent is not a tactic. It still steers them -- the
+		# favour drop is real -- but it earns nothing and costs the rhythm.
+		if not boons.punish_keeps_chain():
+			_break_combo()
+		notice.emit("%s is struck down, and had done nothing wrong."
+			% who.brain.name)
 	judged.emit(who, false)
 	return true
+
+
+## Has this one sinned recently enough to answer for it?
+func _is_guilty(f) -> bool:
+	if f.brain == null or village == null:
+		return false
+	return f.brain.recently_sinned(float(village.now), boons.witness_window())
 
 
 ## Everyone a judgement lands on. Just the target until a boon widens it, and

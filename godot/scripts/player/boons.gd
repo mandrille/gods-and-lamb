@@ -69,7 +69,7 @@ const CATALOGUE := {
 	"gathering": {
 		"name": "Gathering", "icon": "pop",
 		"what": "Word spreads. Strangers come looking for your village.",
-		"ranks": [58.0, 45.0, 34.0],
+		"ranks": [17.0, 13.0, 10.0],
 		"blurb": ["Newcomers arrive sooner", "Sooner again",
 				  "Soonest, and they are less fussy about the mood"],
 	},
@@ -208,7 +208,7 @@ func drain() -> float:
 
 
 func newcomer_seconds() -> float:
-	return _value("gathering", 75.0)
+	return _value("gathering", 22.0)
 
 
 func mood_gate() -> float:

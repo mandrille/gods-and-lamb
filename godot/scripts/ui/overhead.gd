@@ -146,6 +146,15 @@ func _draw() -> void:
 			continue
 		var p: Vector2 = rig.cam.unproject_position(head)
 
+		# GUILT IS THE ONE THING ALWAYS WORTH DRAWING.
+		#
+		# It is drawn for everyone, unhovered and unselected, because it is the
+		# player's cue to act and it expires in a few seconds -- a mark you
+		# only see by hovering is a mark you never see. It sits above the chat
+		# bubble in priority for the same reason.
+		if host.divinity != null and host.divinity._is_guilty(f):
+			_guilt(p)
+			continue
 		if f.brain.chatting_with != "":
 			_speech(p)
 			continue
@@ -156,6 +165,24 @@ func _draw() -> void:
 		if f == hovered or f == selected:
 			_ground_ring(f, f == selected)
 			_face(p, f.brain.mood_face(), f == selected)
+
+
+## A hot mark over a wrongdoer, pulsing so the eye finds it in a crowd.
+func _guilt(p: Vector2) -> void:
+	var t := float(Time.get_ticks_msec()) * 0.006
+	var pulse := 1.0 + sin(t) * 0.14
+	var r := 11.0 * pulse
+	var hot := Color(1.0, 0.35, 0.28)
+	draw_circle(p + Vector2(0, -2), r + 3.0, Color(0.10, 0.02, 0.02, 0.55))
+	draw_circle(p + Vector2(0, -2), r, hot)
+	# A bolt, the same glyph the punish button uses, so the two read as one
+	# idea: this is the thing that button is for.
+	var c := p + Vector2(0, -2)
+	var pts := PackedVector2Array([
+		c + Vector2(-1.0, -6.5) * pulse, c + Vector2(3.2, -1.2) * pulse,
+		c + Vector2(0.4, -1.2) * pulse, c + Vector2(1.6, 6.5) * pulse,
+		c + Vector2(-2.8, 0.6) * pulse, c + Vector2(0.0, 0.6) * pulse])
+	draw_colored_polygon(pts, Color(0.16, 0.05, 0.05))
 
 
 ## A ring on the ground at the villager's feet, projected from four points of

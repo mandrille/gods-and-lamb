@@ -531,6 +531,28 @@ def target_assets(rest):
     print("[SWEEP] all %d assets ok" % len(order))
 
 
+def _rig_module(decl):
+    """The skeleton that binds this asset.
+
+    Folk default to `folkrig`, the seven-bone biped. An asset may name another
+    -- the livestock declare `rig="critterrig"` -- because a humanoid skeleton
+    bound to a cow puts a femur through the barrel and a head on its shoulder.
+
+    Named in the DECLARATION rather than inferred from `cls`, deliberately. A
+    sheep is a follower by every measure the pipeline cares about: 600
+    triangles, 40 px tall, rigged, animated, walking between tiles. Giving it a
+    new class to carry one fact about its skeleton would have split the
+    triangle cap, the cache rule and the material fold along a line that has
+    nothing to do with any of them.
+
+    Every rig module answers the same calls -- build_armature, bake_and_group,
+    attach, the asserts, walk_action, all_actions -- so this is the only place
+    that has to know there is more than one.
+    """
+    import importlib
+    return importlib.import_module(decl.get("rig") or "folkrig")
+
+
 def _asset_glb_name(aid):
     """Category__variant.glb. Godot rewrites . : @ / % in NODE names, so the
     file name avoids them entirely rather than relying on a mapping."""
@@ -637,9 +659,9 @@ def target_glb(rest):
     rigged = decl["cls"] == "folk"
 
     if rigged:
-        import folkrig
-        arm = folkrig.build_armature("%s_rig" % decl["variant"])
-        folkrig.bake_and_group(parts, tag="GLB")
+        rig = _rig_module(decl)
+        arm = rig.build_armature("%s_rig" % decl["variant"])
+        rig.bake_and_group(parts, tag="GLB")
         bpy.ops.object.select_all(action="DESELECT")
         for ob in parts:
             ob.select_set(True)
@@ -647,12 +669,12 @@ def target_glb(rest):
         bpy.ops.object.join()
         mesh = bpy.context.object
         mesh.name = "%s_mesh" % decl["variant"]
-        folkrig.attach(arm, mesh)
+        rig.attach(arm, mesh)
         # All four clips, each on its own NLA track. The exporter's ACTIONS
         # mode collects actions from NLA plus the assigned one; an action that
         # is merely in bpy.data is invisible to it and the GLB comes back with
         # a single animation and no error at all.
-        tracks = folkrig.all_actions(arm, mesh)
+        tracks = rig.all_actions(arm, mesh)
         print("  clips: %s" % ", ".join(tracks))
         subjects = [mesh]
     else:
@@ -879,7 +901,6 @@ def target_rig(rest):
     import registry
     import kit
     import lit
-    import folkrig
 
     if not rest:
         raise SystemExit("FAIL: rig needs an asset id, e.g. Folk/villager")
@@ -887,17 +908,21 @@ def target_rig(rest):
     entry = registry.resolve(aid)
     decl = entry["decl"]
     if decl["cls"] != "folk":
-        raise SystemExit("FAIL: %s is cls=%s. folkrig's skeleton is a folk "
-                         "body -- binding it to a building would put a roof on "
-                         "a femur." % (aid, decl["cls"]))
+        raise SystemExit("FAIL: %s is cls=%s. These skeletons are BODIES -- "
+                         "binding one to a building would put a roof on a "
+                         "femur." % (aid, decl["cls"]))
+    # Which body. folkrig for the folk, critterrig for a quadruped that says
+    # so; see _rig_module. The rest of this target is written against the
+    # interface rather than against either one.
+    rig = _rig_module(decl)
 
     _fresh_scene()
     parts = _build_subject(entry, "RIG", kw)
     tris_loose = sum(kit.evaluated_tris(p) for p in parts)
-    arm = folkrig.build_armature("%s_rig" % decl["variant"])
-    folkrig.assert_roll_is_sagittal(arm)
-    folkrig.bake_and_group(parts, tag="RIG")
-    folkrig.assert_rigid_weights(parts)
+    arm = rig.build_armature("%s_rig" % decl["variant"])
+    rig.assert_roll_is_sagittal(arm)
+    rig.bake_and_group(parts, tag="RIG")
+    rig.assert_rigid_weights(parts)
 
     bpy.ops.object.select_all(action="DESELECT")
     for ob in parts:
@@ -906,8 +931,8 @@ def target_rig(rest):
     bpy.ops.object.join()
     skinned = bpy.context.object
     skinned.name = "%s_skinned" % decl["variant"]
-    folkrig.attach(arm, skinned)
-    folkrig.assert_rigid_weights([skinned])
+    rig.attach(arm, skinned)
+    rig.assert_rigid_weights([skinned])
 
     # The join must not have changed the geometry. It applied nineteen modifier
     # stacks and concatenated the results, and the number that proves it went
@@ -920,10 +945,10 @@ def target_rig(rest):
                          "object's modifier stack to every other part."
                          % (tris, tris_loose))
 
-    act = folkrig.walk_action(arm, skinned)
-    travel = folkrig.assert_action_deforms(arm, [skinned])
-    gap = folkrig.assert_cycle_closes(arm, [skinned])
-    sink, float_ = folkrig.assert_feet_on_floor(arm, [skinned])
+    act = rig.walk_action(arm, skinned)
+    travel = rig.assert_action_deforms(arm, [skinned])
+    gap = rig.assert_cycle_closes(arm, [skinned])
+    sink, float_ = rig.assert_feet_on_floor(arm, [skinned])
 
     groups = sorted(vg.name for vg in skinned.vertex_groups)
     print("%s  (%s.%s.%s)" % (aid, decl["cls"], decl["family"], decl["variant"]))
@@ -931,7 +956,7 @@ def target_rig(rest):
           % (len(parts), tris, len(arm.pose.bones),
              len(groups), ", ".join(groups)))
     print("  action %r  %d fcurves  %d frames at %d fps"
-          % (act.name, len(folkrig.action_fcurves(act)), folkrig.CYCLE, folkrig.FPS))
+          % (act.name, len(rig.action_fcurves(act)), rig.CYCLE, rig.FPS))
     print("  max vertex travel %.3f m   loop gap %.6f m   floor sink %.4f "
           "float %.4f" % (travel, gap, -sink, float_))
 
@@ -950,7 +975,7 @@ def target_rig(rest):
 
     stem = aid.replace("/", "_")
     outdir = os.path.join(OUT, "rig")
-    frames = [1 + i * (folkrig.CYCLE // 8) for i in range(8)]
+    frames = [1 + i * (rig.CYCLE // 8) for i in range(8)]
     # TWO angles. A walk is judged from the SIDE -- that is the view the stride
     # length, the foot plant and the arm counter-swing are all visible in -- and
     # three-quarter is the view the game will actually use. A cycle that reads

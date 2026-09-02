@@ -113,8 +113,14 @@ def build_armature(name="FolkRig"):
     return arm
 
 
-def bake_and_group(meshes, tag=""):
+def bake_and_group(meshes, tag="", bone_of=None):
     """Bake each part's own modifiers, then put it in exactly one vertex group.
+
+    `bone_of` is the name-to-bone rule, and it defaults to this rig's. The
+    sibling quadruped rig passes its own: the bake order below and the rigid
+    one-group-per-part bind are properties of the KIT, not of having two legs,
+    and duplicating them into critterrig would mean two copies of the one
+    ordering fact this file exists to record.
 
     THE ORDER IS THE WHOLE POINT and it cost a wrong build to learn. Joining
     first and baking after does not work: `join` keeps the ACTIVE object's
@@ -127,14 +133,16 @@ def bake_and_group(meshes, tag=""):
     the tunic into the arm and tear a shoulder on the first frame; one bone per
     part is exactly predictable, which at 40 px is worth more than a soft elbow.
     """
+    bone_of = bone_of or bone_for
     unclaimed = [ob.name for ob in meshes
-                 if bone_for(ob.name[len(tag):] if tag
-                             and ob.name.startswith(tag) else ob.name) is None]
+                 if bone_of(ob.name[len(tag):] if tag
+                            and ob.name.startswith(tag) else ob.name) is None]
     if unclaimed:
-        raise SystemExit("FAIL: %d part(s) match no bone in folkrig.GROUPS: %s. "
+        raise SystemExit("FAIL: %d part(s) match no bone in %s.GROUPS: %s. "
                          "Add the name or rename the part -- an unbound part "
                          "stays behind when the character walks off."
-                         % (len(unclaimed), ", ".join(unclaimed)))
+                         % (len(unclaimed), bone_of.__module__,
+                            ", ".join(unclaimed)))
 
     bpy.ops.object.select_all(action="DESELECT")
     for ob in meshes:
@@ -148,7 +156,7 @@ def bake_and_group(meshes, tag=""):
         short = ob.name[len(tag):] if tag and ob.name.startswith(tag) else ob.name
         for vg in list(ob.vertex_groups):
             ob.vertex_groups.remove(vg)
-        vg = ob.vertex_groups.new(name=bone_for(short))
+        vg = ob.vertex_groups.new(name=bone_of(short))
         vg.add(range(len(ob.data.vertices)), 1.0, "REPLACE")
     return len(meshes)
 

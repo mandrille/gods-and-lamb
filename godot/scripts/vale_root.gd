@@ -63,6 +63,7 @@ var panel: VillagerPanel
 var hud: HUD
 var floaters: Floaters
 var draft: BoonDraft
+var cursor: MiracleCursor
 var fxe: FXEvents
 var sfx: SFX
 var plots: PlotMarkers
@@ -76,7 +77,11 @@ var _spawned: Array = []
 var _next_seed := 1
 ## How often the village is checked for a newcomer, in seconds. Long: an
 ## arrival should feel like an event, not a spawn timer.
-const NEWCOMER_SECONDS := 75.0
+## Seventy-five seconds meant nineteen arrivals took a quarter of an hour, so
+## the village was still tiny at the point the player had run out of things to
+## watch. Population multiplies every channel in the game -- Faith, work,
+## buildings, blessable moments -- so it is the wrong thing to be stingy with.
+const NEWCOMER_SECONDS := 22.0
 var _newcomer_timer := NEWCOMER_SECONDS
 ## Settlers owed because ground was opened for them. See _maybe_newcomer.
 var _settlers_due := 0
@@ -465,6 +470,21 @@ const RESOURCE_ROW := {"wood": "wood", "stone": "stone", "food": "food"}
 
 
 func _report_job(f: Node, act: String, spec: Dictionary, at: Vector3) -> void:
+	# A SIN HAS TO BE SEEN, or it may as well not have happened.
+	#
+	# The whole point of adding wrongdoing was to give punishment something to
+	# be for, and a crime nobody notices leaves the player exactly where they
+	# were -- with a button that hurts a villager for no reason. So it is
+	# announced, it is marked over their head (see Overhead), and there is a
+	# few-second window in which striking them is justice rather than cruelty.
+	if bool(spec.get("sin", false)):
+		divinity.notice.emit("%s: %s." % [f.brain.name,
+			String(spec.get("verb", act)).capitalize()])
+		fxe.burst("wrath", at + Vector3(0, 0.8, 0), 0.5)
+		sfx.play("wrath", 1.35)
+		floaters.puff("bolt", String(spec.get("verb", act)).capitalize(), at)
+		return
+
 	var look: Dictionary = JOB_LOOK.get(act, {})
 	if not look.is_empty():
 		fxe.burst(String(look["fx"]), at, 0.7)
@@ -645,6 +665,22 @@ func _add_ui() -> void:
 	floaters.host = self
 	floaters.hud = hud
 	ui.add_child(floaters)
+
+	# The held miracle lives in the WORLD, not the UI: it is a cloud with a
+	# position, and it has to be occluded by the terrain like anything else.
+	cursor = MiracleCursor.new()
+	cursor.name = "MiracleCursor"
+	cursor.host = self
+	cursor.divinity = divinity
+	add_child(cursor)
+	divinity.cursor = cursor
+	cursor.finished.connect(func(id, touched, gain):
+		if touched == 0:
+			divinity.notice.emit(
+				"The %s passed over nothing at all." % id)
+		else:
+			divinity.notice.emit("The %s touched %d, and you gained %d Faith."
+				% [id, touched, int(gain)]))
 
 	# The draft sits ABOVE everything and takes every click while it is open.
 	draft = BoonDraft.new()

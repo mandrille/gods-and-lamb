@@ -1,0 +1,177 @@
+extends SceneTree
+## Does it matter WHERE you sweep a miracle?
+##
+## The old cards resolved in one instant over the whole village, so the answer
+## was no: a click was a click. Now a card is held on the cursor and pays for
+## each soul it actually passes over, once each. That claim is worth testing,
+## because if parking the cloud on one person pays the same as sweeping it
+## across eight, the mechanic is decorative.
+##
+## The cursor follows the real mouse in _process, which a headless probe has no
+## way to move -- so this drives `position` directly and calls the effect step,
+## which is the mechanic. Following the pointer is one line and is not what can
+## silently go wrong.
+const ShotWindowRef := preload("res://tools/shot_window.gd")
+
+const STEP := 0.1
+
+var _f := 0
+var _root: Node = null
+var _faults: Array[String] = []
+
+
+func _initialize() -> void:
+	ShotWindowRef.park()
+	get_root().add_child(
+		(load("res://scenes/vale.tscn") as PackedScene).instantiate())
+
+
+func _process(_d: float) -> bool:
+	_f += 1
+	if _f < 40:
+		return false
+	# The shot needs the cloud to have been RENDERED, which cannot be awaited
+	# from inside _process without turning it into a coroutine that returns
+	# before the frame is drawn. So it is set up on one frame and saved on a
+	# later one.
+	if _f > 40:
+		if _f == 46:
+			get_root().get_texture().get_image().save_png(
+				"res://shots/miracle.png")
+			_root.cursor.release()
+			_run()
+			quit(0 if _faults.is_empty() else 1)
+			return true
+		return false
+	for n in get_root().get_children():
+		if n.get("divinity") != null:
+			_root = n
+	if _root == null:
+		printerr("[MIR] FAIL: no scene root")
+		quit(1)
+		return true
+
+	_root.village.pop_cap = 200
+	while _root.folk.size() < 10:
+		if not _root.spawn_villager():
+			break
+	# A line of villagers a metre apart, so a sweep can cross a known number of
+	# them and a park can sit on exactly one.
+	var base: Vector3 = _root.folk[0].position
+	for i in _root.folk.size():
+		_root.folk[i].position = base + Vector3(float(i) * 3.0, 0, 0)
+
+	# Set the picture up; frame 46 saves it. A picture is worth taking because
+	# "the cloud follows the cursor" is a claim about how it LOOKS.
+	var c = _root.cursor
+	var mid: Vector3 = _root.folk[_root.folk.size() / 2].position
+	_root.rig.focus = mid
+	_root.rig.dist = 18.0
+	_root.rig.call("_place")
+	c.begin("rain", 4.5)
+	c.position = mid + Vector3(0, MiracleCursor.HEIGHT, 0)
+	for i in 12:
+		c.call("_apply", STEP)
+	return false
+
+
+func _run() -> void:
+	_park_vs_sweep()
+	_planting()
+	_expiry()
+	if _faults.is_empty():
+		print("[MIR] ok")
+	else:
+		for f in _faults:
+			printerr("[MIR]   - " + f)
+		printerr("[MIR] %d FAILURE(S)" % _faults.size())
+
+
+## Sitting still over one villager must pay less than crossing eight.
+func _park_vs_sweep() -> void:
+	var d = _root.divinity
+	var c = _root.cursor
+	# PIN THEM. They are alive and they walk, and a villager who wanders into a
+	# parked cloud is a real thing that should pay -- but it makes the two arms
+	# of this comparison differ by who happened to stroll past, which is not
+	# what is being measured.
+	var base: Vector3 = _root.folk[0].position
+	_line_up(base)
+
+	d.faith = 0.0
+	c.begin("mend", 4.5)
+	c.position = base + Vector3(0, MiracleCursor.HEIGHT, 0)
+	for i in 40:
+		_line_up(base)
+		c.call("_apply", STEP)
+	var parked: float = d.faith
+	var parked_n: int = (c.get("_touched_folk") as Dictionary).size()
+	c.release()
+
+	d.faith = 0.0
+	c.begin("mend", 4.5)
+	for i in 40:
+		_line_up(base)
+		c.position = base + Vector3(float(i) * 0.7, MiracleCursor.HEIGHT, 0)
+		c.call("_apply", STEP)
+	var swept: float = d.faith
+	var swept_n: int = (c.get("_touched_folk") as Dictionary).size()
+	c.release()
+
+	print("[MIR] parked on one: %d souls, %.1f Faith" % [parked_n, parked])
+	print("[MIR] swept across:  %d souls, %.1f Faith" % [swept_n, swept])
+	if swept_n <= parked_n or swept <= parked:
+		_faults.append("sweeping across %d villagers paid %.1f against %.1f "
+			% [swept_n, swept, parked] + "for parking on %d -- position does "
+			% parked_n + "not matter, so the miracle may as well not move")
+	# And each soul pays ONCE, or holding still would farm the same person.
+	if parked_n > 2:
+		_faults.append("parking touched %d 'different' souls; the paid-once "
+			% parked_n + "rule is not holding")
+
+
+## Villagers three metres apart in a row, so a sweep crosses a known number of
+## them and a park sits on exactly one.
+func _line_up(base: Vector3) -> void:
+	for i in _root.folk.size():
+		_root.folk[i].position = base + Vector3(float(i) * 3.0, 0, 0)
+
+
+## A growing miracle has to leave something behind it.
+func _planting() -> void:
+	var c = _root.cursor
+	var before := _count("Nature/tree")
+	c.begin("grove", 4.5)
+	var base: Vector3 = _root.folk[0].position
+	for i in 60:
+		c.position = base + Vector3(float(i) * 0.4, MiracleCursor.HEIGHT, 2.0)
+		c.call("_apply", STEP)
+	c.release()
+	var after := _count("Nature/tree")
+	print("[MIR] grove planted %d trees along the path" % (after - before))
+	if after <= before:
+		_faults.append("a grove swept across open ground planted nothing")
+
+
+## It has to run out, or a single card lasts the whole game.
+func _expiry() -> void:
+	var c = _root.cursor
+	c.begin("rain", 4.5)
+	if not c.is_active():
+		_faults.append("the miracle was not active after beginning it")
+	c.left = 0.01
+	c.call("_apply", 0.02)
+	c.left = 0.0
+	c.release()
+	if c.is_active():
+		_faults.append("the miracle never expired")
+	else:
+		print("[MIR] expires and clears")
+
+
+func _count(aid: String) -> int:
+	var n := 0
+	for e in _root.builder.placed_props:
+		if String(e["id"]) == aid:
+			n += 1
+	return n

@@ -87,11 +87,11 @@ const ACTIONS := {
 	# a forest after an hour of chopping is a backdrop, not a resource.
 	"chop":    {"need": "", "sources": ["Nature/tree", "Nature/pine"],
 				"seconds": 5.0, "anim": "chop", "refill": 0.0,
-				"gives": {"wood": 4}, "morality": 0.0, "verb": "chopping",
+				"gives": {"wood": 5}, "morality": 0.0, "verb": "chopping",
 				"consumes": true, "leaves": "Nature/stump"},
 	"quarry":  {"need": "", "sources": ["Nature/rock"],
 				"seconds": 5.0, "anim": "chop", "refill": 0.0,
-				"gives": {"stone": 2}, "morality": 0.0, "verb": "quarrying",
+				"gives": {"stone": 3}, "morality": 0.0, "verb": "quarrying",
 				"consumes": true},
 	"pick":    {"need": "fun", "sources": ["Nature/flowers"],
 				"seconds": 2.5, "anim": "pickup", "refill": 0.45,
@@ -109,22 +109,48 @@ const ACTIONS := {
 					"wants": "Buildings/hut", "clear": 2.0,
 					"morality": 0.05, "verb": "building a hut"},
 	"build_well":  {"need": "", "sources": [], "anywhere": true,
-					"seconds": 6.0, "anim": "chop", "refill": 0.0,
+					"seconds": 4.5, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 4, "stone": 3},
 					"builds": "Buildings/well", "wants": "Buildings/well",
 					"clear": 2.0, "morality": 0.05, "verb": "digging a well"},
 	"build_stall": {"need": "", "sources": [], "anywhere": true,
-					"seconds": 6.0, "anim": "chop", "refill": 0.0,
+					"seconds": 4.5, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 6},
 					"builds": "Buildings/market_stall",
 					"wants": "Buildings/market_stall",
 					"clear": 1.6, "morality": 0.04, "verb": "raising a stall"},
 	"build_shrine":{"need": "", "sources": [], "anywhere": true,
-					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"seconds": 6.0, "anim": "chop", "refill": 0.0,
 					"takes": {"wood": 5, "stone": 5},
 					"builds": "Buildings/shrine", "wants": "Buildings/shrine",
 					"clear": 2.0, "morality": 0.10,
 					"verb": "raising a shrine"},
+	# --- sins -------------------------------------------------------------
+	#
+	# THE MISSING HALF OF JUDGEMENT. Every other action in this table carries a
+	# morality of zero or better, so no follower could ever become anything but
+	# good -- `morality_label` had "Selfish" and "Wicked" strings that nothing
+	# in the game could ever produce, and punishing was a button that hurt
+	# somebody for no reason.
+	#
+	# A sin is the SELFISH SHORTCUT to a need, not a separate evil errand. When
+	# the larder is thin an honest villager goes foraging; a greedy one takes a
+	# double share out of the store. That is why they answer the same `need`
+	# keys as the honest actions and are chosen in the same breath -- see
+	# _answer_need.
+	"steal":       {"need": "hunger", "sources": [], "anywhere": true,
+					"seconds": 2.0, "anim": "pickup", "refill": 0.95,
+					"takes": {"food": 2}, "morality": -0.09, "sin": true,
+					"verb": "taking more than their share"},
+	"shirk":       {"need": "energy", "sources": [], "anywhere": true,
+					"seconds": 4.0, "anim": "idle", "refill": 0.55,
+					"morality": -0.05, "sin": true,
+					"verb": "shirking"},
+	"brawl":       {"need": "fun", "sources": [], "anywhere": true,
+					"seconds": 3.0, "anim": "chop", "refill": 0.60,
+					"morality": -0.14, "sin": true,
+					"verb": "picking a fight"},
+
 	"sow":         {"need": "", "sources": [], "anywhere": true,
 					"seconds": 4.0, "anim": "pickup", "refill": 0.0,
 					"takes": {"food": 1}, "builds": "Nature/crop_row",
@@ -159,6 +185,10 @@ var rng := RandomNumberGenerator.new()
 ## -1 devil .. +1 saint. The RECORD of what they have done, not what the god
 ## thinks of them -- a follower punished unfairly is still a saint.
 var morality := 0.0
+## When they last did something worth punishing, on the village clock. The
+## mirror of `last_action_at`, and what makes a punishment land or miss.
+var last_sin := ""
+var last_sin_at := -999.0
 
 ## action id -> multiplier. The god's whole influence, in one dictionary.
 var favour: Dictionary = {}
@@ -340,7 +370,7 @@ func choose_action() -> String:
 	var key: String = pair[0]
 	var level: float = pair[1]
 	if level < DESPERATE:
-		var forced := _action_for_need(key)
+		var forced := _answer_need(key, level)
 		if forced != "" and (adult or CHILD_ACTIONS.has(forced)):
 			return forced
 
@@ -358,7 +388,7 @@ func choose_action() -> String:
 		return "talk"
 
 	if level < URGENT:
-		var want := _action_for_need(key)
+		var want := _answer_need(key, level)
 		if (want != "" and (adult or CHILD_ACTIONS.has(want))
 				and rng.randf() < 0.85):
 			return want
@@ -385,6 +415,74 @@ func choose_action() -> String:
 		if roll <= 0.0:
 			return String(p["a"])
 	return String(pool[pool.size() - 1]["a"])
+
+
+## The honest answer to a need, or the selfish one.
+##
+## Children never sin -- a toddler taking a second helping is not a moral event
+## and the god should not be smiting them for it.
+func _answer_need(key: String, level: float) -> String:
+	var honest := _action_for_need(key)
+	if not adult:
+		return honest
+	var sin := _sin_for_need(key)
+	if sin == "":
+		return honest
+	if rng.randf() < _temptation(level, honest):
+		return sin
+	return honest
+
+
+## The sin that answers this need, if there is one and it can be done.
+func _sin_for_need(key: String) -> String:
+	for a in ACTIONS:
+		var spec: Dictionary = ACTIONS[a]
+		if not bool(spec.get("sin", false)):
+			continue
+		if String(spec.get("need", "")) != key:
+			continue
+		# Even a thief cannot take from an empty larder.
+		if village != null:
+			var takes: Dictionary = spec.get("takes", {})
+			if not takes.is_empty() and not village.can_take(takes):
+				return ""
+		return String(a)
+	return ""
+
+
+## How likely this follower is to take the shortcut, 0 .. 0.85.
+##
+## Three things, and they multiply rather than add up to a constant: WHO they
+## are, what they have already done, and how badly they need it. A kind
+## follower in comfort never sins; a greedy one who has sinned before and is
+## starving nearly always does. The middle is where it is interesting.
+func _temptation(level: float, honest: String) -> float:
+	var selfish := clampf(-personality.kindness, 0.0, 1.0)
+	# Wickedness compounds: each sin makes the next one cheaper, which is what
+	# turns one bad afternoon into a villager the player has to deal with.
+	var wicked := clampf(-morality, 0.0, 1.0)
+	var pressure := clampf((URGENT - level) / maxf(URGENT, 0.01), 0.0, 1.0)
+	# The weights are deliberately generous. At half these values a lean
+	# eighteen-person village produced TWO sins in four minutes, which is a
+	# mechanic the player would never meet -- and an unseen wrongdoer leaves
+	# punishment exactly as pointless as it was before. The spread is what
+	# matters more than the average: a Greedy follower (kindness near -0.95)
+	# sits around 0.75 and steals whenever they are hungry, an ordinary one
+	# around 0.2, and a Gentle one almost never.
+	var base := selfish * 0.75 + wicked * 0.45
+	# Nobody is incorruptible. A small floor means even a decent village throws
+	# up the occasional bad afternoon, which is what keeps the player watching.
+	base += 0.05
+	# THE STRONGEST PUSH IS HAVING NO HONEST OPTION. A hungry villager standing
+	# in front of a larder they are not allowed to touch is exactly who steals.
+	if honest == "":
+		base += 0.40
+	return clampf(base * (0.30 + 0.70 * pressure), 0.0, 0.85)
+
+
+## Did they do something worth punishing, recently enough to punish them for?
+func recently_sinned(now: float, window: float) -> bool:
+	return last_sin != "" and (now - last_sin_at) <= window
 
 
 ## The lowest stat that has an action attached, and its level.
@@ -601,6 +699,14 @@ func destination_for(grid, from: Vector2i, act: String) -> Vector2i:
 		for i in span:
 			var pick: int = rng.randi_range(0, mini(span, ranked.size()) - 1)
 			var stand: Vector2i = grid.beside(ranked[pick][1], rng)
+			# The TREE being reachable is not the same as the patch of grass
+			# beside it being reachable: `reachable` passes a prop if ANY of
+			# its neighbours shares the villager's region, and `beside` is free
+			# to hand back a different one -- across the river, or inside a
+			# courtyard walled off by huts. One run in three still ended with
+			# over a thousand dead routes because of exactly that gap.
+			if stand.x >= 0 and not grid.reachable(from, stand):
+				stand = Vector2i(-1, -1)
 			if stand.x >= 0:
 				target_id = String(ranked[pick][2])
 				target_cell = stand
@@ -749,7 +855,13 @@ func _finish_action() -> void:
 	stats["fun"] = minf(1.0, float(stats["fun"]) + 0.06)
 
 	var m := float(spec.get("morality", 0.0))
-	if m != 0.0:
+	if m < 0.0:
+		shift_morality(m)
+		last_sin = act
+		last_sin_at = float(village.now) if village != null else 0.0
+		memories.add(Memories.KIND_WORK,
+					 "I took the easy way. Nobody saw.", -0.4)
+	elif m > 0.0:
 		shift_morality(m)
 		memories.add(Memories.KIND_WORK, "Did honest work.", 0.35)
 	last_action = act
@@ -805,6 +917,12 @@ func punish(strength := 1.0) -> void:
 	stats["faith"] = maxf(0.0, float(stats["faith"]) - 0.25 * strength)
 	stats["health"] = maxf(0.05, float(stats["health"]) - 0.30 * strength)
 	stats["fun"] = maxf(0.0, float(stats["fun"]) - 0.3 * strength)
+	# Caught. The account is SETTLED -- they cannot be punished twice for the
+	# same theft -- and being caught pushes them back toward decency, which is
+	# what makes punishing a correction rather than just damage.
+	if last_sin != "":
+		shift_morality(0.22 * strength)
+		last_sin = ""
 	memories.add(Memories.KIND_PUNISHMENT,
 				 "I was struck down%s." % ("" if act == "" else " for " + act),
 				 -0.9 * strength, "",

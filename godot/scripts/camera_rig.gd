@@ -24,6 +24,16 @@ const LENS := 35.0                        ## mm on a 36 mm frame
 @export var dist_max := 70.0
 @export var zoom_step := 1.12             ## per wheel notch, multiplicative
 
+## YAW ONLY, and deliberately so.
+##
+## The fixed angle above is still the rule -- the pitch never changes, so the
+## player cannot get under the world or look at geometry nobody authored. What
+## right-drag adds is turning ON THE SPOT, which is what you actually want when
+## a hut is hiding what is behind it.
+var yaw := 0.0
+var _turning := false
+const TURN_PER_PIXEL := 0.006
+
 var focus := Vector3.ZERO
 var bounds_min := Vector3(-24, 0, -18)
 var bounds_max := Vector3(24, 0, 18)
@@ -70,7 +80,7 @@ func _place() -> void:
 	focus.x = clamp(focus.x, bounds_min.x, bounds_max.x)
 	focus.z = clamp(focus.z, bounds_min.z, bounds_max.z)
 	focus.y = 0.0
-	cam.position = focus + DIR.normalized() * dist
+	cam.position = focus + DIR.normalized().rotated(Vector3.UP, yaw) * dist
 	cam.look_at(focus, Vector3.UP)
 	focus_changed.emit(focus)
 
@@ -96,6 +106,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				_begin_drag(mb.position)
 			else:
 				_dragging = false
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			_turning = mb.pressed
+			# Turning and grabbing the ground at once fights itself: the point
+			# under the cursor moves because the camera moved.
+			if mb.pressed:
+				_dragging = false
+	elif event is InputEventMouseMotion and _turning:
+		yaw += (event as InputEventMouseMotion).relative.x * TURN_PER_PIXEL
+		yaw = wrapf(yaw, -PI, PI)
+		_place()
 	elif event is InputEventMouseMotion and _dragging:
 		_drag_to((event as InputEventMouseMotion).position)
 

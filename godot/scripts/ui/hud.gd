@@ -216,6 +216,17 @@ func _play_card(index: int) -> void:
 	if index < 0 or index >= divinity.hand.size():
 		return
 	var card: Dictionary = divinity.hand[index]
+	var cid := String(card["id"])
+	# A HELD miracle needs no aiming step at all: it appears on the cursor and
+	# the player walks it over whatever they want it to touch. Asking them to
+	# click a spot first would be choosing the target twice.
+	if MiracleCursor.handles(cid):
+		if divinity.play(index):
+			_aiming = -1
+			_smiting = false
+			_say("Sweep it over your people. It fades in %d seconds."
+				% int(MiracleCursor.SECONDS), 4.0)
+		return
 	var kind := String(card["target"])
 	if kind == "none":
 		divinity.play(index)

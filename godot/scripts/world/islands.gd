@@ -39,7 +39,10 @@ const LIFT := 0.5
 
 ## Rising, so the second plot is a goal and the last is an achievement.
 const PRICE := [0, 40, 95, 170, 265, 380, 520, 690, 880]
-const POP_PER_ISLAND := 6
+## Three plots should comfortably hold twenty-odd people. At 6 a whole village
+## fitted in a corner of the land it had paid for, and the cap -- not the
+## arrival rate, not the food -- was what stopped it growing.
+const POP_PER_ISLAND := 7
 
 const FOUR_WAY: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
 								   Vector2i(0, 1), Vector2i(0, -1)]
