@@ -17,6 +17,7 @@ var _t := 0.0
 var _marks: Dictionary = {}
 var _faults: Array[String] = []
 var _next_min := 1
+var _shots := 0
 
 
 func _initialize() -> void:
@@ -70,6 +71,17 @@ func _process(delta: float) -> bool:
 		_mark("three buildings standing")
 	if _root.folk.size() >= 4:
 		_mark("four followers")
+
+	# A picture at the moments the brief is about: "something in the first 30s"
+	# and "a village by 5 min".
+	if _shots == 0 and _t >= 30.0:
+		_shots = 1
+		get_root().get_texture().get_image().save_png(
+			"res://shots/opening_30s.png")
+	if _shots == 1 and _t >= 300.0:
+		_shots = 2
+		get_root().get_texture().get_image().save_png(
+			"res://shots/opening_5min.png")
 
 	if _t >= float(_next_min) * 60.0:
 		print("[OPEN] --- %d min: pop %d, %d buildings, %.0f Faith, %s"
