@@ -49,7 +49,7 @@ const CATALOGUE := {
 	"witness": {
 		"name": "Witness", "icon": "bless",
 		"what": "You see more in a finished day's work, and have longer to act.",
-		"ranks": [5.5, 7.0, 9.0],
+		"ranks": [3.8, 5.0, 6.5],
 		"blurb": ["Witnessed blessings pay more, and you get 5 s to react",
 				  "More again, 6 s, and chains run to eight",
 				  "Most of all, 7.5 s, and each link is worth more"],
@@ -180,7 +180,7 @@ func punish_keeps_chain() -> bool:
 
 
 func witness_faith() -> float:
-	return _value("witness", 4.0)
+	return _value("witness", 2.8)
 
 
 func witness_window() -> float:

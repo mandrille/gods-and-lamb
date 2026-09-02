@@ -6,11 +6,18 @@ extends SceneTree
 ## tell you the first ten minutes are worth playing. It runs a full ten
 ## simulated minutes and reports Faith per minute against the designed band.
 ##
-## It plays the game BADLY on purpose -- a scripted player who blesses whoever
-## most recently finished something, and casts a card when the hand is full.
-## That is roughly a competent human, and it is reproducible, which a human is
-## not. The passive baseline is measured in the same run by tracking what the
-## trickle alone contributed.
+## Three arms, set by MODE, because one number proves nothing on its own:
+##
+##   "engaged"  blesses on every cooldown, casts, buys land, communes
+##   "lazy"     buys land and takes the FREE drafts; never blesses, never casts
+##   "idle"     touches nothing at all
+##
+## "lazy" is the one the design's "+73% for engagement" is measured against. An
+## early version compared engaged against "idle" and reported a tenfold spread,
+## which was a fact about the probe: a player who never buys land is capped at
+## one plot's population forever, and population multiplies every channel. That
+## is not a disengaged player, it is a rock. "idle" is kept as the true floor --
+## it answers a different question, whether the game runs itself at all.
 ##
 ## Designed band, from the plan:
 ##
@@ -23,7 +30,12 @@ const ShotWindowRef := preload("res://tools/shot_window.gd")
 
 const MINUTES := 10
 const SPEED := 20.0                     ## game seconds per real second
-const PLAY := true                      ## false = measure the idle floor
+## Overridable from the environment so all three arms run without editing the
+## file between them -- an edit between measurements is a way to measure the
+## wrong build twice.
+static func _mode_from_env() -> String:
+	var m := OS.get_environment("ECON_MODE")
+	return m if m != "" else "engaged"
 
 var _root: Node = null
 var _f := 0
@@ -37,9 +49,12 @@ var _blessed := 0
 var _cast := 0
 var _boons := 0
 var _lands := 0
+var _ages: Array[String] = []
+var _mode := "engaged"
 
 
 func _initialize() -> void:
+	_mode = _mode_from_env()
 	ShotWindowRef.park()
 	get_root().add_child(
 		(load("res://scenes/vale.tscn") as PackedScene).instantiate())
@@ -55,15 +70,16 @@ func _process(delta: float) -> bool:
 			printerr("[ECON] FAIL: no scene root")
 			quit(1)
 			return true
+		_root.divinity.age_reached.connect(func(i, name):
+			_ages.append("%s at %.1f min" % [name, _elapsed / 60.0]))
 		Engine.time_scale = SPEED
-		print("[ECON] %d minutes at %.0fx, playing=%s"
-			% [MINUTES, SPEED, str(PLAY)])
+		print("[ECON] %d minutes at %.0fx, mode=%s" % [MINUTES, SPEED, _mode])
 		return false
 	if _f < 20:
 		return false
 
 	_elapsed += delta
-	if PLAY:
+	if _mode != "idle":
 		_play_a_bit()
 
 	var m := int(_elapsed / 60.0)
@@ -89,7 +105,8 @@ func _process(delta: float) -> bool:
 ## job, and empty the hand when it fills.
 func _play_a_bit() -> void:
 	var d = _root.divinity
-	if d.judge_cd <= 0.0:
+	var engaged := _mode == "engaged"
+	if engaged and d.judge_cd <= 0.0:
 		var best = null
 		var freshest := -1.0
 		for f in _root.folk:
@@ -115,7 +132,7 @@ func _play_a_bit() -> void:
 
 	# Commune when it is affordable, alternating with land so neither starves.
 	var commune: float = d.commune_cost()
-	if d.faith > commune * 1.4 and _boons <= _lands:
+	if engaged and d.faith > commune * 1.4 and _boons <= _lands:
 		if d.commune():
 			pass
 
@@ -129,7 +146,7 @@ func _play_a_bit() -> void:
 		if not slots.is_empty() and d.buy_island(slots[0]):
 			_lands += 1
 
-	if d.hand.size() >= 3:
+	if engaged and d.hand.size() >= 3:
 		# Cast at the middle of the village, which is roughly what a player
 		# aiming for a crowd would do.
 		var at := Vector3.ZERO
@@ -144,8 +161,8 @@ func _play_a_bit() -> void:
 func _report() -> void:
 	print("")
 	var want := {1: 56.0, 5: 163.0, 10: 266.0}
-	print("[ECON] === %d minutes, %d blessings, %d cards ==="
-		% [MINUTES, _blessed, _cast])
+	print("[ECON] === %s: %d minutes, %d blessings, %d cards ==="
+		% [_mode, MINUTES, _blessed, _cast])
 	for i in _per_minute.size():
 		var m := i + 1
 		var line := "[ECON] minute %2d  %6.1f/min  pop %2d" % [m, _per_minute[i],
@@ -159,17 +176,24 @@ func _report() -> void:
 	var total: float = _root.divinity.total_earned
 	print("[ECON] total earned %.0f, ending Faith %.0f, pop %d, ages n/a"
 		% [total, _root.divinity.faith, _root.folk.size()])
+	print("[ECON] ages: %s" % (", ".join(_ages) if not _ages.is_empty()
+							   else "NONE REACHED"))
 	print("[ECON] witnessed blessings %d, land %d plots, boons %d: %s"
 		% [_root.divinity.witnessed_total, _root.islands.count(), _boons,
 		   _root.divinity.boons.summary()])
 
 	# Only unambiguous breakage fails the run. The band is for tuning.
-	if total < 200.0:
+	if total < 200.0 and _mode != "idle":
 		_faults.append("earned only %.0f Faith in %d minutes -- the economy is "
 			% [total, MINUTES] + "not running")
+	# This one holds in EVERY arm, idle included: item 1.1's regression guard is
+	# that an untouched village still grows.
 	if _root.folk.size() <= 2:
 		_faults.append("the village never grew past its starting two")
-	if _blessed == 0:
+	if _ages.is_empty():
+		_faults.append("no age was ever reached in ten minutes -- the "
+			+ "progression has no shape")
+	if _blessed == 0 and _mode == "engaged":
 		_faults.append("no blessing was ever witnessed -- the core loop is dead")
 
 	if _faults.is_empty():

@@ -35,6 +35,7 @@ signal combo_changed(chain: int, mult: float)
 ## `take_boon` is called, so a draft can be left open.
 signal draft_offered(options: Array, source: String)
 signal boon_taken(id: String, rank: int)
+signal age_reached(index: int, name: String)
 
 ## Faith per second per follower, scaled by how devout and how content they
 ## are. Small: the numbers below are balanced against minutes, not seconds.
@@ -44,7 +45,11 @@ signal boon_taken(id: String, rank: int)
 ## prayer are the body. A well-timed blessing is the top earner, but only by
 ## about +70% over a purely passive player: engagement should roughly 1.7x you,
 ## not 10x you, or the idle half of an idle game stops being a game.
-const FAITH_PER_FOLLOWER := 0.30
+## Measured, then raised. An idle run earned 386 Faith in ten minutes against
+## an engaged run's 3837 -- a tenfold spread, where the design called for about
+## 1.7x. A tenfold spread means the idle half of an idle game is not a game.
+## The floor comes up and the ceiling comes down (see WITNESS_FAITH).
+const FAITH_PER_FOLLOWER := 0.42
 const CHILD_WEIGHT := 0.35              ## a toddler is not a devotee
 
 ## These two were DECLARED AND NEVER USED. The intent to pay Faith for work
@@ -58,7 +63,10 @@ const BUILD_BONUS := 6.0                ## raising something is worth more
 ## attention, and a cooldown is the honest price for that.
 const JUDGE_COOLDOWN := 2.5
 const WITNESS_WINDOW := 4.0             ## seconds since they finished a job
-const WITNESS_FAITH := 4.0
+## Lowered from 4.0 for the same reason. A perfectly-attentive player blessing
+## on every 2.5 s cooldown lands ~190 of these in ten minutes, which was
+## roughly 40% of the entire economy on its own.
+const WITNESS_FAITH := 2.8
 const COMBO_WINDOW := 6.0               ## seconds allowed between links
 const COMBO_STEP := 0.35
 const COMBO_CAP := 6
@@ -68,6 +76,9 @@ const SMITE_COST := 14.0
 ## A new card every this many seconds (item 8).
 const DRAW_SECONDS := 10.0
 const HAND_MAX := 5
+## Both grow with the ages, so they are state rather than constants.
+var HAND_MAX_NOW := HAND_MAX
+var draw_seconds := DRAW_SECONDS
 
 ## The deck.
 ##
@@ -100,6 +111,10 @@ const DECK := [
 	 "desc": "Spirits lift across the island."},
 	{"id": "calm", "name": "Calm", "icon": "dove", "target": "none",
 	 "desc": "Grudges soften. Old wounds cool."},
+	# Stone is the scarcer resource and Grove had no counterpart for it, so a
+	# village that quarried itself out had no way back.
+	{"id": "upheaval", "name": "Upheaval", "icon": "stone", "target": "ground",
+	 "desc": "Stone breaks through the soil."},
 ]
 
 var faith := 25.0
@@ -127,6 +142,37 @@ const COMMUNE_GROWTH := 1.5
 var boons: Boons
 var drafts_taken := 0
 var pending_draft: Array = []
+
+## THE AGES.
+##
+## What gives ten minutes a shape. Each one is a visible arrival -- a lump of
+## Faith, a free draft, and something new in the deck -- and each is triggered
+## by the village doing something rather than by a clock, so it is earned.
+##
+## Age I gating the altar is load-bearing: on cost alone a player could afford
+## their first boon at t=33 s, which is before they have understood what a
+## boon is. Gated on the first building it lands at 70-95 s, right after they
+## have watched their villagers earn something.
+const AGES := [
+	{"name": "The First Roof", "lump": 40.0, "cards": ["grove"],
+	 "note": "Your people have a roof. You may Commune."},
+	{"name": "The Watched Village", "lump": 90.0, "cards": ["rain", "feast"],
+	 "note": "They know they are watched."},
+	{"name": "The Shrine Age", "lump": 180.0,
+	 "cards": ["mend", "revel", "calm", "upheaval"],
+	 "note": "A shrine stands. The deepest gifts are open to you."},
+]
+
+## An age must be allowed to LAND before the next one starts.
+##
+## Two ages arriving in the same second is two lumps, two drafts and two
+## notices on top of each other, and the player registers none of them. A
+## minimum gap makes each one an event.
+const AGE_GAP := 60.0
+var _last_age_at := -999.0
+
+var age := 0                             ## how many ages have PASSED
+var unlocked_cards: Array[String] = ["bounty"]
 var rng := RandomNumberGenerator.new()
 
 ## Injected by the scene root. Untyped because Divinity is built before some of
@@ -168,6 +214,11 @@ func _process(delta: float) -> void:
 		if combo_left <= 0.0:
 			_break_combo()
 
+	_check_age()
+	# No cards before the first roof. At minute zero the only thing to do with
+	# the hand would be to learn it, and there is already a village to watch.
+	if age == 0:
+		return
 	_draw_timer -= delta
 	if _draw_timer <= 0.0:
 		# HOLD the draw, do not destroy it. The timer used to be reset before
@@ -175,13 +226,13 @@ func _process(delta: float) -> void:
 		# concentrating on the village lost a card every ten seconds and was
 		# told about it six times a minute. Now the card arrives the instant a
 		# slot opens.
-		if hand.size() >= HAND_MAX:
+		if hand.size() >= HAND_MAX_NOW:
 			_draw_timer = 0.0
 			if not _said_full:
 				_said_full = true
 				notice.emit("Your hand is full.")
 		else:
-			_draw_timer = DRAW_SECONDS
+			_draw_timer = draw_seconds
 			_said_full = false
 			draw_card()
 
@@ -230,13 +281,28 @@ func can_afford(cost: float) -> bool:
 ## --- cards ------------------------------------------------------------------
 
 func draw_card() -> void:
-	if hand.size() >= HAND_MAX:
+	if hand.size() >= HAND_MAX_NOW:
 		# A full hand stops drawing rather than discarding the oldest. Silently
 		# binning a card the player was saving is the kind of thing they notice
 		# only as "the game ate my miracle". The TIMER announces this now, once
 		# per full-hand state -- saying it here said it on every attempt.
 		return
-	var card: Dictionary = DECK[rng.randi_range(0, DECK.size() - 1)].duplicate()
+	# From the UNLOCKED pool only, and rerolled once if it would be a third
+	# copy of something already in hand -- a two-card pool otherwise deals the
+	# same card five times and looks broken.
+	var pool: Array[Dictionary] = []
+	for c in DECK:
+		if String(c["id"]) in unlocked_cards:
+			pool.append(c)
+	if pool.is_empty():
+		return
+	var card: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+	var same := 0
+	for h in hand:
+		if String(h["id"]) == String(card["id"]):
+			same += 1
+	if same >= 2 and pool.size() > 1:
+		card = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
 	hand.append(card)
 	card_drawn.emit(card)
 	hand_changed.emit()
@@ -263,6 +329,13 @@ func play(index: int, at := Vector3.ZERO, who = null) -> bool:
 
 func _cast(id: String, at: Vector3, who) -> bool:
 	match id:
+		"upheaval":
+			var rocks := _scatter_prop("Nature/rock", at, 4)
+			if rocks == 0:
+				notice.emit("No open ground there.")
+				return false
+			_remember_all("The ground itself gave up stone.", 0.45)
+			notice.emit("Stone breaks through.")
 		"grove":
 			var n := _grow_trees(at, 3)
 			if n == 0:
@@ -540,6 +613,53 @@ func _grow_trees(at: Vector3, count: int) -> int:
 	return made
 
 
+## --- ages -------------------------------------------------------------------
+
+## Has the village earned the next age?
+##
+## Triggers are things the village DID, never a clock, so an age is an arrival
+## and not a timer going off.
+func _check_age() -> void:
+	if age >= AGES.size() or village == null or host == null:
+		return
+	if float(village.now) - _last_age_at < AGE_GAP:
+		return
+	var ready := false
+	match age:
+		0:
+			# Any building at all. The first roof.
+			for aid in village.structures:
+				if String(aid).begins_with("Buildings/") 						and String(aid) != "Buildings/bridge":
+					ready = true
+					break
+		1:
+			# Either way -- attention or growth. Both land in the same window,
+			# which is what an OR is for.
+			ready = witnessed_total >= 20 or host.folk.size() >= 4
+		2:
+			ready = (village.count_of("Buildings/shrine") > 0
+					 and total_earned >= 500.0)
+	if not ready:
+		return
+
+	var spec: Dictionary = AGES[age]
+	age += 1
+	_last_age_at = float(village.now)
+	add_faith(float(spec["lump"]))
+	for c in spec["cards"]:
+		if not (String(c) in unlocked_cards):
+			unlocked_cards.append(String(c))
+	if age == 2:
+		HAND_MAX_NOW = 6
+		draw_seconds = 8.0
+	if age == 3:
+		boons.rank3_open = true
+	notice.emit("%s. %s" % [String(spec["name"]), String(spec["note"])])
+	age_reached.emit(age, String(spec["name"]))
+	# An age is worth a gift, and the gift is the same three-card moment.
+	grant_draft("age")
+
+
 ## --- boons ------------------------------------------------------------------
 
 func commune_cost() -> float:
@@ -548,11 +668,19 @@ func commune_cost() -> float:
 
 ## Open a draft the player paid for.
 func commune() -> bool:
+	if age == 0:
+		notice.emit("Your people have nothing yet. Watch them a while.")
+		return false
 	var cost := commune_cost()
 	if not can_afford(cost):
 		notice.emit("Communing costs %d Faith." % int(cost))
 		return false
 	if not pending_draft.is_empty():
+		# Was a SILENT false. Every other refusal here explains itself, and a
+		# button that does nothing and says nothing reads as broken -- the more
+		# so because the draft that is blocking it is usually a free one the
+		# player has not noticed arriving.
+		notice.emit("A gift is already waiting. Choose it first.")
 		return false
 	var options := boons.offer()
 	if options.is_empty():

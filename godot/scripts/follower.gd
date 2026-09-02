@@ -108,6 +108,9 @@ func _replan() -> void:
 		position = grid.world_of(here)
 
 	n_replans += 1
+	# Before the decision, not after: the brain vetoes actions it cannot reach
+	# and it can only do that if it knows where the body is standing.
+	brain.at_cell = here
 	var act := brain.choose_action()
 	# "talk" is not a place. The social layer pairs people up when they happen
 	# to be near each other, so wanting company means wandering where company

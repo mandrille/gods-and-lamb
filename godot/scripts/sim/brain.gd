@@ -164,6 +164,11 @@ var favour: Dictionary = {}
 var action := ""
 var action_left := 0.0
 var target_id := ""
+## Where the BODY is, set by the follower before it asks for a decision. The
+## brain needs it to answer "can I get there", which it cannot do from the
+## grid alone -- see the reachability veto in _somewhere_to_do.
+var at_cell := Vector2i(-1, -1)
+
 ## Where the current errand is headed. Read by the host when a `builds` action
 ## finishes, because the BUILDER places the structure -- the brain has no
 ## business holding a reference to the scene.
@@ -430,9 +435,19 @@ func _somewhere_to_do(spec: Dictionary) -> bool:
 		return true
 	if grid == null:
 		return true                    # no map yet; do not veto on ignorance
+	# REACHABLE, not merely existing.
+	#
+	# This asked whether the world contained a tree, and a villager on the far
+	# side of an unbridged river would answer yes forever: choose `chop`, find
+	# the nearest tree, fail to route, wander, choose `chop` again. Measured at
+	# 620 of 1078 decisions ending in "no route" -- 57% of everything the
+	# village decided to do. The existing veto pattern is to refuse an action
+	# at CHOICE time rather than discover it on arrival, and this is the same
+	# rule applied to distance instead of to supply.
 	for aid in spec.get("sources", []):
-		if not (grid.cells_of(String(aid)) as Array).is_empty():
-			return true
+		for c in grid.cells_of(String(aid)):
+			if grid.reachable(at_cell, c):
+				return true
 	return false
 
 
@@ -518,6 +533,11 @@ func destination_for(grid, from: Vector2i, act: String) -> Vector2i:
 	for aid in sources:
 		for c in grid.cells_of(String(aid)):
 			var cell: Vector2i = c
+			# Same region as the villager, or the walk cannot happen. Sorting
+			# by distance alone put the nearest tree across the river at the
+			# top of the list every single time.
+			if not grid.reachable(from, cell):
+				continue
 			ranked.append([absi(cell.x - from.x) + absi(cell.y - from.y), cell,
 						   String(aid)])
 	if not ranked.is_empty():

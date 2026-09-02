@@ -78,6 +78,9 @@ var _next_seed := 1
 ## arrival should feel like an event, not a spawn timer.
 const NEWCOMER_SECONDS := 75.0
 var _newcomer_timer := NEWCOMER_SECONDS
+## Settlers owed because ground was opened for them. See _maybe_newcomer.
+var _settlers_due := 0
+const SETTLER_DELAY := 6.0
 ## Population counts that have already paid out a free draft, so a village
 ## that dips and recovers is not paid twice for the same milestone.
 const POP_MILESTONES := [4, 8, 12, 18]
@@ -330,7 +333,25 @@ func _wire_feedback() -> void:
 		fxe.miracle(id, at if at != Vector3.ZERO else _village_centre())
 		sfx.play("miracle"))
 
-	divinity.island_bought.connect(func(_slot): sfx.play("coin"))
+	divinity.island_bought.connect(func(_slot):
+		sfx.play("coin")
+		# LAND MUST BRING PEOPLE.
+		#
+		# A purchase used to raise the population CAP and nothing else, and a
+		# cap nobody fills is worth nothing: arrivals are gated on a 58-75 s
+		# timer AND on mood AND on food, so a two-person village that bought
+		# ground got a map three times the size and no one to work it.
+		#
+		# Measured: a scripted player who bought land but never blessed ended
+		# ten minutes at population 2 and earned 220 Faith, against 697 for one
+		# who touched nothing at all. Land was the standing decision of the run
+		# and it was strictly worse than doing nothing.
+		#
+		# So the purchase owes a settler, and that settler ignores the mood and
+		# food gates -- which is also what the notice has always promised the
+		# player: "The land extends. Room for N."
+		_settlers_due += 1
+		_newcomer_timer = minf(_newcomer_timer, SETTLER_DELAY))
 	# Every Faith gain leaves the thing that earned it and flies to the
 	# counter it changed. That connection is the whole reason the economy is
 	# legible -- a number moving in a corner is not feedback.
@@ -642,10 +663,23 @@ func _on_child_wanted(a: Node, b: Node) -> void:
 func _maybe_newcomer(delta: float) -> void:
 	if not village.has_room() or folk.is_empty():
 		return
+	# WELCOMING, not happy.
+	#
+	# This used `mood()`, which weights the WORST stat at 0.45 -- and in a
+	# two-person village Social is pinned near zero, because a chat needs two
+	# people who both want one, within two metres, off a 26-second cooldown.
+	# So the gate read "miserable" forever and the village could never grow:
+	# you needed people to be sociable and sociability to get people.
+	#
+	# Loneliness should ATTRACT newcomers, not repel them. So the gate asks
+	# whether this is a place worth arriving at -- fed, rested, well, clean --
+	# and says nothing about whether they have company.
 	var mood := 0.0
 	for f in folk:
-		mood += f.brain.mood()
-	mood /= float(folk.size())
+		var b = f.brain
+		mood += (float(b.stats["hunger"]) + float(b.stats["energy"])
+				 + float(b.stats["health"]) + float(b.stats["hygiene"])) * 0.25
+	mood = mood / float(folk.size()) * 2.0 - 1.0
 	# DECAY, do not reset.
 	#
 	# This reset the full 75 s the instant mean mood dipped under the gate --
@@ -654,15 +688,20 @@ func _maybe_newcomer(delta: float) -> void:
 	# grew past its two starting people was entirely possible, and population
 	# multiplies every income channel there is. A dip now costs twice the time
 	# it lasted, which is pressure without a cliff.
-	if mood < divinity.boons.mood_gate() or village.amount("food") < 2:
-		_newcomer_timer = minf(NEWCOMER_SECONDS, _newcomer_timer + delta * 2.0)
-		return
+	# A settler who was PROMISED ground comes whatever the mood is. Everyone
+	# else still has to be attracted.
+	if _settlers_due <= 0:
+		if mood < divinity.boons.mood_gate() or village.amount("food") < 2:
+			_newcomer_timer = minf(NEWCOMER_SECONDS, _newcomer_timer + delta * 2.0)
+			return
 	_newcomer_timer -= delta
 	if _newcomer_timer > 0.0:
 		return
 	_newcomer_timer = divinity.boons.newcomer_seconds()
 	if not spawn_villager():
 		return
+	if _settlers_due > 0:
+		_settlers_due -= 1
 	var who = folk[folk.size() - 1]
 	fxe.burst("bless", who.position + Vector3(0, 0.8, 0))
 	sfx.play("coin")
@@ -722,7 +761,10 @@ func rebuild_grid() -> void:
 
 ## A bought island: regenerate the terrain, then everything derived from it.
 func rebuild_world() -> void:
-	builder.rebuild(islands.build_doc())
+	# carry_doc, NOT the raw generated document. See ValeBuilder.carry_doc:
+	# rebuilding from the generator alone demolished every hut the followers
+	# had built and regrew every tree they had felled.
+	builder.rebuild(builder.carry_doc(islands.build_doc()))
 	if plots != null:
 		plots.rebuild()
 	grid = WALKGRID.new()

@@ -444,10 +444,17 @@ func _check_draft_rules() -> void:
 		if offer.size() != 3 and offer.size() < 3:
 			# Fewer than three is only allowed when the pool is genuinely
 			# smaller than three.
+			# Count the pool the way offer() does -- rank-3 options are
+			# withheld until the third Age, so "not maxed" overcounts it and
+			# this flagged a correct two-card offer as a fault.
 			var pool := 0
 			for id in Boons.CATALOGUE:
-				if not b.maxed(String(id)):
-					pool += 1
+				var idn := String(id)
+				if b.maxed(idn):
+					continue
+				if b.rank(idn) >= 2 and not b.rank3_open:
+					continue
+				pool += 1
 			if pool >= 3:
 				bad_size += 1
 		var seen := {}
@@ -532,9 +539,18 @@ func _check_boon_effects() -> void:
 
 
 func _open_draft() -> void:
-	_root.divinity.faith = 500.0
-	if not _root.divinity.commune():
-		_faults.append("Commune refused with 500 Faith in hand")
+	var d = _root.divinity
+	# Commune has two preconditions besides the price, and the probe met
+	# neither: the altar opens at Age I, and a draft already on the table
+	# blocks a second one. Both are deliberate, so the probe establishes them
+	# rather than the game relaxing them.
+	if d.age < 1:
+		d.age = 1
+	d.pending_draft = []
+	d.faith = 500.0
+	if not d.commune():
+		_faults.append("Commune refused at Age %d with 500 Faith and no "
+			% d.age + "draft pending")
 		return
 	if not _root.draft.is_open():
 		_faults.append("the draft did not open")

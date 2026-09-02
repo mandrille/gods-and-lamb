@@ -245,6 +245,15 @@ func ledger_icon_pos(key: String) -> Vector2:
 	return Vector2(PAD + 20.0, PAD + 17.0)
 
 
+## Where the village has got to. Roman numerals because "Age 2" reads as a
+## debug counter and "Age II" reads as an achievement.
+func _age_label() -> String:
+	var n: int = divinity.age
+	if n <= 0:
+		return "-"
+	return ["I", "II", "III"][mini(n, 3) - 1]
+
+
 func _row_width(text: String) -> float:
 	return 22.0 + float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
 											  -1, 15).x) + 16.0
@@ -258,6 +267,7 @@ func _ledger_rows() -> Array:
 		["wood", "%d/%d" % [v.amount("wood"), v.capacity("wood")], INK],
 		["stone", "%d/%d" % [v.amount("stone"), v.capacity("stone")], INK],
 		["pop", "%d/%d" % [v.population, v.pop_cap], INK],
+		["saint", _age_label(), GOLD],
 	]
 
 

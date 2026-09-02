@@ -64,12 +64,63 @@ func _process(_d: float) -> bool:
 		return false
 
 	Engine.time_scale = 1.0
+	_buy_land_and_check()
 	# A picture of the saturated village, because "no two footprints intersect"
 	# is checkable and "it looks like a village" is not.
 	get_root().get_texture().get_image().save_png("res://shots/build_full.png")
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
+
+
+## Buying land must not demolish what is already built.
+##
+## rebuild_world() frees every prop and rebuilds from the world document, and
+## it was handed the RAW GENERATED one -- so every hut the followers had raised
+## disappeared and every tree they had felled grew back. Nothing looked wrong
+## in a screenshot, because a rewound village still looks like a village.
+##
+## Measured cost, from tools/economy_probe.gd: a player who bought land but
+## never blessed earned less Faith over ten minutes (339) than one who touched
+## nothing at all (443). The purchase that was meant to be the standing
+## decision of the run was strictly worse than doing nothing.
+func _buy_land_and_check() -> void:
+	var before := _building_keys()
+	if before.is_empty():
+		_faults.append("nothing was built, so the land-purchase check proves "
+			+ "nothing")
+		return
+	var slots: Array = _root.islands.buyable()
+	if slots.is_empty():
+		_faults.append("no ground was available to buy")
+		return
+	# Straight to the Faith rather than through the cooldowns -- this is a test
+	# of what a purchase DOES, not of whether one can be afforded.
+	_root.divinity.add_faith(9999.0)
+	if not _root.divinity.buy_island(slots[0]):
+		_faults.append("the land could not be bought")
+		return
+	var after := _building_keys()
+	var lost: Array[String] = []
+	for k in before:
+		if not after.has(k):
+			lost.append(k)
+	print("[BUILD] after buying land: %d buildings stood, %d stand, %d lost"
+		% [before.size(), after.size(), lost.size()])
+	if not lost.is_empty():
+		_faults.append("buying land destroyed %d building(s), first %s"
+			% [lost.size(), lost[0]])
+
+
+## Identity is the CELL and the id, not the node -- every node is freed and
+## remade by the rebuild, so comparing instances would always report total loss.
+func _building_keys() -> Dictionary:
+	var out := {}
+	for e in _root.builder.placed_props:
+		var aid := String(e["id"])
+		if aid.begins_with("Buildings/") and aid != "Buildings/bridge":
+			out["%s@%d,%d" % [aid, int(e["col"]), int(e["row"])]] = true
+	return out
 
 
 func _report() -> void:

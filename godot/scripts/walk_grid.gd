@@ -58,6 +58,9 @@ var _lower: Array = []
 ## tree. A building site may not sit on another building; a tree standing in
 ## the way is cleared to make room, the way clearing land actually works.
 var _built: PackedByteArray = PackedByteArray()
+## Which connected walkable region each cell belongs to, -1 for none. Filled by
+## the same flood fill that counts them.
+var _region: PackedInt32Array = PackedInt32Array()
 
 
 func build(doc: Dictionary) -> void:
@@ -133,17 +136,30 @@ func build(doc: Dictionary) -> void:
 ## banks. A pathfinder cannot tell you that: it simply returns no route, the
 ## follower shrugs and wanders locally, and the village looks fine while half
 ## of it is quietly unreachable. A flood fill says it out loud at startup.
+## The fill also RECORDS which region each cell is in, and that is the half
+## that matters. Reporting alone left the problem exactly as described above:
+## measured on a live village, 620 of 1078 decisions -- 57% -- ended in "no
+## route", because a villager on the main landmass kept choosing the nearest
+## tree without ever asking whether it was on the same side of the river.
+## A villager may now only want what it can actually walk to.
 func _report_regions() -> void:
 	var seen := {}
 	var sizes: Array[int] = []
+	_region = PackedInt32Array()
+	_region.resize(cols * rows)
+	_region.fill(-1)
+	var next_id := 0
 	for start in _walkable_cells:
 		if seen.has(start):
 			continue
+		var id := next_id
+		next_id += 1
 		var n := 0
 		var stack: Array[Vector2i] = [start]
 		seen[start] = true
 		while not stack.is_empty():
 			var c: Vector2i = stack.pop_back()
+			_region[c.y * cols + c.x] = id
 			n += 1
 			for d in NEIGHBOURS:
 				var nb: Vector2i = c + d
@@ -160,6 +176,41 @@ func _report_regions() -> void:
 		% [sizes.size(), ", ".join(head),
 		   "" if sizes.size() == 1 else
 		   "  <- anything not in the largest is unreachable from it"])
+
+
+## Which connected region a cell is in. -1 when it is not walkable at all, or
+## when the cell is off the map -- both mean "you cannot get there".
+func region_of(c: Vector2i) -> int:
+	if not _inside(c) or _region.is_empty():
+		return -1
+	return _region[c.y * cols + c.x]
+
+
+## Can somebody standing at `a` get TO OR BESIDE `b`?
+##
+## Answered from the flood fill rather than by running A*, so it costs an array
+## lookup and can be asked about every candidate target before one is chosen.
+##
+## "Or beside" is the whole subtlety. Targets are usually PROPS -- a tree, a
+## bush, a rock -- and a prop's own cell is blocked, so its region is -1. A
+## first version compared regions directly and therefore judged every resource
+## in the world unreachable: villagers stopped chopping entirely, wood sat at
+## 0/16 for ten minutes, no hut was ever raised and no age was ever reached.
+## They fell back on `sow`, which targets open ground and so still passed, and
+## laid 81 crop rows in a village with no buildings.
+##
+## So an unwalkable target is judged by the ground around it, which is where
+## the villager would actually stand -- the same cell `beside` hands back.
+func reachable(a: Vector2i, b: Vector2i) -> bool:
+	var ra := region_of(a)
+	if ra < 0:
+		return true          # caller is nowhere sensible; do not veto on that
+	if ra == region_of(b):
+		return true
+	for d in NEIGHBOURS:
+		if region_of(b + d) == ra:
+			return true
+	return false
 
 
 func _code(layer: Array, col: int, row: int) -> String:

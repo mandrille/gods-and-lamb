@@ -318,6 +318,7 @@ func _build_props() -> void:
 		# layout is a second chance to disagree with the first.
 		placed_props.append({"id": aid, "node": node, "pos": node.position,
 							 "col": col, "row": row,
+							 "yaw": float(p["yaw"]), "scale": s,
 							 "fp": p.get("fp", [0.5, 0.5])})
 		placed += 1
 	print("[VALE] props: %d placed" % placed)
@@ -354,6 +355,7 @@ func add_prop(aid: String, col: int, row: int, yaw := 0.0,
 	node.scale = Vector3(scale_v, scale_v, scale_v)
 	placed_props.append({"id": aid, "node": node, "pos": node.position,
 						 "col": col, "row": row,
+						 "yaw": yaw, "scale": scale_v,
 						 "fp": Islands.FOOTPRINTS.get(aid, [0.5, 0.5])})
 	if aid.begins_with("Buildings/"):
 		_clear_site(aid, col, row)
@@ -493,8 +495,63 @@ func live_doc() -> Dictionary:
 			var c := cell_of(e["pos"])
 			col = c.x
 			row = c.y
-		props.append({"id": e["id"], "col": col, "row": row, "yaw": 0.0,
-					  "scale": 1.0, "fp": e.get("fp", [0.5, 0.5])})
+		props.append({"id": e["id"], "col": col, "row": row,
+					  "yaw": float(e.get("yaw", 0.0)),
+					  "scale": float(e.get("scale", 1.0)),
+					  "fp": e.get("fp", [0.5, 0.5])})
+	out["props"] = props
+	return out
+
+
+## The regenerated layout, with everything that has HAPPENED folded back in.
+##
+## Buying land regenerates the world document, and rebuild() frees every prop
+## and builds the new one. Handed the raw generated document that DEMOLISHED
+## THE VILLAGE: every hut the followers had raised vanished, and every tree
+## they had felled grew back. It was invisible because both halves undo each
+## other in a screenshot -- the village looks like a village either way, just
+## an earlier one.
+##
+## The cost was not cosmetic. A probe of a player who buys land but never
+## blesses earned LESS Faith over ten minutes than one who touched nothing at
+## all (339 against 443), because they paid three times to reset their own
+## village. Land was the standing decision of the run and it was a trap.
+##
+## `live_doc` already had the principle for the walk grid -- "rebuilding from
+## doc alone would resurrect every tree a miracle burned down" -- and was never
+## applied to the world itself.
+##
+## The merge holds because the grid is a FIXED size (Islands.GRID * PITCH +
+## MARGIN * 2, independent of how much is owned), so a cell index means the
+## same place before and after. Anything in the new document that the old one
+## did not list is genuinely new ground; everything else comes from what is
+## actually standing.
+func carry_doc(base: Dictionary) -> Dictionary:
+	var was := {}
+	for p in (doc.get("props", []) as Array):
+		was["%d,%d" % [int(p["col"]), int(p["row"])]] = true
+
+	var out := base.duplicate()
+	var props: Array = []
+	# What stands now, whatever put it there.
+	for e in placed_props:
+		if not is_instance_valid(e.get("node")):
+			continue
+		var col: int = int(e.get("col", -1))
+		var row: int = int(e.get("row", -1))
+		if col < 0:
+			var c := cell_of(e["pos"])
+			col = c.x
+			row = c.y
+		props.append({"id": e["id"], "col": col, "row": row,
+					  "yaw": float(e.get("yaw", 0.0)),
+					  "scale": float(e.get("scale", 1.0)),
+					  "fp": e.get("fp", [0.5, 0.5])})
+	# Plus the dressing on ground that was not ours until now.
+	for p in (base.get("props", []) as Array):
+		if was.has("%d,%d" % [int(p["col"]), int(p["row"])]):
+			continue
+		props.append(p)
 	out["props"] = props
 	return out
 
