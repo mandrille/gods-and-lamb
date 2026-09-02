@@ -27,14 +27,38 @@ signal judged(who, good: bool)          ## bless or punish landed on a follower
 signal smote(at: Vector3, radius: float, destroyed: int)
 signal island_bought(slot: Vector2i)
 signal notice(text: String)             ## one line for the player, for the HUD
+## Faith arrived, and WHERE. The HUD flies a token from there to the counter,
+## which is the only thing that makes the economy legible.
+signal earned(amount: float, at: Vector3, why: String)
+signal combo_changed(chain: int, mult: float)
 
 ## Faith per second per follower, scaled by how devout and how content they
 ## are. Small: the numbers below are balanced against minutes, not seconds.
-const FAITH_PER_FOLLOWER := 0.22
-const PRAYER_BONUS := 6.0               ## a completed prayer is worth real Faith
-const WORK_BONUS := 1.5
+## Faith is EARNED, and it is earned from things the player can see happen.
+##
+## The passive trickle is the floor -- an idle player still climbs. Work and
+## prayer are the body. A well-timed blessing is the top earner, but only by
+## about +70% over a purely passive player: engagement should roughly 1.7x you,
+## not 10x you, or the idle half of an idle game stops being a game.
+const FAITH_PER_FOLLOWER := 0.30
+const CHILD_WEIGHT := 0.35              ## a toddler is not a devotee
 
-const BLESS_COST := 8.0
+## These two were DECLARED AND NEVER USED. The intent to pay Faith for work
+## existed from the first draft and was never wired to anything, which is most
+## of why the whole first ten minutes earned under 180 Faith.
+const PRAYER_BONUS := 6.0
+const WORK_BONUS := 1.5
+const BUILD_BONUS := 6.0                ## raising something is worth more
+
+## Judgement is FREE. It is the verb, not the purchase -- what it costs is
+## attention, and a cooldown is the honest price for that.
+const JUDGE_COOLDOWN := 2.5
+const WITNESS_WINDOW := 4.0             ## seconds since they finished a job
+const WITNESS_FAITH := 4.0
+const COMBO_WINDOW := 6.0               ## seconds allowed between links
+const COMBO_STEP := 0.35
+const COMBO_CAP := 6
+
 const SMITE_COST := 14.0
 
 ## A new card every this many seconds (item 8).
@@ -79,6 +103,16 @@ var hand: Array[Dictionary] = []
 var _draw_timer := DRAW_SECONDS
 ## Said once per full-hand state, not once per attempt.
 var _said_full := false
+
+## Judgement state. `bless_radius` is 0 until a boon widens it -- the code path
+## is here from the start so the boon is a number and not a new mechanic.
+var judge_cd := 0.0
+var bless_radius := 0.0
+var combo_chain := 0
+var combo_left := 0.0
+var _combo_last = null                  ## the villager who made the last link
+var witnessed_total := 0
+var total_earned := 0.0
 var rng := RandomNumberGenerator.new()
 
 ## Injected by the scene root. Untyped because Divinity is built before some of
@@ -107,9 +141,17 @@ func _process(delta: float) -> void:
 			continue
 		var devotion: float = float(f.brain.stats["faith"])
 		var mood: float = (f.brain.mood() + 1.0) * 0.5
-		income += FAITH_PER_FOLLOWER * (0.35 + devotion * 0.65) * (0.4 + mood * 0.6)
+		var weight: float = 1.0 if f.brain.adult else CHILD_WEIGHT
+		income += (FAITH_PER_FOLLOWER * weight
+			* (0.35 + devotion * 0.65) * (0.4 + mood * 0.6))
 	if income > 0.0:
 		add_faith(income * delta)
+
+	judge_cd = maxf(0.0, judge_cd - delta)
+	if combo_left > 0.0:
+		combo_left -= delta
+		if combo_left <= 0.0:
+			_break_combo()
 
 	_draw_timer -= delta
 	if _draw_timer <= 0.0:
@@ -130,8 +172,40 @@ func _process(delta: float) -> void:
 
 
 func add_faith(amount: float) -> void:
+	# GUARDED on positive: this is also called with negatives to pay for
+	# things, and a lifetime-earned counter that costs count against it would
+	# never reach an age threshold.
+	if amount > 0.0:
+		total_earned += amount
 	faith = maxf(0.0, faith + amount)
 	faith_changed.emit(faith)
+
+
+## Faith for a completed job, scaled by effort and by how devout they are --
+## an eight-second shrine build should outpay a three-second forage.
+##
+## Only WORK actions pay. If eating and resting paid, the need treadmill would
+## become the economy and blessing would be rewarding nothing.
+func on_work_done(who, act: String, spec: Dictionary) -> void:
+	if not (act in Brain.WORK):
+		return
+	var devotion: float = float(who.brain.stats["faith"])
+	var gain: float = (WORK_BONUS
+		* (float(spec.get("seconds", 4.0)) / 4.0)
+		* (0.6 + devotion * 0.8))
+	if String(spec.get("builds", "")).begins_with("Buildings/"):
+		gain += BUILD_BONUS
+	add_faith(gain)
+	earned.emit(gain, who.position, "work")
+
+
+## A completed prayer. The direct payment is the smaller half -- praying lifts
+## the faith stat, which is 65% of the passive multiplier, so a village that
+## prays earns about a third more from everything else it does.
+func on_prayer_done(who) -> void:
+	var gain: float = PRAYER_BONUS * (0.7 + who.brain.personality.devotion * 0.6)
+	add_faith(gain)
+	earned.emit(gain, who.position, "prayer")
 
 
 func can_afford(cost: float) -> bool:
@@ -245,22 +319,48 @@ func _remember_all(text: String, valence: float) -> void:
 ## --- judgement --------------------------------------------------------------
 
 ## Approve of what this follower just did. The ONLY way the god steers work.
+##
+## FREE, and gated by a cooldown rather than by Faith. Blessing is the verb of
+## this game; charging for the verb meant a player made about three of them in
+## the first ten minutes. What it costs is ATTENTION.
+##
+## WITNESSED is the whole mechanic: blessing someone within WITNESS_WINDOW of
+## them FINISHING a job pays Faith and extends a chain. Blessing someone idle
+## still warms them -- favour, faith, a memory -- but pays nothing and breaks
+## the chain. That is the difference between watching your village and clicking
+## on it.
 func bless(who) -> bool:
 	if who == null or not is_instance_valid(who) or who.brain == null:
 		return false
-	if not can_afford(BLESS_COST):
-		notice.emit("Not enough Faith to bless.")
+	if judge_cd > 0.0:
 		return false
-	add_faith(-BLESS_COST)
-	who.brain.bless(1.0)
-	# Blessing an act nobody performed is legal but useless, and saying so is
-	# how the player learns the mechanic is about TIMING.
-	if who.brain.last_action == "":
+	judge_cd = JUDGE_COOLDOWN
+
+	var caught := _judge_area(who)
+	var witnessed := 0
+	for f in caught:
+		if _is_witnessed(f):
+			witnessed += 1
+		f.brain.bless(1.0 if f == who else 0.6)
+
+	if witnessed > 0:
+		_extend_combo(who)
+		# Scaled by how many of the caught had actually just DONE something,
+		# with the exponent stopping a blob from printing Faith.
+		var mult := 1.0 + COMBO_STEP * float(combo_chain - 1)
+		var gain: float = WITNESS_FAITH * pow(float(witnessed), 0.75) * mult
+		witnessed_total += witnessed
+		add_faith(gain)
+		earned.emit(gain, who.position + Vector3(0, 0.9, 0), "bless")
+		notice.emit("%s is blessed for %s.%s"
+			% [who.brain.name, who.brain.last_action,
+			   "" if combo_chain < 2 else "  x%.2f" % mult])
+	else:
+		# Said plainly, because the lesson is TIMING and a silent nothing
+		# teaches it slowly.
+		_break_combo()
 		notice.emit("%s felt the warmth, but had done nothing to earn it."
 			% who.brain.name)
-	else:
-		notice.emit("%s is blessed for %s."
-			% [who.brain.name, who.brain.last_action])
 	judged.emit(who, true)
 	return true
 
@@ -268,15 +368,59 @@ func bless(who) -> bool:
 func punish(who) -> bool:
 	if who == null or not is_instance_valid(who) or who.brain == null:
 		return false
-	if not can_afford(BLESS_COST):
-		notice.emit("Not enough Faith to punish.")
+	if judge_cd > 0.0:
 		return false
-	add_faith(-BLESS_COST)
-	who.brain.punish(1.0)
+	judge_cd = JUDGE_COOLDOWN
+	for f in _judge_area(who):
+		f.brain.punish(1.0 if f == who else 0.6)
+	# Punishment never pays and always breaks the chain. It is a steering tool
+	# with a real cost, not a second way to earn.
+	_break_combo()
 	notice.emit("%s is struck down%s." % [who.brain.name,
 		"" if who.brain.last_action == "" else " for " + who.brain.last_action])
 	judged.emit(who, false)
 	return true
+
+
+## Everyone a judgement lands on. Just the target until a boon widens it, and
+## the code path exists from the start so the boon is a number, not a mechanic.
+func _judge_area(who) -> Array:
+	var out: Array = [who]
+	if bless_radius <= 0.0:
+		return out
+	for f in host.folk:
+		if f == who or not is_instance_valid(f) or f.brain == null:
+			continue
+		if f.position.distance_to(who.position) <= bless_radius:
+			out.append(f)
+	return out
+
+
+func _is_witnessed(f) -> bool:
+	if f.brain.last_action == "" or village == null:
+		return false
+	return float(village.now) - float(f.brain.last_action_at) <= WITNESS_WINDOW
+
+
+## A link needs a DIFFERENT villager than the last one. Otherwise the player
+## parks on one worker and the mechanic is a metronome, not a search.
+func _extend_combo(who) -> void:
+	if who == _combo_last:
+		combo_chain = maxi(1, combo_chain)
+	else:
+		combo_chain = mini(COMBO_CAP, combo_chain + 1)
+	_combo_last = who
+	combo_left = COMBO_WINDOW
+	combo_changed.emit(combo_chain, 1.0 + COMBO_STEP * float(combo_chain - 1))
+
+
+func _break_combo() -> void:
+	if combo_chain == 0:
+		return
+	combo_chain = 0
+	combo_left = 0.0
+	_combo_last = null
+	combo_changed.emit(0, 1.0)
 
 
 ## --- wrath ------------------------------------------------------------------

@@ -224,6 +224,12 @@ func _check_favour() -> void:
 	var f = _root.folk[0]
 	var b = f.brain
 	b.last_action = "chop"
+	# WITNESSED needs a TIMESTAMP, not just the string. Blessing is free now
+	# and pays only when the target has just finished something, so a probe
+	# that sets the name alone exercises the unwitnessed path and asserts the
+	# wrong thing.
+	b.last_action_at = float(_root.village.now)
+	_root.divinity.judge_cd = 0.0
 	var before := float(b.favour["chop"])
 	var faith_before := float(b.stats["faith"])
 	var mem_before: int = b.memories.entries.size()
@@ -240,6 +246,7 @@ func _check_favour() -> void:
 		_faults.append("blessing did not improve divine standing")
 
 	var mid := float(b.favour["chop"])
+	_root.divinity.judge_cd = 0.0
 	b.punish(1.0)
 	var punished := float(b.favour["chop"])
 	print("[SIM] punish: favour[chop] %.3f -> %.3f, standing now %.2f"

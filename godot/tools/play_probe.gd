@@ -113,6 +113,9 @@ func _check_panel() -> void:
 func _bless() -> void:
 	var who = _root.panel.who
 	who.brain.last_action = "chop"
+	# A timestamp, or this is an UNWITNESSED bless and pays nothing.
+	who.brain.last_action_at = float(_root.village.now)
+	_root.divinity.judge_cd = 0.0
 	var before := float(who.brain.favour["chop"])
 	var faith_before: float = _root.divinity.faith
 	# Through the BUTTON's signal, not by calling Divinity -- the wiring is the
@@ -123,8 +126,29 @@ func _bless() -> void:
 		% [faith_before, _root.divinity.faith, before, after])
 	if after <= before:
 		_faults.append("the panel's Bless button did not change favour")
-	if _root.divinity.faith >= faith_before:
-		_faults.append("blessing was free")
+	# Blessing is FREE now and PAYS -- the opposite of what this asserted.
+	if _root.divinity.faith <= faith_before:
+		_faults.append("a witnessed blessing paid nothing")
+
+	# And an unwitnessed one must pay nothing and break the chain.
+	var idle = _root.folk[1]
+	idle.brain.last_action = ""
+	_root.divinity.judge_cd = 0.0
+	var faith_mid: float = _root.divinity.faith
+	_root.divinity.bless(idle)
+	print("[PLAY] unwitnessed bless: faith %.1f -> %.1f, chain %d"
+		% [faith_mid, _root.divinity.faith, _root.divinity.combo_chain])
+	if _root.divinity.faith > faith_mid:
+		_faults.append("blessing someone idle paid Faith")
+	if _root.divinity.combo_chain != 0:
+		_faults.append("blessing someone idle did not break the chain")
+
+	# The cooldown must actually bite.
+	_root.divinity.judge_cd = 0.0
+	_root.divinity.bless(who)
+	var blocked: bool = not _root.divinity.bless(who)
+	if not blocked:
+		_faults.append("judgement has no cooldown -- it can be spammed")
 
 
 func _cards() -> void:

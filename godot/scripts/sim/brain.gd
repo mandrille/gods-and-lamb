@@ -180,6 +180,9 @@ var chatting_with := ""
 ## reinforce, which is why the god has to watch and time it rather than pick
 ## a behaviour from a menu.
 var last_action := ""
+## WHEN it finished, on the village clock. A bare string cannot answer "did
+## they just do that", and "just" is the whole of the blessing mechanic.
+var last_action_at := -999.0
 
 var village = null                       ## Village, injected; may be null
 ## The map, injected by the body. Needed at CHOOSING time, not only at routing
@@ -667,6 +670,7 @@ func _finish_action() -> void:
 		shift_morality(m)
 		memories.add(Memories.KIND_WORK, "Did honest work.", 0.35)
 	last_action = act
+	last_action_at = float(village.now) if village != null else 0.0
 
 
 func shift_morality(delta: float) -> void:
@@ -693,8 +697,14 @@ func morality_label() -> String:
 func bless(strength := 1.0) -> void:
 	var act := last_action
 	if act != "" and favour.has(act):
-		favour[act] = clampf(float(favour[act]) * (1.0 + 0.45 * strength),
-							 0.15, 6.0)
+		# DIMINISHING, and a higher ceiling. Flat x1.45 with a 6.0 clamp meant
+		# five blesses maxed an action out -- and once blessing is free that is
+		# thirteen seconds, after which the steering half of the mechanic is
+		# over and further blessing only pays. Now it always does something and
+		# never hits a wall.
+		var f: float = float(favour[act])
+		favour[act] = clampf(f * (1.0 + 0.45 * strength * (1.0 - f / 8.0)),
+							 0.15, 8.0)
 	stats["faith"] = minf(1.0, float(stats["faith"]) + 0.45 * strength)
 	stats["fun"] = minf(1.0, float(stats["fun"]) + 0.2 * strength)
 	memories.add(Memories.KIND_BLESSING,

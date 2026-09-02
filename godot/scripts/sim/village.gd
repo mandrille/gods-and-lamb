@@ -77,6 +77,15 @@ var islands = null
 
 ## Consecutive failures to find anywhere to build, so "the land is full" is a
 ## state that gets ANNOUNCED rather than a silent stall in the decision pool.
+## The game clock, in seconds of village time.
+##
+## One shared clock, because "did this happen recently" is a question the god
+## asks about something the villager did, and two objects cannot compare their
+## own private timers. Advanced by `tick(delta)`, so it obeys time_scale --
+## `Time.get_ticks_msec()` does not, which is how a 25-second claim once
+## survived 300 game-seconds.
+var now := 0.0
+
 var _site_misses := 0
 signal land_full()
 
@@ -229,6 +238,7 @@ func extract_at(cell: Vector2i) -> void:
 
 ## Land recovers on its own. Called once per frame by the host.
 func tick(delta: float) -> void:
+	now += delta
 	# Claims age in GAME time, so they behave the same however fast the world
 	# is running.
 	for aid in _claims.keys():

@@ -324,6 +324,22 @@ func _wire_feedback() -> void:
 		sfx.play("miracle"))
 
 	divinity.island_bought.connect(func(_slot): sfx.play("coin"))
+	# Every Faith gain leaves the thing that earned it and flies to the
+	# counter it changed. That connection is the whole reason the economy is
+	# legible -- a number moving in a corner is not feedback.
+	divinity.earned.connect(func(amount, at, why):
+		if amount < 0.5:
+			return
+		floaters.spawn("faith", "faith", int(round(amount)), at)
+		if why == "bless":
+			sfx.play("bless", 1.0 + 0.04 * float(divinity.combo_chain)))
+	divinity.combo_changed.connect(func(chain, mult):
+		if chain >= 2:
+			var who = overhead.selected
+			var at: Vector3 = (who.position + Vector3(0, 1.3, 0)
+							   if who != null and is_instance_valid(who)
+							   else _village_centre())
+			floaters.puff("bless", "x%.2f" % mult, at))
 	social.chat_started.connect(func(a, _b): sfx.play("chat",
 		1.0 + a.brain.rng.randf_range(-0.1, 0.1)))
 	social.child_wanted.connect(_on_child_wanted)
