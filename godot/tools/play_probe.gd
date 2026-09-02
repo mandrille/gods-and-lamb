@@ -61,6 +61,10 @@ func _process(_d: float) -> bool:
 		14: _check_clips()
 		15: _check_targeting()
 		16: _check_children()
+		17: _check_draft_rules()
+		18: _check_boon_effects()
+		19: _open_draft()
+		20: _shoot("play_5_draft")
 		_:
 			_report()
 			return true
@@ -411,6 +415,133 @@ func _check_children() -> void:
 		if picks.has(banned):
 			_faults.append("a child chose '%s'" % banned)
 	print("[PLAY] child chooses among: %s" % str(picks.keys()))
+
+
+## The draft must always be a real CHOICE.
+##
+## Three cards where two are the same thing, or where everything on offer is
+## already maxed, is a moment that looks like a decision and is not. Two
+## hundred offers, because these are rules about a random process and one
+## sample proves nothing.
+func _check_draft_rules() -> void:
+	var b = _root.divinity.boons
+	var bad_size := 0
+	var dupes := 0
+	var maxed := 0
+	var no_new := 0
+	var early_r3 := 0
+	for i in 200:
+		# Random state each time, so the rules are tested against a village
+		# part-way through rather than only a fresh one.
+		b.held.clear()
+		for id in Boons.CATALOGUE:
+			if _root.divinity.rng.randf() < 0.45:
+				b.held[id] = _root.divinity.rng.randi_range(1, 3)
+		b.rank3_open = i % 2 == 0
+		var offer: Array = b.offer()
+		if offer.is_empty():
+			continue
+		if offer.size() != 3 and offer.size() < 3:
+			# Fewer than three is only allowed when the pool is genuinely
+			# smaller than three.
+			var pool := 0
+			for id in Boons.CATALOGUE:
+				if not b.maxed(String(id)):
+					pool += 1
+			if pool >= 3:
+				bad_size += 1
+		var seen := {}
+		var any_new := false
+		var pool_has_new := false
+		for id in Boons.CATALOGUE:
+			if b.rank(String(id)) == 0 and not b.maxed(String(id)):
+				pool_has_new = true
+		for o in offer:
+			var id := String(o["id"])
+			if seen.has(id):
+				dupes += 1
+			seen[id] = true
+			if b.maxed(id):
+				maxed += 1
+			if b.rank(id) == 0:
+				any_new = true
+			if int(o["rank"]) >= 3 and not b.rank3_open:
+				early_r3 += 1
+		if pool_has_new and not any_new:
+			no_new += 1
+	b.held.clear()
+	b.rank3_open = false
+	print("[PLAY] 200 offers: %d wrong size, %d duplicated, %d already maxed, "
+		% [bad_size, dupes, maxed]
+		+ "%d without anything new, %d rank-3 too early"
+		% [no_new, early_r3])
+	if bad_size > 0:
+		_faults.append("%d offers had the wrong number of cards" % bad_size)
+	if dupes > 0:
+		_faults.append("%d offers repeated a boon" % dupes)
+	if maxed > 0:
+		_faults.append("%d offers included a maxed boon" % maxed)
+	if no_new > 0:
+		_faults.append("%d offers were all upgrades while new boons existed"
+			% no_new)
+	if early_r3 > 0:
+		_faults.append("%d offers showed rank 3 before it was unlocked"
+			% early_r3)
+
+
+## A boon must change the thing its own sentence names.
+func _check_boon_effects() -> void:
+	var d = _root.divinity
+	var b = d.boons
+	b.held.clear()
+	var f = _root.folk[0]
+
+	var speed_before: float = f.speed
+	var scale_before: float = f._walk_scale
+	b.take("swift_feet")
+	_root.apply_boons()
+	print("[PLAY] Swift Feet: speed %.3f -> %.3f, clip scale %.3f -> %.3f"
+		% [speed_before, f.speed, scale_before, f._walk_scale])
+	if f.speed <= speed_before:
+		_faults.append("Swift Feet did not change walk speed")
+	# BOTH, always: `_play` feeds `_walk_scale` to the clip's speed_scale, so a
+	# boon that writes only `speed` makes the whole village skate.
+	if f._walk_scale <= scale_before:
+		_faults.append("Swift Feet moved speed but not the animation scale -- "
+			+ "they will skate")
+
+	# Full Hands must raise a yield AND leave the shared const table alone.
+	var before_table: int = int(Brain.ACTIONS["chop"]["gives"]["wood"])
+	b.take("full_hands")
+	var bonus: int = b.yield_bonus()
+	var after_table: int = int(Brain.ACTIONS["chop"]["gives"]["wood"])
+	print("[PLAY] Full Hands: bonus +%d, ACTIONS table still %d (was %d)"
+		% [bonus, after_table, before_table])
+	if bonus <= 0:
+		_faults.append("Full Hands granted no yield bonus")
+	if after_table != before_table:
+		_faults.append("Full Hands MUTATED Brain.ACTIONS -- that const is "
+			+ "shared by every mind in the game")
+
+	var zeal_before: float = b.zeal()
+	b.take("zeal")
+	if b.zeal() <= zeal_before:
+		_faults.append("Zeal did not raise the passive multiplier")
+	b.held.clear()
+	_root.apply_boons()
+
+
+func _open_draft() -> void:
+	_root.divinity.faith = 500.0
+	if not _root.divinity.commune():
+		_faults.append("Commune refused with 500 Faith in hand")
+		return
+	if not _root.draft.is_open():
+		_faults.append("the draft did not open")
+		return
+	print("[PLAY] draft open with %d options: %s"
+		% [_root.draft._options.size(),
+		   str(_root.draft._options.map(func(o): return String(o["name"])))])
 
 
 ## --- helpers ----------------------------------------------------------------

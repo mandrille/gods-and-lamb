@@ -189,6 +189,10 @@ var village = null                       ## Village, injected; may be null
 ## time: an action whose source does not exist anywhere is not a choice, it is
 ## a wasted walk, and the difference is invisible from outside.
 var grid = null
+## The god's boons, read rather than applied. A boon that wrote into ACTIONS --
+## a const shared by every mind in the game -- would make its change permanent,
+## global and invisible to the next run.
+var boons = null
 
 
 func _init(seed_value: int) -> void:
@@ -246,7 +250,7 @@ func tick(delta: float) -> void:
 
 
 func _drain(key: String) -> float:
-	var base: float = DRAIN[key]
+	var base: float = DRAIN[key] * (boons.drain() if boons != null else 1.0)
 	match key:
 		"hunger": return base * personality.appetite
 		"energy": return base / maxf(0.35, personality.vigour)
@@ -655,7 +659,13 @@ func _finish_action() -> void:
 			# A COPY, never the const table: ACTIONS is shared by every brain
 			# in the game and mutating it would make the change permanent and
 			# global.
-			village.give(village.scaled_gives(gives, target_cell))
+			# A COPY, never the const table.
+			var paid: Dictionary = village.scaled_gives(gives, target_cell)
+			var bonus: int = int(boons.yield_bonus()) if boons != null else 0
+			if bonus > 0:
+				for res in paid:
+					paid[res] = int(paid[res]) + bonus
+			village.give(paid)
 			village.extract_at(target_cell)
 
 	var need := String(spec.get("need", ""))

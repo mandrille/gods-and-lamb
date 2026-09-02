@@ -62,6 +62,7 @@ var overhead: Overhead
 var panel: VillagerPanel
 var hud: HUD
 var floaters: Floaters
+var draft: BoonDraft
 var fxe: FXEvents
 var sfx: SFX
 var plots: PlotMarkers
@@ -77,6 +78,11 @@ var _next_seed := 1
 ## arrival should feel like an event, not a spawn timer.
 const NEWCOMER_SECONDS := 75.0
 var _newcomer_timer := NEWCOMER_SECONDS
+## Population counts that have already paid out a free draft, so a village
+## that dips and recovers is not paid twice for the same milestone.
+const POP_MILESTONES := [4, 8, 12, 18]
+var _milestones_paid := {}
+
 ## Diagnostics for the build path, read by tools/build_probe.gd.
 var n_build_try := 0
 var n_build_ok := 0
@@ -287,7 +293,8 @@ func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
 	if f == null:
 		return null
 	f.position = at
-	f.think(grid, _next_seed, speed, village)
+	f.think(grid, _next_seed, speed, village, divinity.boons)
+	f.set_walk_boost(divinity.boons.walk())
 	_next_seed += 1
 	folk.append(f)
 	if fxe != null and sfx != null:
@@ -575,6 +582,22 @@ func _add_ui() -> void:
 	floaters.hud = hud
 	ui.add_child(floaters)
 
+	# The draft sits ABOVE everything and takes every click while it is open.
+	draft = BoonDraft.new()
+	draft.name = "BoonDraft"
+	draft.divinity = divinity
+	ui.add_child(draft)
+	divinity.draft_offered.connect(draft.open)
+	draft.chosen.connect(func(id):
+		divinity.take_boon(id)
+		draft.close()
+		fxe.burst("bless", _village_centre())
+		sfx.play("coin", 0.85))
+	draft.rerolled.connect(func():
+		divinity.add_faith(-float(draft.reroll_cost()))
+		draft.open(divinity.boons.offer(), draft._source)
+		sfx.play("chat", 1.2))
+
 	overhead.follower_clicked.connect(panel.show_for)
 	panel.bless_pressed.connect(func(who): divinity.bless(who))
 	panel.punish_pressed.connect(func(who): divinity.punish(who))
@@ -631,19 +654,45 @@ func _maybe_newcomer(delta: float) -> void:
 	# grew past its two starting people was entirely possible, and population
 	# multiplies every income channel there is. A dip now costs twice the time
 	# it lasted, which is pressure without a cliff.
-	if mood < 0.15 or village.amount("food") < 2:
+	if mood < divinity.boons.mood_gate() or village.amount("food") < 2:
 		_newcomer_timer = minf(NEWCOMER_SECONDS, _newcomer_timer + delta * 2.0)
 		return
 	_newcomer_timer -= delta
 	if _newcomer_timer > 0.0:
 		return
-	_newcomer_timer = NEWCOMER_SECONDS
+	_newcomer_timer = divinity.boons.newcomer_seconds()
 	if not spawn_villager():
 		return
 	var who = folk[folk.size() - 1]
 	fxe.burst("bless", who.position + Vector3(0, 0.8, 0))
 	sfx.play("coin")
 	divinity.notice.emit("You have a new follower: %s." % who.brain.name)
+
+
+## A village that reaches a size has EARNED something. Same draft as Commune,
+## free, because a moment the player is taught once should not have two shapes.
+func _check_milestones() -> void:
+	for n in POP_MILESTONES:
+		if folk.size() >= n and not _milestones_paid.has(n):
+			_milestones_paid[n] = true
+			if divinity.grant_draft("milestone"):
+				divinity.notice.emit("%d followers. Choose a gift." % n)
+			return
+
+
+## Push every boon that lives on a follower back out to all of them.
+##
+## Called when a boon is taken. Boons are READ wherever possible -- drains and
+## yields are asked for at the moment they are used -- but walk speed is state
+## on the body, so it has to be written, and written to everyone rather than
+## only to whoever is spawned next.
+func apply_boons() -> void:
+	var boost: float = divinity.boons.walk()
+	for f in folk:
+		if is_instance_valid(f):
+			f.set_walk_boost(boost)
+			if f.brain != null:
+				f.brain.boons = divinity.boons
 
 
 ## Rebuild the walk grid from what is STANDING, not from the document.
@@ -733,6 +782,7 @@ func _process(delta: float) -> void:
 	village.tick(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)
+	_check_milestones()
 
 
 func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:

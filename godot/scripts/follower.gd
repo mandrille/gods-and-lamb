@@ -49,6 +49,10 @@ var _t := 0.0
 var _anim: AnimationPlayer = null
 var _clips: Dictionary = {}        ## logical name -> clip name in the GLB
 var _walk_scale := 1.0
+## The speed this follower was born with, before any boon. Kept so a boost is
+## applied to the original rather than compounding on itself every time the
+## god takes another rank.
+var _base_walk := 1.0
 var _pending := ""                 ## the action to start once we arrive
 ## How small a newborn is, and how big they end up. Applied to the GLB CHILD
 ## node rather than to the Follower itself, because the Follower's own
@@ -75,15 +79,17 @@ var n_started := 0
 
 ## Give the follower a mind and a map and it decides for itself.
 func think(walk_grid: WalkGrid, seed_value: int, walk_speed_scale := 1.0,
-		   village = null) -> void:
+		   village = null, boons = null) -> void:
 	grid = walk_grid
 	brain = Brain.new(seed_value)
 	brain.name = NAMES[seed_value % NAMES.size()]
 	brain.village = village
 	brain.grid = walk_grid
+	brain.boons = boons
 	name = "Follower_%s" % brain.name
 	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * walk_speed_scale
 	_walk_scale = walk_speed_scale
+	_base_walk = walk_speed_scale
 	_loop = false
 	_body = get_child(0) as Node3D if get_child_count() > 0 else null
 	_index_clips()
@@ -226,6 +232,16 @@ func _apply_growth() -> void:
 
 func is_child() -> bool:
 	return brain != null and not brain.adult
+
+
+## Swift Feet. BOTH numbers, always: `_play` feeds `_walk_scale` to the clip's
+## speed_scale, so writing only `speed` makes the whole village skate.
+func set_walk_boost(boost: float) -> void:
+	var base: float = _base_walk * boost
+	speed = (STRIDE_PER_CYCLE / CYCLE_SECONDS) * base
+	_walk_scale = base
+	if _anim != null and _anim.current_animation == String(_clips.get("walk", "")):
+		_anim.speed_scale = base
 
 
 ## --- the social layer drives these ------------------------------------------

@@ -35,6 +35,8 @@ var _pop: Array[int] = []
 var _faults: Array[String] = []
 var _blessed := 0
 var _cast := 0
+var _boons := 0
+var _lands := 0
 
 
 func _initialize() -> void:
@@ -104,6 +106,19 @@ func _play_a_bit() -> void:
 		if best != null and d.bless(best):
 			_blessed += 1
 
+	# Take any draft that is open -- greedily, first card, because WHICH boon a
+	# scripted player takes is not what this probe measures. That it can take
+	# them at all, and that the curve bends afterwards, is.
+	if not d.pending_draft.is_empty():
+		d.take_boon(String(d.pending_draft[0]["id"]))
+		_boons += 1
+
+	# Commune when it is affordable, alternating with land so neither starves.
+	var commune: float = d.commune_cost()
+	if d.faith > commune * 1.4 and _boons <= _lands:
+		if d.commune():
+			pass
+
 	# Buy land when it is comfortably affordable. Without this the population
 	# hard-caps at one plot's worth and every later minute is measuring a
 	# village that cannot grow -- which is a fact about the probe, not the
@@ -111,8 +126,8 @@ func _play_a_bit() -> void:
 	var price := float(_root.islands.price_next())
 	if d.faith > price * 1.6:
 		var slots: Array = _root.islands.buyable()
-		if not slots.is_empty():
-			d.buy_island(slots[0])
+		if not slots.is_empty() and d.buy_island(slots[0]):
+			_lands += 1
 
 	if d.hand.size() >= 3:
 		# Cast at the middle of the village, which is roughly what a player
@@ -144,8 +159,9 @@ func _report() -> void:
 	var total: float = _root.divinity.total_earned
 	print("[ECON] total earned %.0f, ending Faith %.0f, pop %d, ages n/a"
 		% [total, _root.divinity.faith, _root.folk.size()])
-	print("[ECON] witnessed blessings %d, land %d plots"
-		% [_root.divinity.witnessed_total, _root.islands.count()])
+	print("[ECON] witnessed blessings %d, land %d plots, boons %d: %s"
+		% [_root.divinity.witnessed_total, _root.islands.count(), _boons,
+		   _root.divinity.boons.summary()])
 
 	# Only unambiguous breakage fails the run. The band is for tuning.
 	if total < 200.0:

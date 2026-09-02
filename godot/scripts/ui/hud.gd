@@ -46,6 +46,7 @@ var _aiming := -1                  ## hand index awaiting a target, or -1
 var _smiting := false
 var _hot := -1                     ## hovered card, or -1
 var _hot_wrath := false
+var _hot_commune := false
 
 
 func _ready() -> void:
@@ -85,6 +86,11 @@ func _wrath_rect() -> Rect2:
 	return Rect2(vp.x - 132.0 - PAD, vp.y - CARD_H - PAD, 132.0, 40.0)
 
 
+func _commune_rect() -> Rect2:
+	var r := _wrath_rect()
+	return Rect2(r.position.x, r.position.y - 46.0, r.size.x, 40.0)
+
+
 ## --- input ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
@@ -105,6 +111,7 @@ func _process(delta: float) -> void:
 			_hot = i
 			break
 	_hot_wrath = _wrath_rect().has_point(m)
+	_hot_commune = _commune_rect().has_point(m)
 	# Show WHO can be targeted, for as long as a villager-only aim is live.
 	var folk_aim := false
 	if _aiming >= 0 and _aiming < divinity.hand.size():
@@ -128,6 +135,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# A click on the hand or the wrath button, first: these sit on top.
 	if _hot >= 0:
 		_play_card(_hot)
+		get_viewport().set_input_as_handled()
+		return
+	if _hot_commune:
+		divinity.commune()
 		get_viewport().set_input_as_handled()
 		return
 	if _hot_wrath:
@@ -216,6 +227,7 @@ func _draw() -> void:
 		return
 	_ledger()
 	_hand()
+	_commune()
 	_wrath()
 	_toast()
 	_reticle()
@@ -333,6 +345,27 @@ func _tooltip(anchor: Rect2, card: Dictionary) -> void:
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, GOLD)
 	draw_string(_font, Vector2(x + 14.0, y + 44.0), lines[0],
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK)
+
+
+## The altar. The most important button on the screen, so it sits above Wrath
+## and is gold rather than red.
+func _commune() -> void:
+	var r := _commune_rect()
+	var cost: float = divinity.commune_cost()
+	var can: bool = divinity.can_afford(cost)
+	var bg := Color(0.26, 0.24, 0.14, 0.95)
+	if _hot_commune and can:
+		bg = Color(0.40, 0.35, 0.16, 0.98)
+	draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(0, 0, 0, 0.30),
+			  true)
+	draw_rect(r, bg, true)
+	draw_rect(r, GOLD if can else Color(1, 1, 1, 0.12), false,
+			  2.0 if can else 1.0)
+	Icons.draw_icon(self, "faith", r.position + Vector2(24.0, r.size.y * 0.5),
+					24.0)
+	draw_string(_font, r.position + Vector2(42.0, r.size.y * 0.5 + 5.0),
+				"Commune  %d" % int(cost), HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+				INK if can else Color(0.62, 0.58, 0.48))
 
 
 func _wrath() -> void:

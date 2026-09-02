@@ -31,6 +31,10 @@ signal notice(text: String)             ## one line for the player, for the HUD
 ## which is the only thing that makes the economy legible.
 signal earned(amount: float, at: Vector3, why: String)
 signal combo_changed(chain: int, mult: float)
+## Three boons to choose between. The UI shows them; nothing happens until
+## `take_boon` is called, so a draft can be left open.
+signal draft_offered(options: Array, source: String)
+signal boon_taken(id: String, rank: int)
 
 ## Faith per second per follower, scaled by how devout and how content they
 ## are. Small: the numbers below are balanced against minutes, not seconds.
@@ -113,6 +117,16 @@ var combo_left := 0.0
 var _combo_last = null                  ## the villager who made the last link
 var witnessed_total := 0
 var total_earned := 0.0
+
+## The god's permanent powers, and what the next draft costs.
+##
+## Rising, so early drafts are frequent and late ones are decisions. Land and
+## Commune competing for the same Faith is the standing choice of a run.
+const COMMUNE_BASE := 55.0
+const COMMUNE_GROWTH := 1.5
+var boons: Boons
+var drafts_taken := 0
+var pending_draft: Array = []
 var rng := RandomNumberGenerator.new()
 
 ## Injected by the scene root. Untyped because Divinity is built before some of
@@ -126,6 +140,7 @@ var grid = null
 
 func _init() -> void:
 	rng.seed = 20260901
+	boons = Boons.new(20260901)
 
 
 func _process(delta: float) -> void:
@@ -142,7 +157,7 @@ func _process(delta: float) -> void:
 		var devotion: float = float(f.brain.stats["faith"])
 		var mood: float = (f.brain.mood() + 1.0) * 0.5
 		var weight: float = 1.0 if f.brain.adult else CHILD_WEIGHT
-		income += (FAITH_PER_FOLLOWER * weight
+		income += (FAITH_PER_FOLLOWER * boons.zeal() * weight
 			* (0.35 + devotion * 0.65) * (0.4 + mood * 0.6))
 	if income > 0.0:
 		add_faith(income * delta)
@@ -336,6 +351,7 @@ func bless(who) -> bool:
 		return false
 	judge_cd = JUDGE_COOLDOWN
 
+	bless_radius = boons.bless_radius()
 	var caught := _judge_area(who)
 	var witnessed := 0
 	for f in caught:
@@ -347,8 +363,9 @@ func bless(who) -> bool:
 		_extend_combo(who)
 		# Scaled by how many of the caught had actually just DONE something,
 		# with the exponent stopping a blob from printing Faith.
-		var mult := 1.0 + COMBO_STEP * float(combo_chain - 1)
-		var gain: float = WITNESS_FAITH * pow(float(witnessed), 0.75) * mult
+		var mult := 1.0 + boons.combo_step() * float(combo_chain - 1)
+		var gain: float = (boons.witness_faith()
+						   * pow(float(witnessed), 0.75) * mult)
 		witnessed_total += witnessed
 		add_faith(gain)
 		earned.emit(gain, who.position + Vector3(0, 0.9, 0), "bless")
@@ -371,11 +388,15 @@ func punish(who) -> bool:
 	if judge_cd > 0.0:
 		return false
 	judge_cd = JUDGE_COOLDOWN
+	bless_radius = boons.bless_radius()
 	for f in _judge_area(who):
 		f.brain.punish(1.0 if f == who else 0.6)
-	# Punishment never pays and always breaks the chain. It is a steering tool
-	# with a real cost, not a second way to earn.
-	_break_combo()
+	# Punishment never pays. It normally breaks the chain too -- a steering
+	# tool with a real cost, not a second way to earn -- until Open Hand's
+	# third rank, which makes correction part of the rhythm rather than an
+	# interruption of it.
+	if not boons.punish_keeps_chain():
+		_break_combo()
 	notice.emit("%s is struck down%s." % [who.brain.name,
 		"" if who.brain.last_action == "" else " for " + who.brain.last_action])
 	judged.emit(who, false)
@@ -399,7 +420,8 @@ func _judge_area(who) -> Array:
 func _is_witnessed(f) -> bool:
 	if f.brain.last_action == "" or village == null:
 		return false
-	return float(village.now) - float(f.brain.last_action_at) <= WITNESS_WINDOW
+	return (float(village.now) - float(f.brain.last_action_at)
+			<= boons.witness_window())
 
 
 ## A link needs a DIFFERENT villager than the last one. Otherwise the player
@@ -408,10 +430,11 @@ func _extend_combo(who) -> void:
 	if who == _combo_last:
 		combo_chain = maxi(1, combo_chain)
 	else:
-		combo_chain = mini(COMBO_CAP, combo_chain + 1)
+		combo_chain = mini(boons.combo_cap(), combo_chain + 1)
 	_combo_last = who
 	combo_left = COMBO_WINDOW
-	combo_changed.emit(combo_chain, 1.0 + COMBO_STEP * float(combo_chain - 1))
+	combo_changed.emit(combo_chain,
+					   1.0 + boons.combo_step() * float(combo_chain - 1))
 
 
 func _break_combo() -> void:
@@ -515,6 +538,58 @@ func _grow_trees(at: Vector3, count: int) -> int:
 	if made > 0:
 		host.rebuild_grid()
 	return made
+
+
+## --- boons ------------------------------------------------------------------
+
+func commune_cost() -> float:
+	return COMMUNE_BASE * pow(COMMUNE_GROWTH, float(drafts_taken))
+
+
+## Open a draft the player paid for.
+func commune() -> bool:
+	var cost := commune_cost()
+	if not can_afford(cost):
+		notice.emit("Communing costs %d Faith." % int(cost))
+		return false
+	if not pending_draft.is_empty():
+		return false
+	var options := boons.offer()
+	if options.is_empty():
+		notice.emit("There is nothing left to grant you.")
+		return false
+	add_faith(-cost)
+	pending_draft = options
+	draft_offered.emit(options, "commune")
+	return true
+
+
+## A draft that was EARNED -- an age, a population milestone, the tutorial.
+## Same three-card moment, so the mechanic is learned once. `source` is carried
+## through so a quest system can call this later without changing anything.
+func grant_draft(source: String) -> bool:
+	if not pending_draft.is_empty():
+		return false
+	var options := boons.offer()
+	if options.is_empty():
+		return false
+	pending_draft = options
+	draft_offered.emit(options, source)
+	return true
+
+
+func take_boon(id: String) -> bool:
+	if pending_draft.is_empty() or not boons.take(id):
+		return false
+	drafts_taken += 1
+	pending_draft = []
+	var r := boons.rank(id)
+	boon_taken.emit(id, r)
+	notice.emit("%s %s." % [String(Boons.CATALOGUE[id]["name"]),
+							["I", "II", "III"][r - 1]])
+	if host != null and host.has_method("apply_boons"):
+		host.apply_boons()
+	return true
 
 
 ## --- land -------------------------------------------------------------------
