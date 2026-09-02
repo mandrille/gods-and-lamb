@@ -141,10 +141,17 @@ func _line_up(base: Vector3) -> void:
 func _planting() -> void:
 	var c = _root.cursor
 	var before := _count("Nature/tree")
+	# Sweep over ground that is KNOWN to be open, rather than a fixed offset
+	# from a villager. The village builds fast now, so a hard-coded path
+	# wandered across huts and crop rows and planted nothing -- which is
+	# correct behaviour and a useless test.
+	var open := _open_run(24)
+	if open.is_empty():
+		_faults.append("could not find open ground to test planting on")
+		return
 	c.begin("grove", 4.5)
-	var base: Vector3 = _root.folk[0].position
-	for i in 60:
-		c.position = base + Vector3(float(i) * 0.4, MiracleCursor.HEIGHT, 2.0)
+	for at in open:
+		c.position = at + Vector3(0, MiracleCursor.HEIGHT, 0)
 		c.call("_apply", STEP)
 	c.release()
 	var after := _count("Nature/tree")
@@ -167,6 +174,25 @@ func _expiry() -> void:
 		_faults.append("the miracle never expired")
 	else:
 		print("[MIR] expires and clears")
+
+
+## A run of walkable cells to sweep along, as world points.
+func _open_run(want: int) -> Array[Vector3]:
+	var g = _root.grid
+	var out: Array[Vector3] = []
+	if g == null:
+		return out
+	for start in g.walkable_cells():
+		out.clear()
+		var c: Vector2i = start
+		for step in want:
+			if not g.is_walkable(c):
+				break
+			out.append(g.world_of(c))
+			c += Vector2i(1, 0)
+		if out.size() >= want / 2:
+			return out
+	return out
 
 
 func _count(aid: String) -> int:

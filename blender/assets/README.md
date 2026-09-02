@@ -100,5 +100,11 @@ cycle. It is the one target that does NOT merge first, and the reasons are in
 `docs/03-folk-rig.md`. Read that before adding a part to a folk builder — parts
 are claimed by NAME, and a name nothing claims fails the run.
 
+WHICH skeleton is a declaration. `cls="folk"` defaults to `folkrig`, the
+seven-bone biped; an asset may add `rig="critterrig"` for the quadruped rig
+the livestock use. Both `-- rig` and `-- glb` dispatch on that key, so a new
+body plan costs a kit module and one line in the ASSET dict — not a new
+class.
+
 `-- look` is the cheap one and it renders three angles. **Open the PNG.** A
 triangle count cannot tell you that a roof overhangs its own doorway.

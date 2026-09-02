@@ -217,6 +217,51 @@ does not, read section 4 before touching anything else.
 
 ---
 
+## 7b. Quadrupeds take a DIFFERENT skeleton
+
+`assets/_kit/critterrig.py` + `rig="critterrig"` in the declaration.
+
+The livestock — `Animals/sheep`, `Animals/cow` — are `cls="folk"` by every
+measure this pipeline uses (600 triangles, 40 px, rigged, walking between
+tiles) and they are NOT bound by folkrig. Seven bones again, arranged for four
+legs:
+
+```
+Root ------ Body ------ Head
+  |
+  +-------- LegFL, LegFR, LegBL, LegBR
+```
+
+Three things are worth knowing before you add another animal.
+
+**Which rig runs is a DECLARATION, not a class.** `build.py`'s `_rig_module`
+imports whatever `ASSET["rig"]` names and falls back to `folkrig`, so both
+`-- rig` and `-- glb` work against the interface rather than against one
+skeleton. Adding a class instead would have split the triangle cap, the cache
+rule and the material fold along a line that has nothing to do with a leg
+count.
+
+**The joints are MEASURED, not tabled.** `folkrig.SKELETON` is coordinates
+copied out of `villager.py`, which is fine when there is one body. There are
+two animals at different sizes, so `critterrig.measured_skeleton()` reads every
+joint off the EVALUATED bounds of the parts that will hang on it — the
+front-left leg bone runs from the top of whatever `_LegFL` turned out to be
+down to its lowest vertex. Move a leg in the builder and the bone follows. The
+bounds must be evaluated, not raw: the sheep's fleece asks for an 8 cm bevel,
+so its un-evaluated cage is eight centimetres wider than the animal.
+
+**The gait is DIAGONAL.** Front-left swings with back-right. A lateral pair is
+a real gait for a camel and reads as a broken animation for a cow. Swing is 17
+degrees against the folk's 26 — at the folk's angle short stiff legs scissor
+past each other and the animal skates.
+
+Clips are `walk`, `idle` and `graze`, against the folk's `walk`, `idle`,
+`pickup` and `chop`. `graze` carries the one assert that is new here,
+`assert_head_dips`: the skull sits ABOVE its pivot and the legs hang below
+theirs, so the two take OPPOSITE signs for "forward", and the version of that
+mistake folkrig already paid for was villagers arching away from the tree they
+were chopping.
+
 ## 8. What is NOT done
 
 **Nothing carries this into the game.** `library`, `export` and `guards` are
@@ -234,6 +279,11 @@ same job section 3 describes.
 
 **One clip.** There is a walk and nothing else. Idle, carry and the tile-hop
 that the tween currently does are all unwritten.
+
+**No shared rig kit.** `critterrig` imports folkrig for the asserts and the
+bake order and defines its own skeleton, groups and clips. That is two files
+that both know what a bone roll is for. A third animal shape — a bird, a fish
+-- would be the moment to ask whether the generic half wants its own module.
 
 ---
 

@@ -227,6 +227,12 @@ func _report_regions() -> void:
 			   "  <- anything not in the largest is unreachable from it"])
 
 
+## Every cell somebody can stand on. Returned by reference -- callers read it,
+## they do not own it.
+func walkable_cells() -> Array[Vector2i]:
+	return _walkable_cells
+
+
 ## Which connected region a cell is in. -1 when it is not walkable at all, or
 ## when the cell is off the map -- both mean "you cannot get there".
 func region_of(c: Vector2i) -> int:

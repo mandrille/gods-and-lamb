@@ -821,6 +821,17 @@ def target_cache(rest):
     if os.path.exists(rig):
         expect("edit _kit/folkrig.py", with_edit(rig, "rig"), folk)
 
+    # 2b. A rig an asset NAMES invalidates exactly the assets that name it.
+    #     folkrig is forced for every folk asset by a rule in buildcache; a
+    #     second rig is matched only by its name appearing in the source, and
+    #     the failure mode if that stops working is silent -- edit the
+    #     quadruped walk, get the old GLB, and spend the afternoon in Godot.
+    critter = os.path.join(ROOT, "assets", "_kit", "critterrig.py")
+    if os.path.exists(critter):
+        expect("edit _kit/critterrig.py", with_edit(critter, "critter"),
+               [a for a in found
+                if found[a]["decl"].get("rig") == "critterrig"])
+
     # 3. A core module invalidates everything.
     expect("edit src/kit.py",
            with_edit(os.path.join(ROOT, "src", "kit.py"), "kit"), list(found))

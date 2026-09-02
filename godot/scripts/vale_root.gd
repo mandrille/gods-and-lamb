@@ -64,6 +64,14 @@ var hud: HUD
 var floaters: Floaters
 var draft: BoonDraft
 var cursor: MiracleCursor
+const CRITTER := preload("res://scripts/critter.gd")
+## Livestock, kept apart from `folk` so nothing that iterates the village's
+## PEOPLE -- blessing, judgement, the social layer, the census -- ever has to
+## ask whether this one is a sheep.
+var beasts: Array = []
+## How many animals a plot supports. Bought land brings a herd with it, which
+## is part of what makes a purchase feel like it arrived with something.
+const BEASTS_PER_PLOT := 3
 var fxe: FXEvents
 var sfx: SFX
 var plots: PlotMarkers
@@ -311,6 +319,7 @@ func _add_followers() -> void:
 		var at := grid.world_of(cell)
 		if _spawn_thinker(asset, at, _rng.randf_range(WALK_MIN, WALK_MAX)) != null:
 			made += 1
+	_stock_animals()
 	# THE FOUNDERS START RESTED.
 	#
 	# Brain gives everyone 0.55-1.0 on each need so a village does not queue at
@@ -327,6 +336,46 @@ func _add_followers() -> void:
 	village.population = made
 	print("[VALE] followers: %d of %d cap, %s"
 		% [made, islands.pop_cap(), village.summary()])
+
+
+## Bring the herd up to what the owned land supports.
+##
+## Called at the start and again whenever a plot is bought, so buying ground
+## visibly arrives with livestock on it rather than being an empty field and a
+## raised number.
+func _stock_animals() -> void:
+	if grid == null:
+		return
+	var want: int = islands.count() * BEASTS_PER_PLOT
+	var made := 0
+	var tries := 0
+	while beasts.size() < want and tries < 300:
+		tries += 1
+		var cell := grid.random_cell(_rng)
+		if islands.slot_of_cell(cell).x < 0:
+			continue
+		# Two sheep to a cow: a flock with the odd cow in it reads as a
+		# village's animals, an even split reads as a menu of options.
+		var aid := "Animals/cow" if beasts.size() % 3 == 2 else "Animals/sheep"
+		if _spawn_beast(aid, grid.world_of(cell)):
+			made += 1
+	if made > 0:
+		print("[VALE] livestock: %d (%d plots)" % [beasts.size(), islands.count()])
+
+
+func _spawn_beast(asset_id: String, at: Vector3) -> bool:
+	var packed: PackedScene = builder._packed_of(asset_id)
+	if packed == null:
+		return false
+	# Same reparenting rule as a follower: a script on an imported scene root
+	# does not survive a re-import, so the GLB goes UNDER the script node.
+	var c: Critter = CRITTER.new()
+	c.name = "Beast%d" % beasts.size()
+	add_child(c)
+	c.add_child(packed.instantiate())
+	c.setup(asset_id, at, grid, village, self)
+	beasts.append(c)
+	return true
 
 
 ## Is there something to chop within `span` cells of here?
@@ -399,7 +448,9 @@ func _wire_feedback() -> void:
 		# food gates -- which is also what the notice has always promised the
 		# player: "The land extends. Room for N."
 		_settlers_due += 1
-		_newcomer_timer = minf(_newcomer_timer, SETTLER_DELAY))
+		_newcomer_timer = minf(_newcomer_timer, SETTLER_DELAY)
+		# And the field comes with animals on it.
+		_stock_animals())
 	# Every Faith gain leaves the thing that earned it and flies to the
 	# counter it changed. That connection is the whole reason the economy is
 	# legible -- a number moving in a corner is not feedback.
@@ -864,6 +915,9 @@ func rebuild_grid() -> void:
 			# reasoning about the world as it was before the last miracle.
 			if f.brain != null:
 				f.brain.grid = grid
+	for b in beasts:
+		if is_instance_valid(b):
+			b.grid = grid
 	# The prop set changed too -- that is WHY the grid is being rebuilt -- so
 	# the picker's cached AABBs are stale in exactly the same way, and the
 	# structure census is what tells villagers whether to build another.
@@ -891,6 +945,9 @@ func rebuild_world() -> void:
 			# reasoning about the world as it was before the last miracle.
 			if f.brain != null:
 				f.brain.grid = grid
+	for b in beasts:
+		if is_instance_valid(b):
+			b.grid = grid
 	village.census(builder.placed_props)
 	if pick != null:
 		# setup(), not a direct assignment. The picker builds a WORLD AABB per
