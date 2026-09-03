@@ -138,6 +138,9 @@ const KINDS := {
 const FOR_MIRACLE := {
 	"grove": "grove", "bounty": "bounty", "rain": "rain", "feast": "feast",
 	"mend": "mend", "fertility": "birth", "revel": "revel", "calm": "calm",
+	# Small rock debris, already built for something being chipped away at --
+	# fits a floating boulder trailing dust as well as it fits its original job.
+	"upheaval": "chips",
 }
 
 var _pool: Dictionary = {}

@@ -424,11 +424,14 @@ func _wire_feedback() -> void:
 		if destroyed == 0:
 			sfx.play("deny"))
 
-	# Each miracle plays its OWN effect; the mapping lives in FXEvents so the
-	# rules layer never names a particle system.
-	divinity.miracle_cast.connect(func(id, at):
-		fxe.miracle(id, at if at != Vector3.ZERO else _village_centre())
-		sfx.play("miracle"))
+	# Just the chime. Every card in the deck is CHANNELLED now (see
+	# MiracleCursor), which owns its own particle trail and its own landing
+	# burst at wherever it actually was released -- this used to also fire a
+	# burst here, at pickup, at the village centre, using whatever
+	# `FXEvents.miracle` mapped the id to. That was a second, disconnected
+	# effect competing with the real one, left over from when a card resolved
+	# in a single instant at a chosen point rather than being carried.
+	divinity.miracle_cast.connect(func(_id, _at): sfx.play("miracle"))
 
 	divinity.island_bought.connect(func(_slot):
 		sfx.play("coin")
@@ -651,7 +654,10 @@ func _raise_structure(f: Node, act: String, aid: String,
 	var at := builder.world_of(cell.x, cell.y) + Vector3(0, builder.lift, 0)
 	queue_grid_rebuild()
 	village.census(builder.placed_props)
-	fxe.burst("grow", at + Vector3(0, 0.6, 0))
+	# "grow" was never a real FXEvents kind, so this has been a silent no-op --
+	# "build" is the one already meant for exactly this (a structure just
+	# went up).
+	fxe.burst("build", at + Vector3(0, 0.6, 0))
 	sfx.play("coin", 0.8)
 	f.brain.memories.add(Memories.KIND_WORK,
 		"I built that with my own hands.", 0.6)
