@@ -75,9 +75,16 @@ const SMITE_COST := 14.0
 
 ## A new card every this many seconds (item 8).
 const DRAW_SECONDS := 10.0
-const HAND_MAX := 5
-## Both grow with the ages, so they are state rather than constants.
+## LOCKED, deliberately, rather than growing with the ages as it used to. A
+## hand you can carry six of turns "which miracle" into "which of these do I
+## discard by not playing it in time" -- five or six cards is a stockpile, not
+## a decision. Three is a hand: what you are holding, and reroll (below) is
+## the release valve for "I don't want any of these right now" so a bad draw
+## is never a dead card slot.
+const HAND_MAX := 3
 var HAND_MAX_NOW := HAND_MAX
+## Grows with the ages -- draws arrive faster later, even though the cap does
+## not rise, because a locked hand of three empties faster in a busier village.
 var draw_seconds := DRAW_SECONDS
 
 ## The deck.
@@ -280,6 +287,46 @@ func can_afford(cost: float) -> bool:
 
 
 ## --- cards ------------------------------------------------------------------
+
+## Cheap and flat, deliberately: this is meant to be a small "I don't want
+## this one" tax the player can pay on a whim, not a second Commune. A card
+## that was drawn for free costing more to undo than it cost to get would make
+## rerolling feel like a trap rather than a relief valve.
+const HAND_REROLL_COST := 6.0
+
+
+## Swap ONE card for a fresh one, same slot, without playing it.
+##
+## Reuses draw_card's pool and duplicate-avoidance rather than a second copy
+## of that logic -- the two are the same operation, "a random unlocked card
+## that is not already overrepresented in the hand", just entered from a
+## different place.
+func reroll_card(index: int) -> bool:
+	if index < 0 or index >= hand.size():
+		return false
+	if not can_afford(HAND_REROLL_COST):
+		notice.emit("Rerolling costs %d Faith." % int(HAND_REROLL_COST))
+		return false
+	var pool: Array[Dictionary] = []
+	for c in DECK:
+		if String(c["id"]) in unlocked_cards:
+			pool.append(c)
+	if pool.is_empty():
+		return false
+	var old_id := String(hand[index]["id"])
+	var card: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+	# Try not to hand back the very thing that was just discarded, when there
+	# is a choice -- otherwise a reroll can do nothing at all and look broken.
+	if pool.size() > 1:
+		for attempt in 6:
+			if String(card["id"]) != old_id:
+				break
+			card = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+	add_faith(-HAND_REROLL_COST)
+	hand[index] = card
+	hand_changed.emit()
+	return true
+
 
 func draw_card() -> void:
 	if hand.size() >= HAND_MAX_NOW:
@@ -704,7 +751,6 @@ func _check_age() -> void:
 		if not (String(c) in unlocked_cards):
 			unlocked_cards.append(String(c))
 	if age == 2:
-		HAND_MAX_NOW = 6
 		draw_seconds = 8.0
 	if age == 3:
 		boons.rank3_open = true

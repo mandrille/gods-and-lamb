@@ -41,6 +41,23 @@ var _touched_cells: Dictionary = {}
 var _gain := 0.0
 var _cloud: Node3D = null
 var _rng := RandomNumberGenerator.new()
+var _bob := 0.0
+
+## TEST HOOK ONLY. The probe window runs parked off-screen and unfocused (see
+## tools/shot_window.gd) specifically so an automated run never steals the
+## user's real cursor -- which also means nothing can warp it there to test
+## against. Setting this makes _process() read a fixed point instead of the
+## real mouse, so tools/miracle_probe.gd can exercise the ACTUAL _process ->
+## ground_at -> global_position chain rather than only the payout math in
+## _apply(). Left at (-1, -1), which never happens on a real screen, it is a
+## no-op.
+var _pointer_override := Vector2(-1, -1)
+
+
+func _pointer_screen_pos() -> Vector2:
+	if _pointer_override.x >= 0.0:
+		return _pointer_override
+	return host.rig.get_viewport().get_mouse_position()
 
 ## Colour and behaviour per card. `grows` is what it plants as it passes.
 const LOOK := {
@@ -88,6 +105,14 @@ func is_active() -> bool:
 	return left > 0.0 and id != ""
 
 
+## 1.0 at the moment it is picked up, 0.0 the instant it burns out. What a
+## duration bar over the cursor is FOR.
+func time_left_ratio() -> float:
+	if id == "":
+		return 0.0
+	return clampf(left / SECONDS, 0.0, 1.0)
+
+
 ## Cut it short -- the player clicked to let go, or something cancelled it.
 func release() -> void:
 	if is_active():
@@ -105,23 +130,40 @@ func _build_cloud() -> void:
 	var spec: Dictionary = LOOK.get(id, {})
 	var tint: Color = spec.get("tint", Color.WHITE)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.75)
+	mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.88)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.emission_enabled = true
 	mat.emission = tint
-	mat.emission_energy_multiplier = 0.4
-	for i in 7:
+	# BRIGHT. The first version was near-invisible against grass from the
+	# play camera -- a handful of pale, half-transparent spheres reads as
+	# nothing when it is also moving. This has to be the loudest thing on
+	# screen while it is out, because it is the only indicator of where the
+	# miracle currently is.
+	mat.emission_energy_multiplier = 1.1
+	var scale := radius / 4.5
+	# A dense core, big enough to be unmissable from directly above, plus a
+	# ring of smaller puffs around it so the silhouette reads as a CLOUD --
+	# one lumpy mass -- rather than a scatter of separate balls.
+	var core := MeshInstance3D.new()
+	var core_mesh := SphereMesh.new()
+	core_mesh.radius = 1.05 * scale
+	core_mesh.height = core_mesh.radius * 1.3
+	core.mesh = core_mesh
+	core.material_override = mat
+	core.position = Vector3(0, 0.05, 0)
+	_cloud.add_child(core)
+	for i in 8:
 		var puff := MeshInstance3D.new()
 		var sphere := SphereMesh.new()
-		sphere.radius = _rng.randf_range(0.5, 0.95) * (radius / 4.5)
+		sphere.radius = _rng.randf_range(0.55, 1.0) * scale
 		sphere.height = sphere.radius * 1.25
 		puff.mesh = sphere
 		puff.material_override = mat
-		var a := TAU * float(i) / 7.0
-		puff.position = Vector3(cos(a) * radius * 0.40,
-								_rng.randf_range(-0.10, 0.22),
-								sin(a) * radius * 0.40)
+		var a := TAU * float(i) / 8.0
+		puff.position = Vector3(cos(a) * radius * 0.42,
+								_rng.randf_range(-0.05, 0.28),
+								sin(a) * radius * 0.42)
 		_cloud.add_child(puff)
 
 
@@ -132,13 +174,23 @@ func _process(delta: float) -> void:
 	# camera uses to drag the map, so the cloud sits where the player is
 	# pointing at any zoom and at any camera angle.
 	if host != null and host.rig != null:
-		var hit: Variant = host.rig.ground_at(
-			host.rig.get_viewport().get_mouse_position())
+		var hit: Variant = host.rig.ground_at(_pointer_screen_pos())
 		if hit != null:
-			position = (hit as Vector3) + Vector3(0, HEIGHT, 0)
+			# GLOBAL, not local. `position` is relative to this node's
+			# parent, and every effect below (folk distance, the plant point,
+			# the burst on release) reasons in WORLD space -- writing through
+			# `global_position` means the two can never quietly disagree about
+			# where "here" is, even if a parent ever gains its own transform.
+			global_position = (hit as Vector3) + Vector3(0, HEIGHT, 0)
+		# If the ray misses (pointer off the map, or over sky at the edge of
+		# the bounds) the cloud HOLDS where it last was rather than snapping
+		# to the origin -- losing the ray for one frame should never look like
+		# the miracle teleporting.
 
+	_bob += delta
 	if _cloud != null and is_instance_valid(_cloud):
 		_cloud.rotation.y += delta * 0.6
+		_cloud.position.y = sin(_bob * 1.6) * 0.10
 
 	left -= delta
 	_apply(delta)
@@ -147,7 +199,7 @@ func _process(delta: float) -> void:
 
 
 func _apply(delta: float) -> void:
-	var ground := position - Vector3(0, HEIGHT, 0)
+	var ground := global_position - Vector3(0, HEIGHT, 0)
 	for f in host.folk:
 		if not is_instance_valid(f) or f.brain == null:
 			continue
@@ -238,7 +290,7 @@ func _end() -> void:
 	var spec: Dictionary = LOOK.get(id, {})
 	if host != null and host.fxe != null:
 		host.fxe.burst(String(spec.get("fx", "bless")),
-					   position - Vector3(0, 2.0, 0), 1.0)
+					   global_position - Vector3(0, 2.0, 0), 1.0)
 	var was := id
 	id = ""
 	left = 0.0

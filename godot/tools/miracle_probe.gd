@@ -35,6 +35,13 @@ func _process(_d: float) -> bool:
 	# before the frame is drawn. So it is set up on one frame and saved on a
 	# later one.
 	if _f > 40:
+		# Milestones queue one draft per crossed threshold, and spawning ten
+		# villagers in one frame crosses several -- so clearing it ONCE at
+		# frame 40 was not enough; the next one was already queued behind it.
+		# Pre-paying every milestone below the spawned population is the fix
+		# that actually holds, rather than a race against how many are left.
+		_root.draft.close()
+		_root.divinity.pending_draft = []
 		if _f == 46:
 			get_root().get_texture().get_image().save_png(
 				"res://shots/miracle.png")
@@ -61,6 +68,16 @@ func _process(_d: float) -> bool:
 	for i in _root.folk.size():
 		_root.folk[i].position = base + Vector3(float(i) * 3.0, 0, 0)
 
+	# Spawning ten villagers in one frame crosses several population
+	# milestones (4 and 8), each of which queues its own boon draft -- pre-pay
+	# them all so none of them pop open mid-shot. Reaching for the private
+	# `_milestones_paid` dict rather than draining drafts one per frame: this
+	# is a picture of the miracle overlay, not a test of the milestone queue.
+	for n in _root.POP_MILESTONES:
+		_root._milestones_paid[n] = true
+	_root.draft.close()
+	_root.divinity.pending_draft = []
+
 	# Set the picture up; frame 46 saves it. A picture is worth taking because
 	# "the cloud follows the cursor" is a claim about how it LOOKS.
 	var c = _root.cursor
@@ -68,14 +85,21 @@ func _process(_d: float) -> bool:
 	_root.rig.focus = mid
 	_root.rig.dist = 18.0
 	_root.rig.call("_place")
+	# Pinned via the SAME pointer-override seam _mouse_tracking uses, not a
+	# raw position write: `begin()` turns on _process, and _process reads the
+	# pointer every frame from then on -- an unpinned write got silently
+	# overwritten by whatever the real (parked, off-screen, unfocused) window
+	# reports as its mouse position, which sent the cloud off the map before
+	# the frame that actually saves the picture.
+	c._pointer_override = _root.rig.cam.unproject_position(mid)
 	c.begin("rain", 4.5)
-	c.position = mid + Vector3(0, MiracleCursor.HEIGHT, 0)
 	for i in 12:
 		c.call("_apply", STEP)
 	return false
 
 
 func _run() -> void:
+	_mouse_tracking()
 	_park_vs_sweep()
 	_planting()
 	_expiry()
@@ -85,6 +109,49 @@ func _run() -> void:
 		for f in _faults:
 			printerr("[MIR]   - " + f)
 		printerr("[MIR] %d FAILURE(S)" % _faults.size())
+
+
+## Does the cloud ACTUALLY follow a moving mouse cursor, through the real
+## runtime path (_process -> ground_at -> global_position), rather than
+## through the direct position writes every other test in this file uses to
+## isolate the payout logic? This is the one test that exercises the code
+## the player actually sees move.
+##
+## Warps the real OS cursor via the Viewport (this probe runs with a display,
+## not --headless, which is why screenshots work at all) to two screen points
+## chosen far enough apart that they must land on different ground.
+func _mouse_tracking() -> void:
+	var c = _root.cursor
+	var size := get_root().get_visible_rect().size
+	var a := size * 0.30
+	var b := size * 0.70
+
+	# warp_mouse cannot be used here: the render window runs parked off-screen
+	# and unfocused (shot_window.gd) precisely so an automated run never
+	# steals the user's real cursor, and an unfocused window will not accept a
+	# warped pointer. `_pointer_override` substitutes for the mouse at the
+	# exact point _process() reads it, so this still exercises the real
+	# _process -> ground_at -> global_position chain, not a shortcut around it.
+	c._pointer_override = a
+	c.begin("rain", 4.5)
+	for i in 3:
+		c.call("_process", 0.016)
+	var pos_a: Vector3 = c.global_position
+
+	c._pointer_override = b
+	for i in 3:
+		c.call("_process", 0.016)
+	var pos_b: Vector3 = c.global_position
+	c.release()
+	c._pointer_override = Vector2(-1, -1)
+
+	var moved: float = pos_a.distance_to(pos_b)
+	print("[MIR] mouse-driven tracking: %s -> %s, moved %.2f m"
+		% [str(pos_a), str(pos_b), moved])
+	if moved < 1.0:
+		_faults.append("the cloud did not follow the mouse through the real "
+			+ "_process path (moved only %.2f m between two screen points "
+			% moved + "%s and %s)" % [str(a), str(b)])
 
 
 ## Sitting still over one villager must pay less than crossing eight.

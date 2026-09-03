@@ -45,6 +45,16 @@ var _notice_left := 0.0
 var _aiming := -1                  ## hand index awaiting a target, or -1
 var _smiting := false
 var _hot := -1                     ## hovered card, or -1
+var _hot_hand_reroll := false      ## hovering the hovered card's reroll button
+
+## TEST HOOK ONLY. The probe window runs parked off-screen and unfocused (see
+## tools/shot_window.gd), so the real mouse position it reports is meaningless
+## garbage -- and _process() re-derives _hot from that garbage every single
+## frame, which clobbers a one-shot manual call to _refresh_hot() on the very
+## next tick. Setting this makes _process() hover a fixed point every frame
+## instead, the same seam MiracleCursor._pointer_override uses for the same
+## reason. Left at (-1, -1) it is a no-op.
+var _hover_override := Vector2(-1, -1)
 var _hot_wrath := false
 var _hot_commune := false
 
@@ -96,7 +106,9 @@ func _commune_rect() -> Rect2:
 func _process(delta: float) -> void:
 	if _notice_left > 0.0:
 		_notice_left -= delta
-	_refresh_hot(get_local_mouse_position())
+	var m := (_hover_override if _hover_override.x >= 0.0
+			  else get_local_mouse_position())
+	_refresh_hot(m)
 	# Show WHO can be targeted, for as long as a villager-only aim is live.
 	var folk_aim := false
 	if _aiming >= 0 and _aiming < divinity.hand.size():
@@ -123,19 +135,30 @@ func _process(delta: float) -> void:
 ##
 ## An InputEvent carries raw viewport coordinates too, so it goes through
 ## make_input_local() before being compared with anything.
-	var m := get_local_mouse_position()
 func _refresh_hot(m: Vector2) -> void:
+	_hot_hand_reroll = false
 	var was := _hot
-	_hot = -1
 	var rects := _hand_rects()
+	# STICKY. The reroll button lives in the tooltip, which sits ABOVE the
+	# card rather than inside it, so a straight point-in-rect test loses the
+	# hover -- and the tooltip along with it -- the instant the mouse leaves
+	# the card on its way up to the button it is trying to reach. Holding the
+	# previous card hot while the pointer is anywhere over its card OR its
+	# tooltip is what makes the button reachable at all.
+	if was >= 0 and was < rects.size():
+		var r: Rect2 = rects[was]
+		r.position.y -= LIFT
+		r.size.y += LIFT
+		var geo := _tooltip_geo(rects[was], divinity.hand[was])
+		if r.has_point(m) or (geo["panel"] as Rect2).has_point(m):
+			_hot = was
+			_hot_hand_reroll = (geo["reroll"] as Rect2).has_point(m)
+			_hot_wrath = _wrath_rect().has_point(m)
+			_hot_commune = _commune_rect().has_point(m)
+			return
+	_hot = -1
 	for i in rects.size():
-		# Hovered cards rise, so the hit box has to rise with them or the top
-		# strip of a lifted card is decoration you cannot click.
-		var r: Rect2 = rects[i]
-		if i == was:
-			r.position.y -= LIFT
-			r.size.y += LIFT
-		if r.has_point(m):
+		if rects[i].has_point(m):
 			_hot = i
 			break
 	_hot_wrath = _wrath_rect().has_point(m)
@@ -158,6 +181,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	_refresh_hot(make_input_local(mb).position)
 
 	# A click on the hand or the wrath button, first: these sit on top.
+	#
+	# The reroll button is checked BEFORE playing the card -- it sits in the
+	# tooltip above the card, so a click that lands on it is never also a
+	# click on the card body, but it shares the sticky `_hot` index and has to
+	# be asked about first or it would be swallowed as "play card _hot".
+	if _hot_hand_reroll and _hot >= 0:
+		if divinity.reroll_card(_hot) and host != null and host.sfx != null:
+			host.sfx.play("chat", 1.2)
+		get_viewport().set_input_as_handled()
+		return
 	if _hot >= 0:
 		_play_card(_hot)
 		get_viewport().set_input_as_handled()
@@ -374,23 +407,58 @@ func _card(r: Rect2, card: Dictionary, hot: bool, armed: bool) -> void:
 ## The explanation, above the card, on hover. Drawn rather than left to
 ## Godot's tooltip: that one appears near the cursor after a delay, in the
 ## theme's colours, and is the single most-ignored widget in any engine.
-func _tooltip(anchor: Rect2, card: Dictionary) -> void:
-	var lines: Array[String] = [String(card["desc"])]
+## ONE SOURCE for the tooltip's geometry, read by both the draw call below
+## and the hit test in _refresh_hot / _unhandled_input. Two copies of this
+## arithmetic drifting apart is how a button ends up two pixels from where it
+## is drawn -- see _card_rects() in boon_draft.gd for the same rule.
+func _tooltip_geo(anchor: Rect2, card: Dictionary) -> Dictionary:
+	var desc := String(card["desc"])
 	var title := String(card["name"])
 	var w := maxf(float(_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT,
 											  -1, 16).x),
-				  float(_font.get_string_size(lines[0],
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x)) + 28.0
-	var h := 56.0
+				  float(_font.get_string_size(desc, HORIZONTAL_ALIGNMENT_LEFT,
+					-1, 13).x)) + 28.0
+	w = maxf(w, 150.0)
+	var h := 84.0
 	var vp := get_viewport_rect().size
 	var x := clampf(anchor.position.x + anchor.size.x * 0.5 - w * 0.5,
 					PAD, vp.x - w - PAD)
 	var y := anchor.position.y - LIFT - h - 10.0
-	_panel(Rect2(x, y, w, h))
-	draw_string(_font, Vector2(x + 14.0, y + 24.0), title,
+	var panel := Rect2(x, y, w, h)
+	var reroll := Rect2(x + 10.0, y + h - 30.0, w - 20.0, 22.0)
+	return {"panel": panel, "reroll": reroll}
+
+
+## Explains what the card does, on hover, and offers a way OUT of a card you
+## drew and do not want -- drawn rather than left to Godot's tooltip, which
+## appears near the cursor after a delay, in the theme's colours, and is the
+## single most-ignored widget in any engine.
+func _tooltip(anchor: Rect2, card: Dictionary) -> void:
+	var geo := _tooltip_geo(anchor, card)
+	var panel: Rect2 = geo["panel"]
+	var title := String(card["name"])
+	_panel(panel)
+	draw_string(_font, panel.position + Vector2(14.0, 24.0), title,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, GOLD)
-	draw_string(_font, Vector2(x + 14.0, y + 44.0), lines[0],
+	draw_string(_font, panel.position + Vector2(14.0, 44.0), String(card["desc"]),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK)
+
+	# The reroll button. A card you do not want should never be a dead slot --
+	# this is the same relief valve the boon draft offers on a bad hand, just
+	# per-card instead of per-draft, because a hand is now locked to three and
+	# a bad third of it is otherwise stuck for the rest of the run.
+	var r: Rect2 = geo["reroll"]
+	var cost := int(Divinity.HAND_REROLL_COST)
+	var can: bool = divinity.can_afford(float(cost))
+	draw_rect(r, CARD_BG_HOT if (_hot_hand_reroll and can) else CARD_BG, true)
+	draw_rect(r, GOLD if (can and _hot_hand_reroll) else
+			  (CARD_EDGE if can else Color(1, 1, 1, 0.10)), false, 1.0)
+	var label := "Reroll  %d" % cost
+	var lw := float(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT,
+										  -1, 12).x)
+	draw_string(_font, r.position + Vector2((r.size.x - lw) * 0.5, 15.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+				INK if can else Color(0.55, 0.56, 0.60))
 
 
 ## The altar. The most important button on the screen, so it sits above Wrath

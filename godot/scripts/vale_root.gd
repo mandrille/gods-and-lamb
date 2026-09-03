@@ -725,6 +725,14 @@ func _add_ui() -> void:
 	cursor.divinity = divinity
 	add_child(cursor)
 	divinity.cursor = cursor
+	# The bar and the ground ring live in a separate Control so MiracleCursor
+	# stays a pure Node3D with no UI concerns -- it only has to draw nothing
+	# when idle, which `is_active()` guards on its own.
+	var gauge := MiracleGauge.new()
+	gauge.name = "MiracleGauge"
+	gauge.cursor = cursor
+	gauge.rig = rig
+	ui.add_child(gauge)
 	cursor.finished.connect(func(id, touched, gain):
 		if touched == 0:
 			divinity.notice.emit(
