@@ -30,31 +30,29 @@ import math
 import bpy
 from mathutils import Euler, Vector
 
-# name, head, tail, parent. Heads and tails come from villager.py's own
-# constants -- a bone that does not start at the joint it drives is a bone that
-# shears its part.
-SKELETON = (
-    ("Root",  (0.000, 0.0, 0.000), (0.000, 0.0, 0.220), None),
-    ("Torso", (0.000, 0.0, 0.220), (0.000, 0.0, 0.480), "Root"),
-    ("Head",  (0.000, 0.0, 0.460), (0.000, 0.0, 0.780), "Torso"),
-    ("ArmL",  (-0.152, 0.0, 0.450), (-0.152, 0.0, 0.229), "Torso"),
-    ("ArmR",  (0.152, 0.0, 0.450), (0.152, 0.0, 0.229), "Torso"),
-    ("LegL",  (-0.066, 0.0, 0.210), (-0.066, 0.0, 0.000), "Root"),
-    ("LegR",  (0.066, 0.0, 0.210), (0.066, 0.0, 0.000), "Root"),
-)
+# Heads and tails come from folkbody.py's own constants -- a bone that does
+# not start at the joint it drives is a bone that shears its part. folkbody
+# is the one place that knows where the joints are now; this used to be a
+# tuple hardcoded here, retyped from villager.py by hand.
+from folkbody import SKELETON
 
 # Which part goes on which bone, matched on the name AFTER the tag prefix.
 # Order matters: the first match wins, so "ArmL" must be tested before "Arm".
 GROUPS = (
-    ("ArmL",  ("_ArmL", "_HandL")),
-    # The staff goes on the hand that holds it, not on the torso. On the torso
-    # it stays vertical while the arm swings out from under it.
-    ("ArmR",  ("_ArmR", "_HandR", "_Staff")),
+    # A HELD tool goes on the hand that holds it -- on the torso it stays
+    # vertical while the arm swings out from under it (the original `_Staff`
+    # lesson). A SLUNG or two-handed prop (lute, satchel, quiver) goes on the
+    # torso, or the arm swing drags it across the body every stride.
+    ("ArmL",  ("_ArmL", "_HandL", "_Bow", "_Book", "_Rock")),
+    ("ArmR",  ("_ArmR", "_HandR", "_Staff", "_Axe", "_Hammer", "_Bottle",
+               "_Pick")),
     ("LegL",  ("_LegL", "_BootL")),
     ("LegR",  ("_LegR", "_BootR")),
-    ("Head",  ("_Head", "_Hair", "_Eye", "_Kerchief", "_Sprig")),
+    ("Head",  ("_Head", "_Hair", "_Eye", "_Kerchief", "_Sprig", "_Beard",
+               "_Cap", "_Hood", "_Veil", "_Brow", "_Leaf", "_Helm")),
     ("Torso", ("_Tunic", "_Apron", "_Vest", "_Hem", "_Strap", "_Pack",
-               "_Bedroll")),
+               "_Bedroll", "_Lute", "_Satchel", "_Belt", "_Pouch", "_Stole",
+               "_Quiver", "_Rope", "_Emblem", "_Cassock", "_Sack")),
 )
 
 FPS = 24

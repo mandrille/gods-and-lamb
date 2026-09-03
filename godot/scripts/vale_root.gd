@@ -65,6 +65,7 @@ var floaters: Floaters
 var draft: BoonDraft
 var cursor: MiracleCursor
 const CRITTER := preload("res://scripts/critter.gd")
+const WOLF := preload("res://scripts/wolf.gd")
 ## Livestock, kept apart from `folk` so nothing that iterates the village's
 ## PEOPLE -- blessing, judgement, the social layer, the census -- ever has to
 ## ask whether this one is a sheep.
@@ -72,6 +73,17 @@ var beasts: Array = []
 ## How many animals a plot supports. Bought land brings a herd with it, which
 ## is part of what makes a purchase feel like it arrived with something.
 const BEASTS_PER_PLOT := 3
+## Fired whenever a beast leaves the world -- eaten by a wolf, slain by a
+## hunter, struck by wrath. `kind` rather than a node: by the time anything
+## can react the node may already be freed.
+signal beast_removed(kind: String)
+## How often the pack is topped up, and the world-time countdown to the next
+## check. See `_maybe_spawn_wolf`.
+const WOLF_SPAWN_SECONDS := 90.0
+var _wolf_timer := WOLF_SPAWN_SECONDS
+## Said once: the wolf GLB does not exist yet in this batch, and standing one
+## up on the sheep model every time would spam the log.
+var _warned_no_wolf_glb := false
 var fxe: FXEvents
 var sfx: SFX
 var plots: PlotMarkers
@@ -159,8 +171,9 @@ func _ready() -> void:
 
 	village = Village.new()
 	village.islands = islands
-	village.pop_cap = islands.pop_cap()
+	village.host = self
 	village.census(builder.placed_props)
+	village.pop_cap = islands.pop_cap() + village.passive_add("pop_cap_add")
 	social = Social.new(20260901)
 
 	divinity = Divinity.new()
@@ -315,9 +328,9 @@ func _add_followers() -> void:
 		# with no trees near open ground still spawns its villagers.
 		if tries < 300 and not _near_trees(cell, 4):
 			continue
-		var asset := "Folk/adventurer" if made % 3 == 2 else "Folk/villager"
+		var job := _pick_job()
 		var at := grid.world_of(cell)
-		if _spawn_thinker(asset, at, _rng.randf_range(WALK_MIN, WALK_MAX)) != null:
+		if _spawn_thinker(job, at, _rng.randf_range(WALK_MIN, WALK_MAX)) != null:
 			made += 1
 	_stock_animals()
 	# THE FOUNDERS START RESTED.
@@ -364,18 +377,98 @@ func _stock_animals() -> void:
 
 
 func _spawn_beast(asset_id: String, at: Vector3) -> bool:
-	var packed: PackedScene = builder._packed_of(asset_id)
+	# THE WOLF GLB DOES NOT EXIST YET. Standing a Wolf up on the sheep mesh
+	# keeps the id, the behaviour and the class all real -- `kind` still reads
+	# "Animals/wolf" for every system that asks -- while only the LOOK is a
+	# stand-in, and the batch's own rule is that a missing asset must fail
+	# soft rather than take a spawn down.
+	var load_id := asset_id
+	if asset_id == "Animals/wolf" and builder._packed_of("Animals/wolf") == null:
+		if not _warned_no_wolf_glb:
+			_warned_no_wolf_glb = true
+			push_warning("ValeRoot: no Animals/wolf GLB yet -- standing a "
+				+ "wolf up on the sheep model so it can still hunt")
+		load_id = "Animals/sheep"
+	var packed: PackedScene = builder._packed_of(load_id)
 	if packed == null:
 		return false
 	# Same reparenting rule as a follower: a script on an imported scene root
 	# does not survive a re-import, so the GLB goes UNDER the script node.
-	var c: Critter = CRITTER.new()
+	var c: Critter = WOLF.new() if asset_id == "Animals/wolf" else CRITTER.new()
 	c.name = "Beast%d" % beasts.size()
 	add_child(c)
 	c.add_child(packed.instantiate())
 	c.setup(asset_id, at, grid, village, self)
 	beasts.append(c)
 	return true
+
+
+## Take a beast out of the world -- eaten, slain, or struck by wrath. The
+## entry leaves `beasts` and the signal fires BEFORE queue_free actually runs
+## (it is deferred), so anything listening still sees a consistent world this
+## frame.
+func remove_beast(c) -> void:
+	var kind := String(c.kind) if is_instance_valid(c) else ""
+	beasts.erase(c)
+	if is_instance_valid(c):
+		c.queue_free()
+	beast_removed.emit(kind)
+
+
+## Keep the pack topped up once the village is old enough to have one, and
+## only while there is something in the field for it to hunt -- a wolf spawned
+## into an empty plot has nothing to do but stand at the edge scaring nobody.
+func _maybe_spawn_wolf(delta: float) -> void:
+	if divinity == null or grid == null or divinity.age < 2:
+		return
+	var have_prey := false
+	var have_wolves := 0
+	for b in beasts:
+		if not is_instance_valid(b):
+			continue
+		if b.kind == "Animals/wolf":
+			have_wolves += 1
+		else:
+			have_prey = true
+	if not have_prey:
+		return
+	_wolf_timer -= delta
+	if _wolf_timer > 0.0:
+		return
+	_wolf_timer = WOLF_SPAWN_SECONDS
+	var cap: int = 1 + divinity.age + village.passive_add("wolf_cap_add")
+	if have_wolves >= cap:
+		return
+	var spot := _wolf_rim_cell()
+	if spot.x < 0:
+		return
+	if _spawn_beast("Animals/wolf", grid.world_of(spot)):
+		divinity.notice.emit("Wolves at the edge of the village.")
+
+
+## A walkable cell on the RIM of an unlocked plot, farthest from where the
+## village actually lives -- a wolf that spawns in the middle of the square
+## has already walked through everyone's back garden before anyone sees it
+## arrive.
+func _wolf_rim_cell() -> Vector2i:
+	var centre := _village_centre()
+	var best := Vector2i(-1, -1)
+	var best_d := -1.0
+	for slot in islands.unlocked:
+		var o: Vector2i = islands.origin(slot)
+		for i in Islands.SPAN:
+			for j in Islands.SPAN:
+				if i != 0 and i != Islands.SPAN - 1 \
+						and j != 0 and j != Islands.SPAN - 1:
+					continue                 # interior; only the rim counts
+				var c := o + Vector2i(i, j)
+				if not grid.is_walkable(c):
+					continue
+				var d: float = grid.world_of(c).distance_to(centre)
+				if d > best_d:
+					best_d = d
+					best = c
+	return best
 
 
 ## Is there something to chop within `span` cells of here?
@@ -388,7 +481,25 @@ func _near_trees(cell: Vector2i, span: int) -> bool:
 	return false
 
 
-func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
+## The job with the largest deficit (Village.job_for_newcomer), falling back
+## to the old villager/adventurer split when nothing is standing to employ
+## anyone -- nobody is born a lumberjack in a village with no lumber camp.
+func _pick_job() -> String:
+	var counts := village.job_counts(folk)
+	var job := village.job_for_newcomer(counts)
+	if job != "":
+		return job
+	return "adventurer" if folk.size() % 3 == 0 else "villager"
+
+
+## `job`, not an asset id -- the LOOK follows from what they ARE (Jobs.asset_of),
+## and falls back to the plain villager body when the job's GLB has not landed
+## yet, per the batch's rule that a missing asset must fail SOFTLY rather than
+## take the spawn down.
+func _spawn_thinker(job: String, at: Vector3, speed: float) -> Node:
+	var asset_id := Jobs.asset_of(job)
+	if builder._packed_of(asset_id) == null:
+		asset_id = "Folk/villager"
 	var f := _make_follower(asset_id, [], speed)
 	if f == null:
 		return null
@@ -397,6 +508,8 @@ func _spawn_thinker(asset_id: String, at: Vector3, speed: float) -> Node:
 	f.set_walk_boost(divinity.boons.walk())
 	_next_seed += 1
 	folk.append(f)
+	if f.brain != null:
+		f.brain.job = job
 	if fxe != null and sfx != null:
 		_wire_follower(f)
 	return f
@@ -491,12 +604,22 @@ func _wire_follower(f: Node) -> void:
 	f.finished.connect(func(act):
 		var at: Vector3 = f.position + Vector3(0, 0.6, 0)
 		var spec: Dictionary = Brain.ACTIONS.get(act, {})
+		# THE LIVE BUG: Divinity.on_work_done and on_prayer_done were declared
+		# and never called from anywhere. Called BEFORE the build early-return,
+		# not after -- a raised building is itself a WORK action and earns the
+		# BUILD_BONUS on top of the ordinary payout, which on_work_done already
+		# knows how to compute.
+		if act in Brain.WORK:
+			divinity.on_work_done(f, act, spec)
+		elif act == "pray":
+			divinity.on_prayer_done(f)
 		var raises := String(spec.get("builds", ""))
 		if raises != "":
 			_raise_structure(f, act, raises, spec)
 			return
 		_consume_target(f, spec, at)
-		_report_job(f, act, spec, at))
+		_report_job(f, act, spec, at)
+		_job_effect(f, act))
 
 
 ## Tell the player what a finished job DID.
@@ -518,6 +641,10 @@ const JOB_LOOK := {
 	"pray":    {"fx": "bless", "sfx": "miracle", "icon": "faith"},
 	"play":    {"fx": "revel", "sfx": "chat", "icon": "fun"},
 	"sow":     {"fx": "grove", "sfx": "pick", "icon": "wheat"},
+	"bless_flock": {"fx": "bless", "sfx": "miracle", "icon": "faith"},
+	"tend":        {"fx": "mend", "sfx": "chat", "icon": "health"},
+	"sing":        {"fx": "revel", "sfx": "chat", "icon": "fun"},
+	"hunt":        {"fx": "chips", "sfx": "chop", "icon": "bolt"},
 }
 
 const RESOURCE_ROW := {"wood": "wood", "stone": "stone", "food": "food"}
@@ -605,6 +732,92 @@ func _consume_target(f: Node, spec: Dictionary, at: Vector3) -> void:
 	queue_grid_rebuild()
 
 
+## What a JOB does when its work completes -- the four job actions each ask
+## something of the world beyond the ordinary gives/takes ACTIONS already
+## handles: the priest reaches everyone near them, the nurse and the hunter
+## each reach whoever they walked over to specifically.
+func _job_effect(f: Node, act: String) -> void:
+	var at: Vector3 = f.position + Vector3(0, 0.6, 0)
+	match act:
+		"bless_flock":
+			# `brain.bless`, NOT `divinity.bless` -- the god's own bless() is
+			# the player's judgement, on the player's cooldown, paid in Faith
+			# from being WITNESSED. A priest's blessing is a job perk, free and
+			# constant, and routing it through Divinity would silently spend
+			# the player's cooldown and steal the witnessed-blessing chain out
+			# from under them every time a priest finishes a shift.
+			for o in folk:
+				if is_instance_valid(o) and o != f and o.brain != null \
+						and o.brain.adult \
+						and o.position.distance_to(f.position) <= 3.0:
+					o.brain.bless(0.4)
+			fxe.burst("bless", at)
+		"tend":
+			var target := _nearest_other_folk(f, 1.6)
+			if target != null:
+				target.brain.stats["health"] = minf(1.0,
+					float(target.brain.stats["health"]) + 0.3)
+				floaters.puff("heart", "Tended",
+							  target.position + Vector3(0, 0.9, 0))
+		"sing":
+			for o in folk:
+				if is_instance_valid(o) and o.brain != null \
+						and o.position.distance_to(f.position) <= 3.0:
+					o.brain.stats["fun"] = minf(1.0,
+						float(o.brain.stats["fun"]) + 0.25)
+					o.brain.stats["social"] = minf(1.0,
+						float(o.brain.stats["social"]) + 0.15)
+			fxe.burst("revel", at)
+		"hunt":
+			_hunt_effect(f, at)
+
+
+## The other follower this one just walked next to -- how `tend` finds WHO it
+## just tended, rather than re-asking `seek` and possibly getting a different
+## answer than the one the nurse actually walked to.
+func _nearest_other_folk(f: Node, radius: float) -> Node:
+	var best = null
+	var best_d := radius
+	for o in folk:
+		if not is_instance_valid(o) or o == f or o.brain == null:
+			continue
+		var d: float = o.position.distance_to(f.position)
+		if d <= best_d:
+			best_d = d
+			best = o
+	return best
+
+
+func _nearest_wolf(pos: Vector3, radius: float) -> Node:
+	var best = null
+	var best_d := radius
+	for b in beasts:
+		if not is_instance_valid(b) or b.kind != "Animals/wolf":
+			continue
+		var d: float = b.position.distance_to(pos)
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+## A completed hunt: the wolf takes a wound, and the killing blow is reported
+## the same way wrath is -- this is the village striking back, not a silent
+## number changing.
+func _hunt_effect(f: Node, at: Vector3) -> void:
+	var target := _nearest_wolf(f.position, 1.0)
+	if target == null:
+		return
+	target.hp -= 1
+	if target.hp <= 0:
+		remove_beast(target)
+		divinity.notice.emit("%s slew a wolf." % f.brain.name)
+		divinity.add_faith(3.0)
+		fxe.burst("wrath", at)
+	else:
+		fxe.burst("chips", at)
+
+
 ## A villager finished building something. THE BUILDER places it, not the
 ## brain: the brain chose the spot and paid for it, and holding a reference to
 ## the scene from inside the simulation is how a headless probe stops working.
@@ -623,11 +836,23 @@ func _raise_structure(f: Node, act: String, aid: String,
 	n_build_try += 1
 	var cell: Vector2i = f.brain.target_cell
 	var ok := false
+	# A `_b` colourway, half the time, when one exists and its GLB has
+	# actually landed -- a village of forty identical huts is a grid, not a
+	# settlement. Chosen once per building raised, never per attempt, so a
+	# retry after a blocked site does not silently swap colourways mid-build.
+	var place_id := aid
+	var sibling := aid + "_b"
+	if Islands.FOOTPRINTS.has(sibling) and builder._packed_of(sibling) != null \
+			and _rng.randf() < 0.5:
+		place_id = sibling
+	# A LITTLE off 1.0, per building, so a row of huts is not a row of clones
+	# stamped from one mould.
+	var scale_v := _rng.randf_range(0.94, 1.06)
 	# SQUARE TO THE GRID. Buildings are rectangular, the ground is a grid, and
 	# a cottage at 37 degrees reads as something that fell out of the sky.
 	var yaw := 90.0 * float(_rng.randi_range(0, 3))
 	if cell.x >= 0:
-		ok = builder.add_prop(aid, cell.x, cell.y, yaw)
+		ok = builder.add_prop(place_id, cell.x, cell.y, yaw, scale_v)
 		if not ok:
 			# Taken while they walked. Look nearby before giving up -- the
 			# villager is standing right here with the materials in hand.
@@ -636,7 +861,7 @@ func _raise_structure(f: Node, act: String, aid: String,
 											_rng.randi_range(-4, 4))
 				if not grid.is_plain(near):
 					continue
-				if builder.add_prop(aid, near.x, near.y, yaw):
+				if builder.add_prop(place_id, near.x, near.y, yaw, scale_v):
 					cell = near
 					ok = true
 					n_build_moved += 1
@@ -662,6 +887,37 @@ func _raise_structure(f: Node, act: String, aid: String,
 	f.brain.memories.add(Memories.KIND_WORK,
 		"I built that with my own hands.", 0.6)
 	f.brain.think_aloud()
+
+
+## Resolve a `seeks` action (Brain._somewhere_to_do, Brain.destination_for) to
+## an actual target. The brain knows it wants "the sickest villager" or "a
+## wolf"; only the scene root can say which node that currently is, because
+## `folk` and `beasts` live here, not on the Village ledger.
+func seek(kind: String, from: Vector3):
+	match kind:
+		"lowest_health":
+			var best = null
+			var worst := 2.0
+			for f in folk:
+				if not is_instance_valid(f) or f.brain == null or not f.brain.adult:
+					continue
+				var h: float = float(f.brain.stats["health"])
+				if h < worst:
+					worst = h
+					best = f
+			return best
+		"wolf":
+			var best = null
+			var best_d := 1.0e30
+			for b in beasts:
+				if not is_instance_valid(b) or b.kind != "Animals/wolf":
+					continue
+				var d: float = b.position.distance_to(from)
+				if d < best_d:
+					best_d = d
+					best = b
+			return best
+	return null
 
 
 ## Somewhere sensible to put an effect that has no place of its own -- a
@@ -782,8 +1038,8 @@ func _on_child_wanted(a: Node, b: Node) -> void:
 		cell = grid.beside(cell, _rng)
 		if cell.x < 0:
 			return
-	var asset := "Folk/villager" if folk.size() % 3 else "Folk/adventurer"
-	var f := _spawn_thinker(asset, grid.world_of(cell),
+	var job := _pick_job()
+	var f := _spawn_thinker(job, grid.world_of(cell),
 							_rng.randf_range(WALK_MIN, WALK_MAX))
 	if f == null:
 		return
@@ -841,7 +1097,14 @@ func _maybe_newcomer(delta: float) -> void:
 	_newcomer_timer -= delta
 	if _newcomer_timer > 0.0:
 		return
-	_newcomer_timer = divinity.boons.newcomer_seconds()
+	# A hotel's `newcomer_mult` (1.5) is an ATTRACTIVENESS multiplier, not a
+	# delay -- more visitors passing through means a shorter wait, so it
+	# divides the timer rather than stretching it. Every other passive that
+	# reads through `passive_mult` is a genuine multiplier on its own quantity
+	# (build seconds, a resource cap); this is the one where "bigger number"
+	# means "sooner", so the arithmetic has to bend to match the word.
+	_newcomer_timer = (divinity.boons.newcomer_seconds()
+		/ maxf(0.1, village.passive_mult("newcomer_mult")))
 	if not spawn_villager():
 		return
 	if _settlers_due > 0:
@@ -986,8 +1249,8 @@ func spawn_villager() -> bool:
 		var cell := grid.random_cell(_rng)
 		if islands.slot_of_cell(cell).x < 0:
 			continue
-		var asset := "Folk/villager" if folk.size() % 3 else "Folk/adventurer"
-		var f := _spawn_thinker(asset, grid.world_of(cell),
+		var job := _pick_job()
+		var f := _spawn_thinker(job, grid.world_of(cell),
 								_rng.randf_range(WALK_MIN, WALK_MAX))
 		if f != null:
 			village.population = folk.size()
@@ -1010,6 +1273,7 @@ func _process(delta: float) -> void:
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)
 	_check_milestones()
+	_maybe_spawn_wolf(delta)
 
 
 func _make_follower(asset_id: String, pts: Array, speed: float) -> Node:
@@ -1043,8 +1307,8 @@ func spawn_follower() -> void:
 	# route out of. Spawning on the map at large would put half a stress test
 	# inside the river.
 	var cell := grid.random_cell(_rng)
-	var asset := "Folk/villager" if _spawned.size() % 3 else "Folk/adventurer"
-	var f := _spawn_thinker(asset, grid.world_of(cell), randf_range(0.8, 1.2))
+	var job := _pick_job()
+	var f := _spawn_thinker(job, grid.world_of(cell), randf_range(0.8, 1.2))
 	if f != null:
 		_spawned.append(f)
 		village.population = folk.size()

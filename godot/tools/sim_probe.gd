@@ -262,6 +262,16 @@ func _check_favour() -> void:
 	g.favour["chop"] = 6.0
 	for k in Brain.STAT_ORDER:
 		g.stats[k] = 1.0            # nothing urgent, so work is the only driver
+	# `flee` pre-empts choose_action UNCONDITIONALLY while `flee_from` is set
+	# (Brain.choose_action, right at the top) -- by design, a follower being
+	# actively hunted must not weigh chopping wood against it. A wolf during
+	# the 3600 frames above could easily have come near this exact follower
+	# and never had `destination_for("flee", ...)` called again to clear the
+	# flag (that only happens through a normal replan; this loop calls
+	# `choose_action` directly), which would answer "flee" on all 200 trials
+	# no matter what favour said. Cleared here for the same reason `stats` is
+	# reset just above: isolating what this specific check asks about.
+	g.flee_from = null
 	var chops := 0
 	for i in 200:
 		if g.choose_action() == "chop":

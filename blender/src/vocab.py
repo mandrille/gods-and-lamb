@@ -16,6 +16,7 @@ FAMILIES = frozenset({
     'bridge',
     'bush',
     'crop',
+    'farm',
     'fence',
     'flower',
     'folk',
@@ -23,12 +24,17 @@ FAMILIES = frozenset({
     'grass',
     'ground',
     'house',
+    'inn',
+    'keep',
     'livestock',
+    'mill',
+    'predator',
     'rock',
     'shrine',
     'stall',
     'tree',
     'well',
+    'works',
 })
 
 # Floor for the selftest ratchet: the number of negative controls that must

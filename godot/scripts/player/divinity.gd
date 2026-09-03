@@ -52,11 +52,16 @@ signal age_reached(index: int, name: String)
 const FAITH_PER_FOLLOWER := 0.42
 const CHILD_WEIGHT := 0.35              ## a toddler is not a devotee
 
-## These two were DECLARED AND NEVER USED. The intent to pay Faith for work
-## existed from the first draft and was never wired to anything, which is most
-## of why the whole first ten minutes earned under 180 Faith.
-const PRAYER_BONUS := 6.0
-const WORK_BONUS := 1.5
+## These two were DECLARED AND NEVER USED -- `on_work_done` and
+## `on_prayer_done` existed from the first draft and nothing ever called them,
+## which is most of why the whole first ten minutes earned under 180 Faith.
+## Now that ValeRoot._wire_follower actually calls them (see the `finished`
+## lambda), HALVED from their original values: they were tuned assuming they
+## fired, so wiring them up at the old numbers would have doubled the economy
+## overnight rather than merely fixed it. Re-measured with tools/economy_probe.gd
+## after -- see the report, not re-tuned again on top of a guess.
+const PRAYER_BONUS := 3.0
+const WORK_BONUS := 0.75
 const BUILD_BONUS := 6.0                ## raising something is worth more
 
 ## Judgement is FREE. It is the verb, not the purchase -- what it costs is
@@ -213,6 +218,11 @@ func _process(delta: float) -> void:
 		var weight: float = 1.0 if f.brain.adult else CHILD_WEIGHT
 		income += (FAITH_PER_FOLLOWER * boons.zeal() * weight
 			* (0.35 + devotion * 0.65) * (0.4 + mood * 0.6))
+	# The shrine's own trickle, independent of any one follower's devotion --
+	# a BUILDING income, not a person income, so it is added once per tick
+	# rather than folded into the per-follower loop above.
+	if village != null:
+		income += village.passive_faith()
 	if income > 0.0:
 		add_faith(income * delta)
 
@@ -647,6 +657,17 @@ func smite(at: Vector3, radius := 2.5) -> bool:
 			continue
 		builder.remove_prop(entry)
 		destroyed += 1
+	# Wolves are struck too -- sheep and cows are spared, the same way a
+	# bridge is: a smite that could strand a plot's animals as easily as its
+	# people is a bug the player experiences as a bug.
+	if host != null:
+		for b in host.beasts.duplicate():
+			if not is_instance_valid(b) or b.kind != "Animals/wolf":
+				continue
+			if b.position.distance_to(at) > radius:
+				continue
+			host.remove_beast(b)
+			destroyed += 1
 	if destroyed == 0:
 		notice.emit("Nothing there to destroy.")
 	else:
@@ -832,7 +853,7 @@ func buy_island(slot: Vector2i) -> bool:
 		return false
 	add_faith(-price)
 	host.rebuild_world()
-	village.pop_cap = islands.pop_cap()
+	village.pop_cap = islands.pop_cap() + village.passive_add("pop_cap_add")
 	_remember_all("The land goes further than it did.", 0.5)
 	notice.emit("The land extends. Room for %d." % village.pop_cap)
 	island_bought.emit(slot)

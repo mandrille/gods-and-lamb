@@ -50,8 +50,9 @@ const ACTIONS := {
 	"eat":     {"need": "hunger", "sources": [], "anywhere": true,
 				"seconds": 2.5, "anim": "pickup", "refill": 0.85,
 				"takes": {"food": 1}, "morality": 0.0, "verb": "eating"},
-	"rest":    {"need": "energy", "sources": ["Buildings/hut",
-											  "Buildings/cottage"],
+	"rest":    {"need": "energy", "sources": ["Buildings/hut", "Buildings/hut_b",
+											  "Buildings/cottage",
+											  "Buildings/cottage_b"],
 				"anywhere": true,
 				"seconds": 5.0, "anim": "idle", "refill": 0.90,
 				"morality": 0.0, "verb": "resting"},
@@ -125,6 +126,66 @@ const ACTIONS := {
 					"builds": "Buildings/shrine", "wants": "Buildings/shrine",
 					"clear": 2.0, "morality": 0.10,
 					"verb": "raising a shrine"},
+	"build_cottage":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8, "stone": 2},
+					"builds": "Buildings/cottage",
+					"wants": "Buildings/cottage", "clear": 2.4,
+					"morality": 0.05, "verb": "raising a cottage"},
+	"build_mansion":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 10.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 10, "stone": 8},
+					"builds": "Buildings/mansion",
+					"wants": "Buildings/mansion", "clear": 2.6,
+					"morality": 0.05, "verb": "raising a mansion"},
+	"build_tavern":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8, "stone": 2},
+					"builds": "Buildings/tavern",
+					"wants": "Buildings/tavern", "clear": 2.2,
+					"morality": 0.05, "verb": "raising a tavern"},
+	"build_hotel": {"need": "", "sources": [], "anywhere": true,
+					"seconds": 9.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 10, "stone": 4},
+					"builds": "Buildings/hotel",
+					"wants": "Buildings/hotel", "clear": 2.4,
+					"morality": 0.05, "verb": "raising a hotel"},
+	"build_lumber_camp":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8},
+					"builds": "Buildings/lumber_camp",
+					"wants": "Buildings/lumber_camp", "clear": 2.5,
+					"morality": 0.05, "verb": "raising a lumber camp"},
+	"build_mine":  {"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 6, "stone": 4},
+					"builds": "Buildings/mine",
+					"wants": "Buildings/mine", "clear": 2.4,
+					"morality": 0.05, "verb": "raising a mine"},
+	"build_smithy":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 6, "stone": 6},
+					"builds": "Buildings/smithy",
+					"wants": "Buildings/smithy", "clear": 2.2,
+					"morality": 0.05, "verb": "raising a smithy"},
+	"build_barracks":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 10.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8, "stone": 10},
+					"builds": "Buildings/barracks",
+					"wants": "Buildings/barracks", "clear": 2.5,
+					"morality": 0.05, "verb": "raising barracks"},
+	"build_farm":  {"need": "", "sources": [], "anywhere": true,
+					"seconds": 8.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8},
+					"builds": "Buildings/farm",
+					"wants": "Buildings/farm", "clear": 2.6,
+					"morality": 0.05, "verb": "raising a farm"},
+	"build_windmill":{"need": "", "sources": [], "anywhere": true,
+					"seconds": 9.0, "anim": "chop", "refill": 0.0,
+					"takes": {"wood": 8, "stone": 6},
+					"builds": "Buildings/windmill",
+					"wants": "Buildings/windmill", "clear": 2.4,
+					"morality": 0.05, "verb": "raising a windmill"},
 	# --- sins -------------------------------------------------------------
 	#
 	# THE MISSING HALF OF JUDGEMENT. Every other action in this table carries a
@@ -156,13 +217,58 @@ const ACTIONS := {
 					"takes": {"food": 1}, "builds": "Nature/crop_row",
 					"wants": "Nature/crop_row", "clear": 0.7,
 					"morality": 0.02, "verb": "sowing"},
+
+	# --- jobs ---------------------------------------------------------------
+	#
+	# The "job" key is a HARD gate: choose_action skips any of these for
+	# everyone who does not hold that job (see the WORK pool below), so a
+	# villager with no priest among them never rolls bless_flock no matter how
+	# little else there is to do. `cooldown` (checked in `_demand`, set in
+	# `_finish_action`) is what stops one priest looping bless_flock forever --
+	# without it the highest-favour job action wins every single decision and
+	# a village of one priest and forty villagers spends its whole life being
+	# blessed.
+	"bless_flock": {"need": "", "sources": ["Buildings/shrine"],
+					"seconds": 4.0, "anim": "idle", "refill": 0.0,
+					"job": "priest", "cooldown": 30, "morality": 0.05,
+					"verb": "blessing the flock"},
+	# No `sources` -- the nurse's destination is a PERSON, resolved through
+	# `village.host.seek("lowest_health", ...)` rather than an asset id, which
+	# is what `seeks` is for.
+	"tend":        {"need": "", "seeks": "lowest_health",
+					"seconds": 3.0, "anim": "pickup", "refill": 0.0,
+					"job": "nurse", "morality": 0.03,
+					"verb": "tending the sick"},
+	"sing":        {"need": "", "sources": ["Buildings/tavern",
+											"Buildings/market_stall"],
+					"anywhere": true,
+					"seconds": 4.0, "anim": "idle", "refill": 0.0,
+					"job": "bard", "cooldown": 20, "morality": 0.02,
+					"verb": "singing"},
+	# `range` caps how far a hunter will bother crossing the map after a wolf
+	# that has probably moved by the time they arrive -- see
+	# Brain._somewhere_to_do. It does not change WHERE they stand once they
+	# commit; that is still `beside()`, the same as any other seeks action.
+	"hunt":        {"need": "", "seeks": "wolf", "range": 10.0,
+					"seconds": 2.5, "anim": "chop", "refill": 0.0,
+					"job": "hunter", "morality": 0.03, "verb": "hunting"},
+
+	# NOT IN WORK. `flee` is never chosen by favour -- it pre-empts the whole
+	# decision in `choose_action` while `flee_from` is set (a wolf came close;
+	# see ValeRoot/Wolf) and is never weighed against chopping wood.
+	"flee":        {"need": "", "anywhere": true,
+					"seconds": 1.4, "anim": "walk", "refill": 0.0,
+					"morality": 0.0, "verb": "fleeing"},
 }
 
 ## Work the village does for itself rather than to fill a bar. These are the
 ## ones favour steers, and the only ones blessing can encourage.
 const WORK := ["forage", "harvest", "chop", "quarry",
 			   "build_hut", "build_well", "build_stall", "build_shrine",
-			   "sow"]
+			   "build_cottage", "build_mansion", "build_tavern", "build_hotel",
+			   "build_lumber_camp", "build_mine", "build_smithy",
+			   "build_barracks", "build_farm", "build_windmill",
+			   "sow", "bless_flock", "tend", "sing", "hunt"]
 
 ## How long a child takes to grow up, in seconds of village time. Long enough
 ## that watching one grow is a thing that happens over a session, short enough
@@ -177,6 +283,10 @@ const CHILD_ACTIONS := ["eat", "rest", "wash", "play", "pick"]
 var name := "Someone"
 var age := 0.0
 var adult := true
+## What this villager IS -- see Jobs. "villager" is the default everyone is
+## born with; ValeRoot._pick_job assigns the rest at spawn time, once, and it
+## never changes afterward (nobody switches trades mid-run).
+var job := "villager"
 var stats: Dictionary = {}
 var personality: Personality
 var memories: Memories
@@ -210,6 +320,17 @@ var target_cell := Vector2i(-1, -1)
 var thought := ""
 var thought_log: Array[String] = []
 var _thought_timer := 0.0
+
+## action id -> the village-clock time it becomes available again. Checked in
+## `_demand`, set in `_finish_action`. Only actions carrying a "cooldown" key
+## use this at all.
+var _cooldowns: Dictionary = {}
+
+## Set by Wolf's trouble radius (see ValeRoot/Wolf) via `frighten()`. While
+## non-null, `choose_action` pre-empts everything else and returns "flee";
+## consumed and cleared by `destination_for` once it has used it to pick a
+## direction to run in.
+var flee_from = null
 
 ## Set by the social layer while a conversation is running.
 var chatting_with := ""
@@ -288,7 +409,8 @@ func tick(delta: float) -> void:
 
 
 func _drain(key: String) -> float:
-	var base: float = DRAIN[key] * (boons.drain() if boons != null else 1.0)
+	var base: float = (DRAIN[key] * (boons.drain() if boons != null else 1.0)
+		* (village.passive_need_decay(key) if village != null else 1.0))
 	match key:
 		"hunger": return base * personality.appetite
 		"energy": return base / maxf(0.35, personality.vigour)
@@ -349,6 +471,16 @@ func worst_stat() -> Array:
 	return [key, low]
 
 
+## A wolf came close. Drop whatever this villager was doing -- an action
+## already committed to (mid-chop, mid-build) does not get to finish, because
+## finishing it means standing still next to the thing that just scared them --
+## and let the next decision run away instead.
+func frighten(at: Vector3) -> void:
+	flee_from = at
+	action = ""
+	action_left = 0.0
+
+
 ## --- deciding what to do ----------------------------------------------------
 
 ## Choose an action id, or "" to wander.
@@ -358,6 +490,14 @@ func worst_stat() -> Array:
 ## chop wood while starving, and the god cannot make them, which is what keeps
 ## blessing an influence rather than a command.
 func choose_action() -> String:
+	# A wolf came close. This pre-empts everything else -- needs, sin, work,
+	# even a child's play -- because nothing else matters while something is
+	# actively hunting the village. Not cleared here: `destination_for` reads
+	# `flee_from` to pick a direction and clears it once it has, so the
+	# direction is still available the one time it is needed.
+	if flee_from != null:
+		return "flee"
+
 	# The worst stat that something can actually be DONE about.
 	#
 	# Not simply the worst stat. Health has no action -- it recovers on its own
@@ -401,7 +541,15 @@ func choose_action() -> String:
 	# a blessed woodcutter chops more AND the village still eats.
 	var pool: Array[Dictionary] = []
 	for a in WORK:
-		var w: float = float(favour.get(a, 1.0)) * _demand(a)
+		# A job action belongs ONLY to its job -- a village of villagers must
+		# never roll bless_flock just because favour on it happens to be high.
+		# Jobless actions (chop, forage, the plain build_* set) carry no "job"
+		# key at all and stay open to everyone, same as always.
+		var want_job := String(ACTIONS[a].get("job", ""))
+		if want_job != "" and want_job != job:
+			continue
+		var w: float = (float(favour.get(a, 1.0)) * _demand(a)
+			* Jobs.mult(job, a))
 		if w > 0.01:
 			pool.append({"a": a, "w": w})
 	if pool.is_empty():
@@ -536,6 +684,25 @@ func _somewhere_to_do(spec: Dictionary) -> bool:
 		return true
 	if grid == null:
 		return true                    # no map yet; do not veto on ignorance
+
+	# A SEEKS action's destination is a MOVING THING -- the sickest villager,
+	# the nearest wolf -- resolved through the host rather than named as an
+	# asset id. `range`, when the action carries one, caps how far this is
+	# worth walking for: a hunter should not cross the whole map after a wolf
+	# it will have lost by the time it arrives.
+	var seeks := String(spec.get("seeks", ""))
+	if seeks != "":
+		if village == null or village.host == null:
+			return false
+		var origin: Vector3 = grid.world_of(at_cell)
+		var target = village.host.seek(seeks, origin)
+		if target == null or not is_instance_valid(target):
+			return false
+		var range_m: float = float(spec.get("range", 0.0))
+		if range_m > 0.0 and origin.distance_to(target.position) > range_m:
+			return false
+		return grid.reachable(at_cell, grid.cell_of(target.position))
+
 	# REACHABLE, not merely existing.
 	#
 	# This asked whether the world contained a tree, and a villager on the far
@@ -599,6 +766,14 @@ func _demand(a: String) -> float:
 	if village == null:
 		return 1.0
 	var spec: Dictionary = ACTIONS[a]
+
+	# On cooldown -- a flat zero, not a discount, or the pool still ranks it
+	# above everything else the instant it is even slightly affordable and a
+	# lone priest spends its whole life re-rolling bless_flock the second the
+	# clock allows a fraction of it.
+	var cd: float = float(spec.get("cooldown", 0.0))
+	if cd > 0.0 and float(village.now) < float(_cooldowns.get(a, -999.0)):
+		return 0.0
 
 	var wants := String(spec.get("wants", ""))
 	if wants != "":
@@ -674,10 +849,30 @@ func destination_for(grid, from: Vector2i, act: String) -> Vector2i:
 		return grid.random_cell(rng)
 	var spec: Dictionary = ACTIONS[act]
 
+	if act == "flee":
+		var spot := _flee_spot(grid, from)
+		target_cell = spot
+		return spot
+
 	if String(spec.get("builds", "")) != "":
 		var spot: Vector2i = _open_spot(grid, from, float(spec.get("clear", 2.0)))
 		target_cell = spot
 		return spot
+
+	var seeks := String(spec.get("seeks", ""))
+	if seeks != "":
+		if village == null or village.host == null:
+			return Vector2i(-1, -1)
+		var target = village.host.seek(seeks, grid.world_of(from))
+		if target == null or not is_instance_valid(target):
+			return Vector2i(-1, -1)
+		var tcell: Vector2i = grid.cell_of(target.position)
+		var stand: Vector2i = grid.beside(tcell, rng)
+		if stand.x < 0 or not grid.reachable(from, stand):
+			return Vector2i(-1, -1)
+		target_id = seeks
+		target_cell = stand
+		return stand
 
 	var sources: Array = spec.get("sources", [])
 	var ranked: Array = []
@@ -723,6 +918,28 @@ func destination_for(grid, from: Vector2i, act: String) -> Vector2i:
 		target_cell = _near(grid, from, 5)
 		return target_cell
 	return Vector2i(-1, -1)
+
+
+## A cell roughly 4 m away from `flee_from`, in the direction away from it.
+## Clears `flee_from` once used: the fear is consumed the instant a direction
+## is chosen, so the next replan makes an ordinary decision again rather than
+## fleeing in a loop forever.
+func _flee_spot(grid, from: Vector2i) -> Vector2i:
+	var origin: Variant = flee_from
+	flee_from = null
+	if origin == null:
+		return _near(grid, from, 5)
+	var origin_cell: Vector2i = grid.cell_of(origin as Vector3)
+	var away := Vector2(float(from.x - origin_cell.x), float(from.y - origin_cell.y))
+	if away.length_squared() < 0.01:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var span: int = maxi(1, int(round(4.0 / grid.tile)))
+	var target := from + Vector2i(int(round(away.x * float(span))),
+								  int(round(away.y * float(span))))
+	if grid.is_walkable(target):
+		return target
+	return _near(grid, from, span)
 
 
 ## Open ground with `clear` metres of room, biased toward where the village
@@ -809,7 +1026,13 @@ func begin_action(act: String) -> bool:
 	if village != null and not takes.is_empty() and not village.can_take(takes):
 		return false
 	action = act
-	action_left = float(spec["seconds"])
+	var seconds := float(spec["seconds"])
+	# A smithy's `build_seconds_mult` applies only to BUILDING -- a build
+	# action is the one with a `builds` id -- never to chopping or foraging,
+	# which have no `build_seconds_mult` reason to run any faster.
+	if village != null and String(spec.get("builds", "")) != "":
+		seconds *= village.passive_mult("build_seconds_mult")
+	action_left = seconds
 	# Claim the structure so nobody else starts a second one meanwhile.
 	var raises := String(spec.get("builds", ""))
 	if raises != "" and village != null:
@@ -823,6 +1046,10 @@ func _finish_action() -> void:
 	if not ACTIONS.has(act):
 		return
 	var spec: Dictionary = ACTIONS[act]
+
+	var cd: float = float(spec.get("cooldown", 0.0))
+	if cd > 0.0 and village != null:
+		_cooldowns[act] = float(village.now) + cd
 
 	if village != null:
 		var takes: Dictionary = spec.get("takes", {})
@@ -840,6 +1067,13 @@ func _finish_action() -> void:
 			# global.
 			# A COPY, never the const table.
 			var paid: Dictionary = village.scaled_gives(gives, target_cell)
+			# Passives (a lumber camp, a mine) scale the yield BEFORE the
+			# boon bonus, which is a flat add-on and must land on top of
+			# whatever the building already multiplied, not be folded into it.
+			for res in paid:
+				var r := String(res)
+				paid[r] = maxi(1, int(round(
+					float(paid[r]) * village.passive_yield(r))))
 			var bonus: int = int(boons.yield_bonus()) if boons != null else 0
 			if bonus > 0:
 				for res in paid:

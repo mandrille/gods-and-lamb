@@ -1,27 +1,23 @@
-"""BUILDING.shrine.shrine - the little stone temple Faith comes from.
+"""BUILDING.shrine.shrine - the little village church Faith comes from.
 
-This is the one building the player is meant to notice, so it is built out of
-everything the rest of the village is not: stone instead of timber, a GOLD roof,
-and steps. Steps are doing more work than they look like they are -- they lift
-the whole thing off the ground plane, and a raised object reads as important at
-a glance in a way no amount of surface detail does.
+REDONE from a Greco-Roman temple onto `refs/buildings/Clay_medieval_church_building`:
+an adobe nave with a gable roof, a bell tower at the front corner topped with a
+pyramid roof and a cross, three tall arched windows glazed `tile_blue`, and a
+plain arched door. The tower is what makes this readable as a CHURCH rather
+than another house at fifteen pixels -- it is the one silhouette in the
+village with a vertical spike and a cross on it, so it can be found without
+being looked for, the same job gold used to do for the old temple.
 
-Gold is the only metal in the palette and nothing else uses it. That is the
-point: at the play camera the shrine is a gold triangle in a field of terracotta
-and thatch, and it can be found without being looked for.
+The windows are tall and narrow rather than square, which is the one shape cue
+that reads as "church" instead of "house" even before the tower registers --
+a square hole is a house window at any colour.
 
-The niche is a hole and it is treated like every other hole in this project --
-cut, floored with `hollow`, and left alone. What sits in it is a single gold
-flame, proud of the mouth rather than buried in it, because anything set back
-inside a 20 cm recess is in shadow at forty pixels and simply is not there.
-
-Fronts -Y. The ridge runs front-to-back so the -Y elevation is a pediment,
-which is what a temple front is.
+Fronts -Y. The ridge runs front-to-back, so the -Y elevation is the gable end
+and it carries the door, the tower and the front window.
 """
 import os
 
-from kit import (M, box, cone, boolean, scheme, gable_roof, gable_cutters,
-                 soften_all)
+from kit import M, box, cyl, cone, boolean, scheme, gable_roof, gable_cutters, soften_all
 
 CATEGORY = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -30,108 +26,161 @@ ASSET = dict(
     family="shrine",
     variant="shrine",
     category=CATEGORY,
-    # MEASURED. The gold slabs are rotated, so X reaches past the eaves line by
-    # roughly half the slab thickness times sin(pitch) -- the arithmetic on the
-    # roof width alone says 1.38 and the truth is 1.44.
-    footprint=(1.44, 1.30),
+    # MEASURED, not derived: the tower sits OUTSIDE the nave footprint at the
+    # front-left corner and its own pyramid roof overhangs further still, so
+    # the true X reach is the nave's roof overhang PLUS the tower offset PLUS
+    # the tower roof overhang -- three numbers the plan arithmetic on the nave
+    # alone does not see.
+    footprint=(2.38, 1.85),
     anchor="floor",
     slots=(),
 )
 
-STEP0 = (1.34, 1.16, 0.10)
-STEP1 = (1.14, 0.98, 0.10)
-PLINTH_Z = STEP0[2] + STEP1[2]        # everything above stands on this
+NAVE_W, NAVE_D = 1.60, 1.45
+NAVE_H, RISE = 0.98, 0.55
+OVERHANG, ROOF_T = 0.16, 0.12
 
-BODY_W, BODY_D, BODY_H = 0.86, 0.72, 0.66
-BODY_Y = 0.06                          # set back, so the portico has depth
-PIL = 0.14
-PIL_Y = -0.40
+DOOR_W, DOOR_H, DOOR_DEPTH = 0.42, 0.72, 0.15
 
-NICHE_W, NICHE_H, NICHE_DEPTH = 0.38, 0.44, 0.22
-NICHE_Z = PLINTH_Z + NICHE_H * 0.5 + 0.05
+WIN_W, WIN_H, WIN_DEPTH = 0.20, 0.40, 0.11
+FRONT_WIN_Z = 0.84
+SIDE_WIN_Z = 0.62
 
-ENT_W, ENT_D, ENT_T = 1.10, 1.00, 0.11
-ENT_Y = -0.02
-ROOF_RISE, ROOF_OVER, ROOF_T = 0.40, 0.14, 0.11
+TOWER_W, TOWER_D = 0.55, 0.55
+TOWER_X = -(NAVE_W * 0.5 + TOWER_W * 0.5 - 0.05)
+TOWER_Y = -NAVE_D * 0.5 + TOWER_D * 0.5 - 0.04
+TOWER_STACK = 0.40                    # tower body rises this far above the nave ridge
+TOWER_ROOF_H = 0.30
+
+
+def _arch_cut(target, cx, cy, w, z_top, depth, z_bottom=0.0):
+    """Rectangle from z_bottom to the springline, half-cylinder above it --
+    see bld_house for why these are two SEPARATE booleans and not one joined
+    cutter. z_bottom=0 is a DOOR (reaches the floor); a nonzero z_bottom is a
+    WINDOW with a sill -- get this wrong and a "window" cuts all the way to
+    the ground and doubles as a second doorway, which the first pass of this
+    file did to the front window before it was caught here.
+    """
+    r = w * 0.5
+    spring = z_top - r
+    h_rect = spring - z_bottom
+    boolean(target, box("archcut_rect", (cx, cy, z_bottom + h_rect * 0.5),
+                        (w, depth, h_rect), None))
+    boolean(target, cyl("archcut_top", (cx, cy, spring), r, depth, None,
+                        axis="Y", verts=12))
+
+
+def _arch_fill(tag, cx, cy, w, z_top, mat, z_bottom=0.0):
+    r = w * 0.5
+    spring = z_top - r
+    h_rect = spring - z_bottom
+    parts = [box("%s_Rect" % tag, (cx, cy, z_bottom + h_rect * 0.5),
+                 (w, 0.04, h_rect), mat)]
+    parts.append(cyl("%s_Arch" % tag, (cx, cy, spring), r, 0.04, mat,
+                     axis="Y", verts=12))
+    return parts
 
 
 def build(tag="SHRINE", **kw):
-    body, trim, roof, accent = scheme(kw.get("scheme", "shrine_gold"))
+    body, trim, roof, accent = scheme(kw.get("scheme", "church_tile"))
     P = []
 
-    # Two steps, dark then light. Alternating the value between courses is what
-    # makes them read as separate treads; a single hue would be one grey wedge.
-    P.append(box(tag + "_Step0", (0, 0, STEP0[2] * 0.5),
-                 STEP0, trim))
-    P.append(box(tag + "_Step1", (0, 0, STEP0[2] + STEP1[2] * 0.5),
-                 STEP1, body))
+    walls = box(tag + "_Nave", (0, 0, (NAVE_H + RISE) * 0.5),
+               (NAVE_W, NAVE_D, NAVE_H + RISE), body)
+    for cutter in gable_cutters("navecut", (0, 0, NAVE_H), NAVE_W, NAVE_D,
+                                RISE, overhang=OVERHANG, thickness=ROOF_T):
+        boolean(walls, cutter)
 
-    cella = box(tag + "_Cella", (0, BODY_Y, PLINTH_Z + BODY_H * 0.5),
-                (BODY_W, BODY_D, BODY_H), body)
-    # A single cutter, so nothing here can repeat the self-intersecting-join
-    # failure. It runs well past the front face so the mouth of the niche is a
-    # clean rectangle rather than a coplanar tangency for EXACT to resolve.
-    boolean(cella, box("niche_cut",
-                       (0, BODY_Y - BODY_D * 0.5 + NICHE_DEPTH * 0.5,
-                        NICHE_Z),
-                       (NICHE_W, NICHE_DEPTH * 2.0, NICHE_H), None))
-    P.append(cella)
-    P.append(box(tag + "_NicheDark",
-                 (0, BODY_Y - BODY_D * 0.5 + NICHE_DEPTH, NICHE_Z),
-                 (NICHE_W, 0.04, NICHE_H), M["hollow"]))
+    fy = -NAVE_D * 0.5
+    front_sill = FRONT_WIN_Z - WIN_H * 0.5
+    front_top = FRONT_WIN_Z + WIN_H * 0.5
+    _arch_cut(walls, 0.0, fy + DOOR_DEPTH * 0.5, DOOR_W, DOOR_H, DOOR_DEPTH * 2.0)
+    _arch_cut(walls, 0.0, fy + WIN_DEPTH * 0.5, WIN_W, front_top, WIN_DEPTH * 2.0,
+             z_bottom=front_sill)
+    # Side windows, one per long wall -- the row the reference repeats along
+    # its whole length, cut down to one each because a building this small is
+    # drawn a handful of times, not close enough to count a second.
+    for sx in (-1, 1):
+        boolean(walls, box("sidewin_%d" % sx,
+                           (sx * (NAVE_W * 0.5 - WIN_DEPTH * 0.5), 0.0, SIDE_WIN_Z),
+                           (WIN_DEPTH * 2.0, WIN_W, WIN_H), None, rot=None))
+    P.append(walls)
 
-    # The offering: a gold flame on a dark plinth, standing at the MOUTH of the
-    # niche, not inside it.
-    fy = BODY_Y - BODY_D * 0.5 + 0.07
-    P.append(box(tag + "_Altar", (0, fy, PLINTH_Z + 0.06),
-                 (0.24, 0.16, 0.12), trim))
-    P.append(cone(tag + "_Flame", (0, fy, PLINTH_Z + 0.26), 0.085, 0.0, 0.28,
-                  roof, verts=8))
+    # The door's dark fill and the two arch windows' blue glazing. Front
+    # window height matches the taller cut above (springline measured off
+    # FRONT_WIN_Z, not off WIN_H alone).
+    P.extend(_arch_fill(tag + "_DoorDark", 0.0, fy + DOOR_DEPTH, DOOR_W, DOOR_H,
+                        M["hollow"]))
+    P.extend(_arch_fill(tag + "_FrontGlass", 0.0, fy + WIN_DEPTH, WIN_W, front_top,
+                        M["tile_blue"], z_bottom=front_sill))
+    for sx in (-1, 1):
+        # Side windows are rectangular cuts (see sidewin_ above, a box not an
+        # arch -- the long wall is thin on triangle budget already from the
+        # tower and a second arch cutter per side was not worth the cost) but
+        # still glazed the same hue, so they read as the same window family.
+        P.append(box("%s_SideGlass%d" % (tag, sx),
+                     (sx * (NAVE_W * 0.5 - 0.005), 0.0, SIDE_WIN_Z),
+                     (0.05, WIN_W - 0.05, WIN_H - 0.05), M["tile_blue"]))
+        P.append(box("%s_SideDark%d" % (tag, sx),
+                     (sx * (NAVE_W * 0.5 - WIN_DEPTH), 0.0, SIDE_WIN_Z),
+                     (0.04, WIN_W, WIN_H), M["hollow"]))
 
-    # Free-standing portico columns, forward of the cella. They are what turns a
-    # box with a hole in it into a temple, and they cost two boxes.
-    for sx, side in ((-1, "L"), (1, "R")):
-        P.append(box("%s_Column%s" % (tag, side),
-                     (sx * 0.40, PIL_Y, PLINTH_Z + BODY_H * 0.5),
-                     (PIL, PIL, BODY_H), body))
+    # Door jambs -- timber against adobe, the hue break the palette needs.
+    r = DOOR_W * 0.5
+    spring = DOOR_H - r
+    ty = fy - 0.018
+    for sx in (-1, 1):
+        P.append(box("%s_Jamb%s" % (tag, "L" if sx < 0 else "R"),
+                     (sx * (r + 0.035), ty, spring * 0.5),
+                     (0.07, 0.055, spring), trim))
 
-    ent_z = PLINTH_Z + BODY_H + ENT_T * 0.5
-    P.append(box(tag + "_Entablature", (0, ENT_Y, ent_z),
-                 (ENT_W, ENT_D, ENT_T), trim))
-    # The one saturated cloth in the asset, hung across the portico. Stone and
-    # gold are both warm and low-chroma next to each other, and this is the hue
-    # that stops the upper half reading as a single ochre mass.
-    P.append(box(tag + "_Banner", (0, ENT_Y - ENT_D * 0.5 - 0.015,
-                                   ent_z - ENT_T * 0.5 - 0.075),
-                 (0.72, 0.04, 0.15), accent))
+    roof_parts = gable_roof(tag + "_Roof", (0, 0, NAVE_H), NAVE_W, NAVE_D, RISE,
+                            roof, overhang=OVERHANG, thickness=ROOF_T)
+    P.extend(roof_parts)
+    P.append(box(tag + "_Ridge", (0, 0, NAVE_H + RISE),
+                 (0.10, NAVE_D + OVERHANG * 2.0 + 0.06, 0.10), M["wood_dark"]))
 
-    eaves = PLINTH_Z + BODY_H + ENT_T
-    # The pediment. Without it the triangle between the two slopes is EMPTY and
-    # the first render showed the horizon straight through the shrine above the
-    # entablature -- the same open-gable failure as a wall stopped at the eaves,
-    # just one storey up. Built as a full box and cut back to the roof
-    # underside, one boolean per cutter for the reason above.
-    #
-    # Narrower than the entablature on purpose, so the cornice still projects
-    # and the two do not read as one tall block. The cutters are still sized off
-    # ENT_W because they have to match the ROOF, not this box.
-    ped = box(tag + "_Pediment", (0, ENT_Y, eaves + ROOF_RISE * 0.5),
-              (ENT_W - 0.08, ENT_D - 0.08, ROOF_RISE), body)
-    for cutter in gable_cutters("pedcut", (0, ENT_Y, eaves), ENT_W, ENT_D,
-                                ROOF_RISE, overhang=ROOF_OVER,
-                                thickness=ROOF_T):
-        boolean(ped, cutter)
-    P.append(ped)
+    # The bell tower. A straight box from the GROUND to ridge+STACK (same
+    # pierce-through trick bld_house uses for a chimney) so it always cuts the
+    # sloped roof cleanly wherever the slope sits above it, then a 4-sided
+    # `cone` for the pyramid cap -- `cone` takes no rotation and needs none
+    # here, the tower is upright.
+    tower_top = NAVE_H + RISE + TOWER_STACK
+    tower = box(tag + "_Tower", (TOWER_X, TOWER_Y, tower_top * 0.5),
+               (TOWER_W, TOWER_D, tower_top), body)
+    # One small arch slit, front-facing, so the tower reads as a belfry and
+    # not a blank chimney -- the one window this asset spends on the tower.
+    # Sill at TOWER_SLIT_Z0, well above the nave ridge, so it reads as a
+    # belfry opening and not a second door punched through the tower base.
+    TOWER_SLIT_Z0 = NAVE_H + RISE * 0.35
+    _arch_cut(tower, TOWER_X, TOWER_Y - TOWER_D * 0.5 + 0.10, 0.16,
+             TOWER_SLIT_Z0 + 0.30, 0.24, z_bottom=TOWER_SLIT_Z0)
+    P.append(tower)
+    P.extend(_arch_fill(tag + "_TowerDark", TOWER_X, TOWER_Y - TOWER_D * 0.5 + 0.02,
+                        0.16, TOWER_SLIT_Z0 + 0.30, M["hollow"], z_bottom=TOWER_SLIT_Z0))
 
-    P.extend(gable_roof(tag + "_Roof", (0, ENT_Y, eaves), ENT_W, ENT_D,
-                        ROOF_RISE, roof, overhang=ROOF_OVER,
-                        thickness=ROOF_T))
-    P.append(box(tag + "_Ridge", (0, ENT_Y, eaves + ROOF_RISE),
-                 (0.09, ENT_D + 0.30, 0.09), roof))
-    # The finial. `cone` takes no rotation and needs none -- it is upright, and
-    # a cone on anything tilted is a party hat.
-    P.append(cone(tag + "_Finial", (0, ENT_Y, eaves + ROOF_RISE + 0.19),
-                  0.085, 0.0, 0.30, roof, verts=8))
+    P.append(box(tag + "_TowerBand", (TOWER_X, TOWER_Y, tower_top + 0.015),
+                 (TOWER_W + 0.05, TOWER_D + 0.05, 0.03), trim))
+    P.append(cone(tag + "_TowerRoof", (TOWER_X, TOWER_Y, tower_top + TOWER_ROOF_H * 0.5),
+                  TOWER_W * 0.62, 0.0, TOWER_ROOF_H, roof, verts=4))
 
-    soften_all(P, width=0.032, segments=2)
+    # The cross -- two thin slabs, proud of the roof tip. Nothing about a
+    # bell tower silhouette says "church" as unambiguously as this does; it
+    # is the two triangles of budget best spent in the whole asset.
+    # 0.08, not flush with the apex: the cone's tip is a single POINT, so the
+    # cross base needs to sit INSIDE it by a couple of centimetres or the two
+    # meet at a zero-area seam that reads as a gap in a raking light.
+    cross_z = tower_top + TOWER_ROOF_H + 0.08
+    P.append(box(tag + "_CrossV", (TOWER_X, TOWER_Y, cross_z),
+                 (0.025, 0.025, 0.20), trim))
+    P.append(box(tag + "_CrossH", (TOWER_X, TOWER_Y, cross_z + 0.035),
+                 (0.13, 0.025, 0.025), trim))
+
+    # HERO carries the visible bevel: the nave walls, the roof slabs and the
+    # tower -- the three masses that make the silhouette. Trim, glazing and
+    # the cross are smooth-shaded only.
+    hero = [walls, tower] + roof_parts
+    plain = [p for p in P if p not in hero]
+    soften_all(hero, width=0.032, segments=2)
+    soften_all(plain, width=0.0)
     return P

@@ -43,12 +43,60 @@ const START := {"food": 6, "wood": 3, "stone": 3}
 ## exactly as much -- both "min 1, have 0" -- so an opening village split its
 ## effort between wood and stone and took 147 s to put up any building at all.
 ## A settlement builds shelter first and digs a well afterwards.
+## `requires` is a NEW, optional gate: {some other building's id: how many
+## must be STANDING before this one is wanted at all}. Without it a village of
+## two could be found wanting a mansion, which needs a shrine and a tavern it
+## has no hope of reaching -- `wants()` returns a flat zero until the
+## prerequisite count is met, the same way `_somewhere_to_do` returns a flat
+## zero for an unreachable source rather than a discounted one.
 const WANTED := {
 	"Buildings/hut": {"per_head": 0.5, "min": 1, "priority": 1.0},
 	"Buildings/well": {"per_head": 0.0, "min": 1, "priority": 0.55},
 	"Buildings/market_stall": {"per_head": 0.0, "min": 1, "priority": 0.45},
-	"Buildings/shrine": {"per_head": 0.0, "min": 1, "priority": 0.5},
+	"Buildings/shrine": {"per_head": 0.0, "min": 1, "priority": 0.5,
+						 "requires": {"Buildings/hut": 2}},
 	"Nature/crop_row": {"per_head": 3.0, "min": 4, "priority": 0.8},
+	"Buildings/cottage": {"per_head": 0.2, "min": 0, "priority": 0.35,
+						  "requires": {"Buildings/hut": 2}},
+	"Buildings/tavern": {"per_head": 0.0, "min": 1, "priority": 0.40,
+						 "requires": {"Buildings/hut": 3}},
+	"Buildings/mansion": {"per_head": 0.0, "min": 1, "priority": 0.35,
+						  "requires": {"Buildings/shrine": 1,
+									   "Buildings/tavern": 1}},
+	"Buildings/barracks": {"per_head": 0.0, "min": 1, "priority": 0.40,
+						   "requires": {"Buildings/hut": 4}},
+	"Buildings/hotel": {"per_head": 0.0, "min": 1, "priority": 0.35,
+						"requires": {"Buildings/tavern": 1}},
+	"Buildings/windmill": {"per_head": 0.0, "min": 1, "priority": 0.40,
+						   "requires": {"Buildings/farm": 1}},
+	"Buildings/mine": {"per_head": 0.0, "min": 1, "priority": 0.45,
+					   "requires": {"Buildings/hut": 2}},
+	"Buildings/lumber_camp": {"per_head": 0.0, "min": 1, "priority": 0.45,
+							  "requires": {"Buildings/hut": 2}},
+	"Buildings/smithy": {"per_head": 0.0, "min": 1, "priority": 0.40,
+						 "requires": {"Buildings/hut": 2}},
+	"Buildings/farm": {"per_head": 0.0, "min": 1, "priority": 0.45,
+					   "requires": {"Buildings/hut": 1}},
+}
+
+## What a building DOES for the village once it stands. Read through the
+## getters below, never written into (the Boons rule: effects are questions the
+## systems ask). Each building also EMPLOYS: `jobs` is how many villagers of
+## that job it supports, which is what decides a newcomer's job at spawn.
+##
+## STUB, filled in by the engine pass of the content batch. It exists now so
+## every author knows the ids and keys the engine will expect.
+const PASSIVES := {
+	"Buildings/shrine":      {"faith_per_s": 0.06, "jobs": {"priest": 1}},
+	"Buildings/mansion":     {"pop_cap_add": 2, "faith_per_s": 0.02},
+	"Buildings/tavern":      {"need_decay": {"fun": 0.7}, "jobs": {"bard": 1}},
+	"Buildings/hotel":       {"newcomer_mult": 1.5, "jobs": {"nurse": 1}},
+	"Buildings/lumber_camp": {"yield": {"wood": 1.5}, "jobs": {"lumberjack": 2}},
+	"Buildings/mine":        {"yield": {"stone": 1.5}, "jobs": {"miner": 2}},
+	"Buildings/smithy":      {"build_seconds_mult": 0.75, "jobs": {"builder": 1}},
+	"Buildings/barracks":    {"wolf_cap_add": -1, "jobs": {"hunter": 2}},
+	"Buildings/farm":        {"yield": {"food": 1.4}, "cap_mult": {"food": 1.5}},
+	"Buildings/windmill":    {"cap_mult": {"food": 1.5}, "yield": {"food": 1.25}},
 }
 
 var stores: Dictionary = {}
@@ -93,6 +141,11 @@ var _richness: Dictionary = {}           ## Vector2i slot -> float
 
 ## Injected: needed to turn a cell into the plot that owns it.
 var islands = null
+## Injected: ValeRoot, needed to resolve a `seeks` action (Brain._somewhere_to_do,
+## Brain.destination_for) to an actual target -- the village ledger has no idea
+## where the wolves or the sick are, but the scene root does. Same shape as the
+## `islands` injection above.
+var host = null
 
 ## Consecutive failures to find anywhere to build, so "the land is full" is a
 ## state that gets ANNOUNCED rather than a silent stall in the decision pool.
@@ -114,7 +167,8 @@ func _init() -> void:
 
 
 func capacity(res: String) -> int:
-	return int(PER_HEAD.get(res, 5)) * maxi(1, population)
+	return int(round(float(PER_HEAD.get(res, 5)) * float(maxi(1, population))
+		* passive_cap_mult(res)))
 
 
 ## 0 = plenty, 1 = empty. What `Brain._demand` reads to decide whether the job
@@ -172,8 +226,16 @@ func census(placed_props: Array) -> void:
 		structures[aid] = int(structures.get(aid, 0)) + 1
 
 
+## A `_b` variant is a colourway, not a different building -- a hut_b is a
+## hut. `add_prop` records whichever id it actually placed, so a village with
+## three of one and one of the other must still read as four huts to `wants`,
+## to every passive that counts shrines or lumber camps, and to `rest`'s
+## source list. Folded HERE, once, rather than at each of those call sites.
 func count_of(aid: String) -> int:
-	return int(structures.get(aid, 0))
+	var base := aid
+	if base.ends_with("_b"):
+		base = base.substr(0, base.length() - 2)
+	return int(structures.get(base, 0)) + int(structures.get(base + "_b", 0))
 
 
 ## Somebody has started building one of these.
@@ -209,6 +271,15 @@ func wants(aid: String, count_claims := true) -> float:
 	if not WANTED.has(aid):
 		return 0.0
 	var spec: Dictionary = WANTED[aid]
+	# A prerequisite not yet met makes this a flat zero, the same way an
+	# unreachable source makes `_somewhere_to_do` a flat zero rather than a
+	# discounted one -- otherwise a two-hut village half-wants a mansion and
+	# some fraction of its gathering effort points at a building nobody could
+	# possibly finish.
+	var requires: Dictionary = spec.get("requires", {})
+	for req_aid in requires:
+		if count_of(String(req_aid)) < int(requires[req_aid]):
+			return 0.0
 	var target: float = maxf(float(spec["min"]),
 							 float(spec["per_head"]) * float(maxi(1, population)))
 	# Standing ones PLUS the ones being built right now.
@@ -312,3 +383,165 @@ func summary() -> String:
 		amount("food"), capacity("food"),
 		amount("wood"), capacity("wood"),
 		amount("stone"), capacity("stone"), population, pop_cap]
+
+
+## --- passives ----------------------------------------------------------------
+##
+## What a building DOES, read by asking rather than by the building reaching
+## out and changing something. Same rule Boons.gd states for the god's own
+## powers: an effect that mutated Brain.ACTIONS or Divinity directly would be
+## permanent, global, and invisible to whoever removed the building.
+##
+## STACKING IS CAPPED at 3 standing instances of a kind. A village with nine
+## shrines earning nine times the Faith of one is not a richer village, it is
+## a number that stopped meaning anything -- the cap is what keeps a passive a
+## nice-to-have instead of the entire game.
+const PASSIVE_STACK_CAP := 3
+
+
+func _stacks(aid: String) -> int:
+	return mini(count_of(aid), PASSIVE_STACK_CAP)
+
+
+func passive_faith() -> float:
+	var total := 0.0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		total += float((PASSIVES[aid] as Dictionary).get("faith_per_s", 0.0)) \
+			* float(n)
+	return total
+
+
+## Multiplicative, and each stacked instance multiplies again -- two lumber
+## camps at x1.5 pay x2.25, not x3.0, the same diminishing shape `richness`
+## already uses for worked land.
+func passive_yield(res: String) -> float:
+	var mult := 1.0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var y: Dictionary = (PASSIVES[aid] as Dictionary).get("yield", {})
+		if not y.has(res):
+			continue
+		var per: float = float(y[res])
+		for i in n:
+			mult *= per
+	return mult
+
+
+func passive_cap_mult(res: String) -> float:
+	var mult := 1.0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var c: Dictionary = (PASSIVES[aid] as Dictionary).get("cap_mult", {})
+		if not c.has(res):
+			continue
+		var per: float = float(c[res])
+		for i in n:
+			mult *= per
+	return mult
+
+
+## `build_seconds_mult`, `newcomer_mult` -- any multiplicative passive keyed by
+## name rather than by resource. Default 1.0: no building, no change.
+func passive_mult(key: String) -> float:
+	var mult := 1.0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var spec: Dictionary = PASSIVES[aid]
+		if not spec.has(key):
+			continue
+		var per: float = float(spec[key])
+		for i in n:
+			mult *= per
+	return mult
+
+
+## `pop_cap_add`, `wolf_cap_add` -- additive, default 0. Barracks' `wolf_cap_add`
+## is NEGATIVE by design (see PASSIVES): hunters thin the pack the wolf spawner
+## is allowed to grow.
+func passive_add(key: String) -> int:
+	var total := 0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var spec: Dictionary = PASSIVES[aid]
+		if not spec.has(key):
+			continue
+		total += int(spec[key]) * n
+	return total
+
+
+func passive_jobs(job: String) -> int:
+	var total := 0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var jobs: Dictionary = (PASSIVES[aid] as Dictionary).get("jobs", {})
+		if jobs.has(job):
+			total += int(jobs[job]) * n
+	return total
+
+
+func passive_need_decay(stat: String) -> float:
+	var mult := 1.0
+	for aid in PASSIVES:
+		var n := _stacks(aid)
+		if n <= 0:
+			continue
+		var d: Dictionary = (PASSIVES[aid] as Dictionary).get("need_decay", {})
+		if not d.has(stat):
+			continue
+		var per: float = float(d[stat])
+		for i in n:
+			mult *= per
+	return mult
+
+
+## --- job assignment ------------------------------------------------------------
+
+## How many ADULT folk currently hold each job. Children never hold one --
+## see Brain.CHILD_ACTIONS and the WORK gate in choose_action -- so counting
+## them would understate how much slack an employer building actually has.
+func job_counts(folk: Array) -> Dictionary:
+	var out := {}
+	for f in folk:
+		if not is_instance_valid(f) or f.brain == null or not f.brain.adult:
+			continue
+		var j := String(f.brain.job)
+		out[j] = int(out.get(j, 0)) + 1
+	return out
+
+
+## The job with the largest deficit between what its employer can support and
+## how many villagers already hold it. "" when nothing is standing to employ
+## anyone -- nobody is born a lumberjack in a village with no lumber camp, and
+## the caller falls back to the old villager/adventurer split.
+func job_for_newcomer(counts: Dictionary) -> String:
+	var best := ""
+	var best_deficit := 0
+	for job in Jobs.JOBS:
+		var spec: Dictionary = Jobs.JOBS[job]
+		var employer := String(spec.get("employer", ""))
+		if employer == "":
+			continue
+		var per: int = int((PASSIVES.get(employer, {}) as Dictionary
+			).get("jobs", {}).get(job, 0))
+		if per <= 0:
+			continue
+		var slots: int = count_of(employer) * per
+		var held: int = int(counts.get(String(job), 0))
+		var deficit := slots - held
+		if deficit > best_deficit:
+			best_deficit = deficit
+			best = String(job)
+	return best

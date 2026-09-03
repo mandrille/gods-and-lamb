@@ -205,6 +205,25 @@ def init_materials():
         # separates a person from a bush.
         "cloth_orange": flat("ClothOrange", srgb(0.900, 0.510, 0.170), 0.68),
         "leather":    flat("Leather", srgb(0.480, 0.310, 0.180), 0.66),
+        # ---- the content batch (jobs, wolves, eleven buildings)
+        # Sun-baked clay wall for the church, smithy and mine: warmer and
+        # pinker than `plaster`, darker than `sand`, so the three do not
+        # collapse into one wall colour across a village.
+        "adobe":      flat("Adobe", srgb(0.780, 0.600, 0.430), 0.70),
+        # Two roof tiles the references use side by side (mansion, church).
+        # Kept a value apart from `slate` and `leaf` so a blue roof is not a
+        # sky-coloured hole and a green one is not a bush.
+        "tile_blue":  flat("TileBlue", srgb(0.245, 0.340, 0.520), 0.56),
+        "tile_green": flat("TileGreen", srgb(0.235, 0.420, 0.300), 0.56),
+        # Wooden shingles: greyer than `wood`, so a shingle roof reads as a
+        # roof and not as more wall.
+        "shingle":    flat("Shingle", srgb(0.520, 0.415, 0.300), 0.66),
+        # Darker, bluer iron for anvils, blades and the mine's rails; the
+        # existing `iron` is a mid grey that vanishes against `stone`.
+        "iron_dark":  flat("IronDark", srgb(0.240, 0.250, 0.290), 0.46, metal=0.5),
+        # The wolf's eyes. The ONE hostile colour in the palette -- nothing
+        # friendly may borrow it, or the read "red eyes = danger" is gone.
+        "ember":      emit("Ember", srgb(1.00, 0.18, 0.12), 4.0),
     })
     # Colourways, keyed by NAME. In the parent project these were a list
     # selected by `idx % 6`, so adding a seventh silently repainted every
@@ -217,6 +236,23 @@ def init_materials():
         "hut_thatch":   {"body": "wood", "trim": "wood_dark", "roof": "thatch", "accent": "cloth_red"},
         "shrine_gold":  {"body": "stone", "trim": "stone_dark", "roof": "gold", "accent": "cloth_plum"},
         "stall_market": {"body": "wood", "trim": "cloth_red", "roof": "cloth_teal", "accent": "crop_ripe"},
+        # ---- the content batch. Registered HERE, once, by the orchestrator, so
+        # four parallel authors never edit this file. Two colourways only for
+        # buildings the village raises more than one of (house, cottage, farm);
+        # a second colourway of a building that exists once is never seen.
+        "house_terracotta":   {"body": "terracotta", "trim": "wood_dark", "roof": "thatch", "accent": "petal_red"},
+        "house_plaster":      {"body": "plaster", "trim": "wood", "roof": "shingle", "accent": "petal_blue"},
+        "church_tile":        {"body": "adobe", "trim": "wood_dark", "roof": "terracotta", "accent": "tile_blue"},
+        "mansion_teal":       {"body": "terracotta", "trim": "wood_dark", "roof": "tile_blue", "accent": "tile_green"},
+        "tavern_cream":       {"body": "plaster", "trim": "wood", "roof": "terracotta", "accent": "warmglow"},
+        "hotel_timber":       {"body": "sand", "trim": "wood_dark", "roof": "shingle", "accent": "leaf"},
+        "lumber_log":         {"body": "wood", "trim": "wood_dark", "roof": "shingle", "accent": "iron_dark"},
+        "mine_rock":          {"body": "stone_dark", "trim": "wood_dark", "roof": "terracotta", "accent": "cloth_red"},
+        "smithy_adobe":       {"body": "adobe", "trim": "stone_dark", "roof": "adobe", "accent": "iron_dark"},
+        "barracks_terracotta": {"body": "terracotta", "trim": "wood", "roof": "shingle", "accent": "gold"},
+        "farm_red":           {"body": "cloth_red", "trim": "plaster", "roof": "shingle", "accent": "crop_ripe"},
+        "farm_green":         {"body": "tile_green", "trim": "plaster", "roof": "shingle", "accent": "crop_ripe"},
+        "windmill_stone":     {"body": "stone", "trim": "wood_dark", "roof": "shingle", "accent": "leaf"},
     })
 
 

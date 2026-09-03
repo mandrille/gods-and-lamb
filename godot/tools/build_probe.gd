@@ -43,6 +43,11 @@ func _process(_d: float) -> bool:
 			printerr("[BUILD] FAIL: no scene root")
 			quit(1)
 			return true
+		# Run on the nearly-empty map that exists at frame 20, BEFORE the
+		# saturation phase below fills it -- staging twenty buildings after
+		# 3200 frames of forty builders working means fighting the very
+		# congestion this file exists to test for.
+		_check_new_buildings()
 		# Enough builders and enough materials that they will try constantly --
 		# the bug needs CONTENTION to appear, so a quiet village proves nothing.
 		_root.village.pop_cap = 200
@@ -110,6 +115,154 @@ func _buy_land_and_check() -> void:
 	if not lost.is_empty():
 		_faults.append("buying land destroyed %d building(s), first %s"
 			% [lost.size(), lost[0]])
+
+
+## Every building this content batch adds. Not hut/well/stall/shrine -- those
+## already had FOOTPRINTS entries and are exercised by the saturation test
+## below.
+const NEW_BUILDINGS := [
+	"Buildings/mansion", "Buildings/tavern", "Buildings/hotel",
+	"Buildings/lumber_camp", "Buildings/mine", "Buildings/smithy",
+	"Buildings/barracks", "Buildings/farm", "Buildings/windmill",
+	"Buildings/cottage",
+]
+
+
+## Two claims: every "Buildings/*" id ACTIONS can `build` or WANTED can want
+## has a declared footprint (an id with none gives the walk grid nothing to
+## block with -- a follower walks straight through the wall of whatever was
+## missed), and two of each new building, staged at the scale extremes
+## `ValeRoot._raise_structure` actually uses (0.94 and 1.06), do not overlap.
+func _check_new_buildings() -> void:
+	# Twenty large footprints do not comfortably fit on the single starting
+	# plot once roads, fields and cliffs take their share of it -- measured,
+	# staging from the plot's own centre still ran out of room on the last
+	# one or two. Bought outright rather than density-tuned around: two more
+	# plots is plenty of land and exercises `buy_island` -> `rebuild_world`
+	# again before the saturation phase does its own purchase below.
+	_root.divinity.add_faith(9999.0)
+	for i in 2:
+		var slots: Array = _root.islands.buyable()
+		if slots.is_empty():
+			break
+		_root.divinity.buy_island(slots[0])
+
+	var referenced: Dictionary = {}
+	for a in Brain.ACTIONS:
+		var aid := String(Brain.ACTIONS[a].get("builds", ""))
+		if aid.begins_with("Buildings/"):
+			referenced[aid] = true
+	for aid in Village.WANTED:
+		if String(aid).begins_with("Buildings/"):
+			referenced[String(aid)] = true
+	for aid in referenced:
+		if not Islands.FOOTPRINTS.has(aid):
+			_faults.append("%s is built or wanted but has no FOOTPRINTS entry"
+				% aid)
+
+	# Twenty hints spread across a 5x4 lattice covering the WHOLE home plot --
+	# ONLY the home island is unlocked this early, so anything off it fails
+	# `is_buildable` outright. A single shared hint (the plot centre, tried
+	# first) rings outward from one spot and exhausts the middle of the plot
+	# long before the later buildings are placed, reporting "no room" while
+	# the plot's own corners sit empty; spreading the starting points avoids
+	# fighting that self-inflicted crowding.
+	var staged: Array[Dictionary] = []
+	var home_origin: Vector2i = _root.islands.origin(Islands.home())
+	var idx := 0
+	for aid in NEW_BUILDINGS:
+		for scale_v in [1.06, 0.94]:
+			var gx := idx % 5
+			var gy := (idx / 5) % 4
+			var hint := home_origin + Vector2i(5 + gx * 6, 5 + gy * 7)
+			idx += 1
+			var spot := _find_free_spot(aid, hint)
+			if spot.x < 0:
+				_faults.append("no room to stage %s at scale %.2f"
+					% [aid, scale_v])
+				continue
+			if not _stage_building(aid, spot.x, spot.y, scale_v):
+				_faults.append("%s at scale %.2f could not be placed at all"
+					% [aid, scale_v])
+				continue
+			staged.append({"id": aid, "col": spot.x, "row": spot.y,
+						   "fp": Islands.FOOTPRINTS.get(aid, [2.5, 2.5])})
+
+	var tile: float = _root.builder.tile
+	var clashes := 0
+	var worst := ""
+	for i in staged.size():
+		for j in range(i + 1, staged.size()):
+			var a: Dictionary = staged[i]
+			var b: Dictionary = staged[j]
+			var ahc := int(ceil(float(a["fp"][0]) / tile / 2.0))
+			var ahr := int(ceil(float(a["fp"][1]) / tile / 2.0))
+			var bhc := int(ceil(float(b["fp"][0]) / tile / 2.0))
+			var bhr := int(ceil(float(b["fp"][1]) / tile / 2.0))
+			var dc: int = absi(int(a["col"]) - int(b["col"]))
+			var dr: int = absi(int(a["row"]) - int(b["row"]))
+			if dc <= ahc + bhc and dr <= ahr + bhr:
+				clashes += 1
+				if worst == "":
+					worst = "%s at (%d,%d) and %s at (%d,%d)" % [
+						a["id"], int(a["col"]), int(a["row"]),
+						b["id"], int(b["col"]), int(b["row"])]
+	print("[BUILD] new-batch: staged %d of %d, %d overlapping pairs"
+		% [staged.size(), NEW_BUILDINGS.size() * 2, clashes])
+	if clashes > 0:
+		_faults.append("%d staged new buildings overlap; first: %s"
+			% [clashes, worst])
+
+	# STRUCK BACK DOWN. This check's whole job is the footprint arithmetic,
+	# not to leave twenty buildings standing for the saturation phase below to
+	# trip over -- several of them are stand-in Node3Ds with no real GLB, and
+	# `carry_doc`'s land-purchase test would (correctly) report them lost the
+	# moment the world rebuilds, for a reason that has nothing to do with land
+	# purchase at all.
+	for e in _root.builder.placed_props.duplicate():
+		if NEW_BUILDINGS.has(String(e.get("id", ""))):
+			_root.builder.remove_prop(e)
+	_root.village.census(_root.builder.placed_props)
+
+
+## Most of NEW_BUILDINGS has no GLB in the CURRENT library -- the Blender side
+## of this batch is still in flight -- so `ValeBuilder.add_prop` cannot place
+## them at all. Staged with a bare Node3D standing in for the mesh when that
+## happens: `would_overlap` and the walk grid only care that `node` is a
+## valid, positioned thing and that the id/footprint are right, never what it
+## looks like. Cottage already has its GLB and goes through the real path.
+func _stage_building(aid: String, col: int, row: int, scale_v: float) -> bool:
+	if _root.builder._packed_of(aid) != null:
+		return _root.builder.add_prop(aid, col, row, 0.0, scale_v)
+	if _root.builder.would_overlap(aid, col, row):
+		return false
+	var node := Node3D.new()
+	node.position = (_root.builder.world_of(col, row)
+		+ Vector3(0, _root.builder.lift, 0))
+	_root.builder.add_child(node)
+	_root.builder.placed_props.append({
+		"id": aid, "node": node, "pos": node.position,
+		"col": col, "row": row, "yaw": 0.0, "scale": scale_v,
+		"fp": Islands.FOOTPRINTS.get(aid, [0.5, 0.5])})
+	return true
+
+
+## A buildable cell, clear of anything already staged, searched outward in
+## rings from `hint` so ten different buildings do not all fight over the
+## same patch of ground.
+func _find_free_spot(aid: String, hint: Vector2i) -> Vector2i:
+	for ring in range(0, 40):
+		for i in range(-ring, ring + 1):
+			for j in range(-ring, ring + 1):
+				if maxi(absi(i), absi(j)) != ring:
+					continue
+				var c := Vector2i(hint.x + i * 2, hint.y + j * 2)
+				if not _root.grid.is_buildable(c):
+					continue
+				if _root.builder.would_overlap(aid, c.x, c.y):
+					continue
+				return c
+	return Vector2i(-1, -1)
 
 
 ## Identity is the CELL and the id, not the node -- every node is freed and

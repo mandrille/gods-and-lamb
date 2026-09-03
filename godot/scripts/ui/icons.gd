@@ -68,6 +68,13 @@ static func draw_icon(ci: CanvasItem, name: String, at: Vector2, s: float) -> vo
 		"saint": _halo(ci, at, s)
 		"bless": _hand(ci, at, s, GOLD)
 		"punish": _bolt(ci, at, s)
+		"axe": _axe(ci, at, s)
+		"pick": _pick(ci, at, s)
+		"hammer": _hammer(ci, at, s)
+		"bow": _bow(ci, at, s)
+		"cross": _cross(ci, at, s)
+		"bandage": _bandage(ci, at, s)
+		"lute": _lute(ci, at, s)
 		_: ci.draw_circle(at, s * 0.34, Color(0.55, 0.58, 0.64))
 
 
@@ -221,6 +228,64 @@ static func _hand(ci: CanvasItem, at: Vector2, s: float, c: Color) -> void:
 					 at + Vector2(k * s * 0.16, -s * 0.06),
 					 c, maxf(1.0, s * 0.06))
 	ci.draw_circle(at + Vector2(0, s * 0.14), s * 0.18, c)
+
+
+## --- job badges --------------------------------------------------------------
+##
+## Drawn small, over a follower's head (Overhead._draw), so these lean on
+## silhouette alone -- a haft and a head, nothing finer.
+
+static func _axe(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_line(at + Vector2(-s * 0.20, s * 0.42), at + Vector2(s * 0.28, -s * 0.38),
+				 WOOD_DARK, maxf(1.0, s * 0.11))
+	_poly(ci, [at + Vector2(s * 0.02, -s * 0.44), at + Vector2(s * 0.44, -s * 0.26),
+			   at + Vector2(s * 0.28, s * 0.04), at + Vector2(-s * 0.02, -s * 0.10)],
+		  STONE)
+
+
+static func _pick(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_line(at + Vector2(-s * 0.28, s * 0.42), at + Vector2(s * 0.20, -s * 0.28),
+				 WOOD_DARK, maxf(1.0, s * 0.10))
+	_poly(ci, [at + Vector2(-s * 0.08, -s * 0.44), at + Vector2(s * 0.40, -s * 0.08),
+			   at + Vector2(s * 0.10, s * 0.02), at + Vector2(-s * 0.34, -s * 0.18)],
+		  STONE)
+
+
+static func _hammer(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_line(at + Vector2(-s * 0.16, s * 0.42), at + Vector2(s * 0.10, -s * 0.20),
+				 WOOD_DARK, maxf(1.0, s * 0.11))
+	ci.draw_rect(Rect2(at.x - s * 0.06, at.y - s * 0.46, s * 0.42, s * 0.24),
+				 STONE, true)
+
+
+static func _bow(ci: CanvasItem, at: Vector2, s: float) -> void:
+	var pts: Array = []
+	var r := s * 0.42
+	for i in 9:
+		var a := lerpf(-PI * 0.38, PI * 0.38, float(i) / 8.0)
+		pts.append(at + Vector2(cos(a), sin(a)) * r)
+	ci.draw_polyline(PackedVector2Array(pts), WOOD, maxf(1.0, s * 0.07))
+	ci.draw_line(pts[0], pts[pts.size() - 1], Color(0.92, 0.90, 0.82),
+				 maxf(1.0, s * 0.035))
+
+
+static func _cross(ci: CanvasItem, at: Vector2, s: float) -> void:
+	var c := Color(0.94, 0.92, 0.86)
+	ci.draw_rect(Rect2(at.x - s * 0.09, at.y - s * 0.44, s * 0.18, s * 0.88), c, true)
+	ci.draw_rect(Rect2(at.x - s * 0.32, at.y - s * 0.13, s * 0.64, s * 0.18), c, true)
+
+
+static func _bandage(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_rect(Rect2(at.x - s * 0.40, at.y - s * 0.16, s * 0.80, s * 0.32),
+				 Color(0.96, 0.94, 0.90), true)
+	ci.draw_circle(at, s * 0.13, ROSE)
+
+
+static func _lute(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_circle(at + Vector2(0, s * 0.14), s * 0.26, WOOD)
+	ci.draw_circle(at + Vector2(0, s * 0.14), s * 0.10, WOOD_DARK)
+	ci.draw_line(at + Vector2(0, -s * 0.10), at + Vector2(0, -s * 0.48),
+				 WOOD_DARK, maxf(1.0, s * 0.08))
 
 
 ## --- stat glyphs ------------------------------------------------------------

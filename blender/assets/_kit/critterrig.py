@@ -47,18 +47,20 @@ from folkrig import (FPS, CYCLE, action_fcurves, attach, evaluated_points,
 # Order matters -- the first match wins -- and the legs are tested first
 # because every one of them also contains "_Leg".
 GROUPS = (
-    ("LegFL", ("_LegFL", "_HoofFL")),
-    ("LegFR", ("_LegFR", "_HoofFR")),
-    ("LegBL", ("_LegBL", "_HoofBL")),
-    ("LegBR", ("_LegBR", "_HoofBR")),
+    # `_Paw*` alongside `_Hoof*`: a predator stands on paws, and the leg bone
+    # still has to reach the ground through them.
+    ("LegFL", ("_LegFL", "_HoofFL", "_PawFL")),
+    ("LegFR", ("_LegFR", "_HoofFR", "_PawFR")),
+    ("LegBL", ("_LegBL", "_HoofBL", "_PawBL")),
+    ("LegBR", ("_LegBR", "_HoofBR", "_PawBR")),
     # The skull and everything carried ON it. The NECK is deliberately not
     # here: it belongs to the body, and the Head bone pivots at the back of the
     # skull -- which is inside the neck -- so a nod turns the head without
     # opening a seam at the shoulder.
     ("Head",  ("_Head", "_Ear", "_Horn", "_Eye", "_Muzzle", "_Blaze",
-               "_Topknot", "_Poll")),
+               "_Topknot", "_Poll", "_Fang", "_Snout", "_Brow")),
     ("Body",  ("_Body", "_Fleece", "_Neck", "_Rump", "_Tail", "_Udder",
-               "_Patch", "_Mark", "_Collar", "_Bell", "_Saddle")),
+               "_Patch", "_Mark", "_Collar", "_Bell", "_Saddle", "_Ruff")),
 )
 
 LEGS = ("LegFL", "LegFR", "LegBL", "LegBR")

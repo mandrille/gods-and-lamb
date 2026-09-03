@@ -36,6 +36,13 @@ const SAD := Color(0.88, 0.36, 0.34)
 const BUBBLE := Color(0.98, 0.98, 0.96)
 const INK := Color(0.16, 0.17, 0.20)
 
+## Which glyph names a job. Villager and adventurer are deliberately absent --
+## everyone starts as one or the other, so a badge on them would say nothing.
+const JOB_ICON := {
+	"lumberjack": "axe", "miner": "pick", "builder": "hammer",
+	"hunter": "bow", "priest": "cross", "nurse": "bandage", "bard": "lute",
+}
+
 var host = null                         ## ValeRoot
 var rig = null                          ## CameraRig
 
@@ -145,6 +152,14 @@ func _draw() -> void:
 		if rig.cam.is_position_behind(head):
 			continue
 		var p: Vector2 = rig.cam.unproject_position(head)
+
+		# A JOB BADGE, only while the player is already looking at this one --
+		# permanently visible on forty followers would be forty small icons
+		# competing with everything else on screen.
+		if (f == hovered or f == selected or highlight_all) \
+				and JOB_ICON.has(f.brain.job):
+			Icons.draw_icon(self, String(JOB_ICON[f.brain.job]),
+							p + Vector2(14, -10), 14.0)
 
 		# GUILT IS THE ONE THING ALWAYS WORTH DRAWING.
 		#
