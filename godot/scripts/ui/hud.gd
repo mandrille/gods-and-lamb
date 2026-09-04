@@ -40,8 +40,18 @@ var divinity = null
 var rig = null
 
 var _font: Font
-var _notice := ""
-var _notice_left := 0.0
+## Up to three lines, newest at the top, each with its own life.
+##
+## This was ONE slot that every emitter overwrote, and roughly forty places
+## emit into it -- a birth, an age, a sin and a wolf landing in the same second
+## left the player with whichever fired last. A village that is doing things
+## the player cannot see is a village that is not doing them.
+const NOTICE_MAX := 3
+const NOTICE_LIFE := 4.0
+var _notices: Array = []                ## [{text, left, warn}], newest first
+var _combo_chain := 0
+var _combo_mult := 1.0
+var _combo_flash := 0.0            ## counts down after a chain BREAKS
 var _aiming := -1                  ## hand index awaiting a target, or -1
 var _smiting := false
 var _hot := -1                     ## hovered card, or -1
@@ -66,9 +76,14 @@ func _ready() -> void:
 	# Clicks are claimed only when they land on something.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	divinity.notice.connect(func(t):
-		_notice = t
-		_notice_left = 4.0)
+	divinity.notice.connect(func(t): _say(t, NOTICE_LIFE))
+	divinity.combo_changed.connect(func(chain: int, mult: float):
+		# A BREAK is the event worth drawing. The old wiring only reacted at
+		# chain >= 2, so losing a chain of five produced nothing at all.
+		if chain == 0 and _combo_chain >= 2:
+			_combo_flash = 0.6
+		_combo_chain = chain
+		_combo_mult = mult)
 
 
 ## --- geometry ---------------------------------------------------------------
@@ -104,8 +119,12 @@ func _commune_rect() -> Rect2:
 ## --- input ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	if _notice_left > 0.0:
-		_notice_left -= delta
+	if _combo_flash > 0.0:
+		_combo_flash -= delta
+	for n in _notices:
+		n["left"] = float(n["left"]) - delta
+	while not _notices.is_empty() and float(_notices[-1]["left"]) <= 0.0:
+		_notices.pop_back()
 	var m := (_hover_override if _hover_override.x >= 0.0
 			  else get_local_mouse_position())
 	_refresh_hot(m)
@@ -285,8 +304,16 @@ func _cancel(msg: String) -> void:
 
 
 func _say(text: String, secs: float) -> void:
-	_notice = text
-	_notice_left = secs
+	# A repeat refreshes the line it is already on rather than stacking three
+	# copies of "Not enough Faith to strike."
+	for n in _notices:
+		if String(n["text"]) == text:
+			n["left"] = secs
+			return
+	_notices.push_front({"text": text, "left": secs,
+						 "warn": _aiming >= 0 or _smiting})
+	while _notices.size() > NOTICE_MAX:
+		_notices.pop_back()
 
 
 ## --- paint ------------------------------------------------------------------
@@ -295,6 +322,8 @@ func _draw() -> void:
 	if divinity == null or host == null:
 		return
 	_ledger()
+	_goal()
+	_combo()
 	_hand()
 	_commune()
 	_wrath()
@@ -504,21 +533,72 @@ func _wrath() -> void:
 
 
 func _toast() -> void:
-	if _notice_left <= 0.0 or _notice == "":
+	if _notices.is_empty():
 		return
 	var vp := get_viewport_rect().size
-	var w := float(_font.get_string_size(_notice, HORIZONTAL_ALIGNMENT_LEFT,
-										 -1, 15).x) + 34.0
-	var r := Rect2((vp.x - w) * 0.5, PAD + 4.0, w, 32.0)
-	# Fades out over its last second rather than vanishing, so the eye is not
-	# caught by something disappearing.
-	var a := clampf(_notice_left, 0.0, 1.0)
-	draw_rect(r, Color(PANEL.r, PANEL.g, PANEL.b, PANEL.a * a), true)
-	draw_rect(r, Color(1, 1, 1, 0.10 * a), false, 1.0)
-	var tint := WARN if (_aiming >= 0 or _smiting) else INK
-	draw_string(_font, r.position + Vector2(17.0, 21.0), _notice,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(tint.r, tint.g,
-														 tint.b, a))
+	var y := PAD + 4.0
+	for n in _notices:
+		var text := String(n["text"])
+		var w := float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
+											 -1, 15).x) + 34.0
+		var r := Rect2((vp.x - w) * 0.5, y, w, 32.0)
+		# Fades out over its last second rather than vanishing, so the eye is
+		# not caught by something disappearing.
+		var a := clampf(float(n["left"]), 0.0, 1.0)
+		draw_rect(r, Color(PANEL.r, PANEL.g, PANEL.b, PANEL.a * a), true)
+		draw_rect(r, Color(1, 1, 1, 0.10 * a), false, 1.0)
+		var tint := WARN if bool(n["warn"]) else INK
+		draw_string(_font, r.position + Vector2(17.0, 21.0), text,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 15,
+					Color(tint.r, tint.g, tint.b, a))
+		y += 36.0
+
+
+## What to aim at, one line under the ledger.
+func _goal() -> void:
+	if host == null or not host.has_method("next_goal"):
+		return
+	var text: String = host.next_goal()
+	if text == "":
+		return
+	var at := Vector2(PAD + 12.0, PAD + 46.0)
+	# A chevron rather than a bullet: it points forward, which is the whole
+	# message.
+	var c := at + Vector2(4.0, -4.0)
+	draw_colored_polygon(PackedVector2Array([
+		c + Vector2(-3, -5), c + Vector2(3, 0), c + Vector2(-3, 5),
+		c + Vector2(-1, 0)]), Color(GOLD.r, GOLD.g, GOLD.b, 0.75))
+	draw_string(_font, at + Vector2(14.0, 1.0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.62))
+
+
+## The blessing chain, as pips beside the Faith counter.
+##
+## `combo_chain` and `combo_left` drove the biggest multiplier in the game and
+## were drawn nowhere at all -- the player could not tell a chain of five from
+## a chain of one, or notice the moment one broke.
+func _combo() -> void:
+	if divinity == null:
+		return
+	var chain: int = divinity.combo_chain
+	if chain < 2 and _combo_flash <= 0.0:
+		return
+	var at := Vector2(PAD + 12.0, PAD + 66.0)
+	if _combo_flash > 0.0 and chain == 0:
+		# The break, in the red the punish button uses, fading out.
+		var a := clampf(_combo_flash / 0.6, 0.0, 1.0)
+		draw_string(_font, at, "chain lost", HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
+					Color(0.88, 0.36, 0.34, a))
+		return
+	# One pip per link, plus the multiplier the player is actually earning.
+	var left: float = clampf(divinity.combo_left / divinity.COMBO_WINDOW,
+							 0.0, 1.0)
+	for i in chain:
+		var c := at + Vector2(6.0 + float(i) * 13.0, -4.0)
+		draw_circle(c, 4.5, Color(GOLD.r, GOLD.g, GOLD.b, 0.30 + 0.70 * left))
+	draw_string(_font, at + Vector2(14.0 + float(chain) * 13.0, 1.0),
+				"x%.2f" % _combo_mult, HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
+				Color(GOLD.r, GOLD.g, GOLD.b, 0.85))
 
 
 ## An aiming reticle, so a mode the player is IN is visible on screen and not

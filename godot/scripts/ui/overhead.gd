@@ -175,6 +175,18 @@ func _draw() -> void:
 		if host.divinity != null and host.divinity._is_guilty(f):
 			_guilt(p)
 			continue
+		# BLESSABLE, and how long is left of it.
+		#
+		# The mirror of the guilt mark, and it should have existed first: a
+		# blessing only pays inside the witness window, so this ring IS the
+		# mechanic. Drawn for everyone for the same reason guilt is -- a cue
+		# you only see by hovering is a cue you never see -- and it depletes,
+		# so the player learns the window's length by watching it close.
+		if host.divinity != null:
+			var left: float = host.divinity.witness_left(f)
+			if left > 0.0:
+				_blessable(p, left)
+				continue
 		if f.brain.chatting_with != "":
 			_speech(p)
 			continue
@@ -203,6 +215,23 @@ func _guilt(p: Vector2) -> void:
 		c + Vector2(0.4, -1.2) * pulse, c + Vector2(1.6, 6.5) * pulse,
 		c + Vector2(-2.8, 0.6) * pulse, c + Vector2(0.0, 0.6) * pulse])
 	draw_colored_polygon(pts, Color(0.16, 0.05, 0.05))
+
+
+## A gold ring that empties over the witness window: they just finished a job
+## and a blessing lands NOW.
+##
+## An arc rather than a filled disc so it reads as a clock, and quieter than
+## the guilt bolt on purpose -- guilt is a demand, this is an opportunity.
+func _blessable(p: Vector2, left: float) -> void:
+	var c := p + Vector2(0, -2)
+	var r := 10.0
+	var gold := Color(1.0, 0.84, 0.36)
+	draw_circle(c, r + 2.0, Color(0.12, 0.09, 0.02, 0.42))
+	# The remaining arc, wound clockwise from the top so it closes like a dial.
+	var start := -PI * 0.5
+	draw_arc(c, r, start, start + TAU * left, 24, gold, 2.6, true)
+	# A small solid core, so a nearly-expired window is still findable.
+	draw_circle(c, 3.2, gold.lerp(Color(1, 1, 1), 0.35))
 
 
 ## A ring on the ground at the villager's feet, projected from four points of

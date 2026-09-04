@@ -529,6 +529,10 @@ func _wire_feedback() -> void:
 		fxe.burst("bless" if good else "punish", at)
 		sfx.play("bless" if good else "punish"))
 
+	# A judgement asked for too early. The `deny` sound already existed and was
+	# used in exactly one place; a dead click is precisely what it is for.
+	divinity.judge_refused.connect(func(_who): sfx.play("deny"))
+
 	divinity.smote.connect(func(at, radius, destroyed):
 		fxe.ring("wrath", at, radius)
 		sfx.play("wrath")
@@ -600,7 +604,8 @@ func _wire_follower(f: Node) -> void:
 		if act == "chop":
 			sfx.play("chop")
 		elif act in ["harvest", "forage", "eat", "wash"]:
-			sfx.play("pick"))
+			sfx.play("pick")
+		_first_light(f, act))
 	f.finished.connect(func(act):
 		var at: Vector3 = f.position + Vector3(0, 0.6, 0)
 		var spec: Dictionary = Brain.ACTIONS.get(act, {})
@@ -611,6 +616,7 @@ func _wire_follower(f: Node) -> void:
 		# knows how to compute.
 		if act in Brain.WORK:
 			divinity.on_work_done(f, act, spec)
+			_first_light_finished(f)
 		elif act == "pray":
 			divinity.on_prayer_done(f)
 		var raises := String(spec.get("builds", ""))
@@ -622,7 +628,41 @@ func _wire_follower(f: Node) -> void:
 		_job_effect(f, act))
 
 
-## Tell the player what a finished job DID.
+## THE FIRST THIRTY SECONDS, said out loud.
+##
+## The opening is deliberately quiet -- no cards until an age, Commune refuses,
+## land is unaffordable, and a blessing pays nothing until somebody has
+## actually done something (divinity.gd:161-167 argues for the gate and the
+## argument is sound). But quiet is not the same as unexplained. A player who
+## does not know what they are waiting for concludes there is nothing to wait
+## for, and on a portal they are gone in twenty seconds.
+##
+## So: name the villager, name the moment, and get out of the way. Three lines,
+## once each, driven by what the villagers were going to do anyway.
+var _lit := {}
+
+
+func _first_light(f: Node, act: String) -> void:
+	if divinity == null or divinity.age > 0 or f.brain == null:
+		return
+	if _lit.has("aim") or act != "chop":
+		return
+	_lit["aim"] = true
+	divinity.notice.emit("%s is working. Bless them the moment they finish."
+		% f.brain.name)
+
+
+func _first_light_finished(f: Node) -> void:
+	if divinity == null or divinity.age > 0 or f.brain == null:
+		return
+	if _lit.has("now"):
+		return
+	_lit["now"] = true
+	divinity.notice.emit("Now. The ring above %s is your window."
+		% f.brain.name)
+
+
+## Tell the player what a finished job DID.## Tell the player what a finished job DID.
 ##
 ## Every action gets an effect, a sound and -- when it produced something -- a
 ## token that flies from the villager to the counter it changed. The report was
@@ -952,6 +992,7 @@ func _add_ui() -> void:
 
 	panel = VillagerPanel.new()
 	panel.name = "VillagerPanel"
+	panel.divinity = divinity
 	panel.position = Vector2(16, 96)
 	ui.add_child(panel)
 
@@ -1117,6 +1158,41 @@ func _maybe_newcomer(delta: float) -> void:
 
 ## A village that reaches a size has EARNED something. Same draft as Commune,
 ## free, because a moment the player is taught once should not have two shapes.
+## The one thing the player should be aiming at, in five words.
+##
+## The age notices are RETROSPECTIVE -- "The First Roof" announces a thing that
+## already happened. Nothing on screen has ever said what to do next, and a
+## portal player who does not know what to aim at leaves before they find out.
+## The gates are read from the same places that enforce them, so this line
+## cannot drift away from the game.
+func next_goal() -> String:
+	if divinity == null or village == null:
+		return ""
+	# A full village with nowhere to grow is the wall the whole opening runs
+	# into, so it outranks whatever age is pending.
+	if folk.size() >= village.pop_cap and islands != null:
+		var slots: Array = islands.buyable()
+		if not slots.is_empty():
+			return "Buy land  %d Faith" % islands.price_next()
+	match divinity.age:
+		0:
+			return "Raise a roof"
+		1:
+			if folk.size() < 4:
+				return "Gather 4 followers  (%d)" % folk.size()
+			return "Bless them as they work  (%d/20)" % divinity.witnessed_total
+		2:
+			if village.count_of("Buildings/shrine") <= 0:
+				return "Raise a shrine"
+			return "Earn 500 Faith in all  (%d)" % int(divinity.total_earned)
+	for n in POP_MILESTONES:
+		if not _milestones_paid.has(n) and folk.size() < n:
+			return "Grow to %d followers  (%d)" % [n, folk.size()]
+	if islands != null and not islands.buyable().is_empty():
+		return "Buy land  %d Faith" % islands.price_next()
+	return "Tend them"
+
+
 func _check_milestones() -> void:
 	for n in POP_MILESTONES:
 		if folk.size() >= n and not _milestones_paid.has(n):

@@ -24,6 +24,10 @@ signal card_drawn(card: Dictionary)
 signal hand_changed()
 signal miracle_cast(id: String, at: Vector3)
 signal judged(who, good: bool)          ## bless or punish landed on a follower
+## A judgement was ASKED FOR and refused -- the cooldown had not run out.
+## Without this the click is silent: no notice, no sound, no button state, and
+## the player concludes the button is broken rather than that they were early.
+signal judge_refused(who)
 signal smote(at: Vector3, radius: float, destroyed: int)
 signal island_bought(slot: Vector2i)
 signal notice(text: String)             ## one line for the player, for the HUD
@@ -183,7 +187,9 @@ const AGES := [
 const AGE_GAP := 60.0
 var _last_age_at := -999.0
 
-var age := 0                             ## how many ages have PASSED
+var age := 0                                                  ## how many ages have PASSED
+## The first witnessed blessing has already been paid for with a boon.
+var _tutorial_gift_given := false
 var unlocked_cards: Array[String] = ["bounty"]
 var rng := RandomNumberGenerator.new()
 
@@ -498,6 +504,7 @@ func bless(who) -> bool:
 	if who == null or not is_instance_valid(who) or who.brain == null:
 		return false
 	if judge_cd > 0.0:
+		judge_refused.emit(who)
 		return false
 	judge_cd = JUDGE_COOLDOWN
 
@@ -510,6 +517,15 @@ func bless(who) -> bool:
 		f.brain.bless(1.0 if f == who else 0.6)
 
 	if witnessed > 0:
+		# THE FIRST ONE IS THE LESSON, and it is worth a gift.
+		#
+		# The opening used to hand the first boon out for reaching a building,
+		# which the villagers do by themselves while the player watches. This
+		# attaches it to the one thing the player must work out on their own:
+		# that a blessing has to land while the work is still warm.
+		if not _tutorial_gift_given and age == 0:
+			_tutorial_gift_given = true
+			call_deferred("grant_draft", "tutorial")
 		_extend_combo(who)
 		# Scaled by how many of the caught had actually just DONE something,
 		# with the exponent stopping a blob from printing Faith.
@@ -536,6 +552,7 @@ func punish(who) -> bool:
 	if who == null or not is_instance_valid(who) or who.brain == null:
 		return false
 	if judge_cd > 0.0:
+		judge_refused.emit(who)
 		return false
 	judge_cd = JUDGE_COOLDOWN
 	bless_radius = boons.bless_radius()
@@ -599,6 +616,24 @@ func _judge_area(who) -> Array:
 		if f.position.distance_to(who.position) <= bless_radius:
 			out.append(f)
 	return out
+
+
+## How much of the witness window this one has left, 0..1, or 0.0 if they have
+## not just done anything. The UI draws it; the payout reads `_is_witnessed`.
+##
+## The whole economy turns on a four-second window and the window was invisible
+## -- guilt got a pulsing bolt over the head and BLESSABLE got nothing, so the
+## player was asked to play a timing game with the timer hidden.
+func witness_left(f) -> float:
+	if f == null or f.brain == null or village == null:
+		return 0.0
+	if String(f.brain.last_action) == "":
+		return 0.0
+	var w: float = boons.witness_window()
+	if w <= 0.0:
+		return 0.0
+	var since: float = float(village.now) - float(f.brain.last_action_at)
+	return clampf(1.0 - since / w, 0.0, 1.0)
 
 
 func _is_witnessed(f) -> bool:
@@ -778,6 +813,14 @@ func _check_age() -> void:
 	notice.emit("%s. %s" % [String(spec["name"]), String(spec["note"])])
 	age_reached.emit(age, String(spec["name"]))
 	# An age is worth a gift, and the gift is the same three-card moment.
+	#
+	# Unless the player already earned it by landing their first witnessed
+	# blessing (see `first_blessing`). That gift IS this one, moved earlier and
+	# attached to the verb that deserves it -- granting both would hand out two
+	# boons in the first minute and inflate the Commune cost curve, which is
+	# priced off `drafts_taken`.
+	if age == 1 and _tutorial_gift_given:
+		return
 	grant_draft("age")
 
 

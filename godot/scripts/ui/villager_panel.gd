@@ -33,6 +33,7 @@ const SAINT := Color(0.98, 0.86, 0.42)
 const DEVIL := Color(0.85, 0.30, 0.36)
 
 var who = null
+var divinity = null                     ## set by ValeRoot; may be null in probes
 var _font: Font
 var _bless: Button
 var _punish: Button
@@ -72,6 +73,13 @@ func _button(text: String, tint: Color) -> Button:
 	var press := sb.duplicate() as StyleBoxFlat
 	press.bg_color = tint.darkened(0.2)
 	b.add_theme_stylebox_override("pressed", press)
+	# Godot's default disabled box is a flat grey, so a button on cooldown
+	# stopped looking like the same button. Keep the hue, drop the light: the
+	# player should read "not yet", not "some other control".
+	var off := sb.duplicate() as StyleBoxFlat
+	off.bg_color = Color(tint.r, tint.g, tint.b).darkened(0.55)
+	b.add_theme_stylebox_override("disabled", off)
+	b.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.45))
 	add_child(b)
 	return b
 
@@ -94,6 +102,16 @@ func _process(_d: float) -> void:
 	if who == null or not is_instance_valid(who) or who.brain == null:
 		show_for(null)
 		return
+	# The judgement cooldown, shown on the buttons that it blocks. Pressing
+	# Bless during it used to do nothing whatsoever -- no notice, no sound, no
+	# button state -- which reads as a broken button rather than as "too soon".
+	if divinity != null:
+		var ready: bool = divinity.judge_cd <= 0.0
+		_bless.disabled = not ready
+		_punish.disabled = not ready
+		var a := 1.0 if ready else 0.45
+		_bless.modulate.a = a
+		_punish.modulate.a = a
 	queue_redraw()
 
 
@@ -132,6 +150,16 @@ func _draw() -> void:
 	draw_string(_font, Vector2(PAD, y + 10), "Currently: " + doing,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)
 	y += 22
+
+	# WHAT YOUR BLESSINGS DID. `favour` is the entire steering result of the
+	# only verb the player has, and it was displayed nowhere -- so the game
+	# never showed that blessing a woodcutter makes them chop more, which is
+	# the whole reason to bless a woodcutter.
+	var leaning := _favour_line(b)
+	if leaning != "":
+		draw_string(_font, Vector2(PAD, y + 8), leaning,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 12, SAINT)
+		y += 20
 
 	# The bars (item 2).
 	for k in Brain.STAT_ORDER:
@@ -192,6 +220,29 @@ func _draw() -> void:
 	if absf(size.y - wanted) > 1.0:
 		size.y = wanted
 		custom_minimum_size.y = wanted
+
+
+## The strongest thing the god has pushed this one toward or away from.
+##
+## One line, not a table: `favour` holds ~30 actions and 28 of them are 1.0.
+## The player needs to know that their blessings landed and on WHAT, not to
+## read a spreadsheet of multipliers.
+func _favour_line(b) -> String:
+	var best := ""
+	var best_dev := 0.0
+	for act in b.favour:
+		var v: float = float(b.favour[act])
+		var dev: float = absf(v - 1.0)
+		if dev > best_dev:
+			best_dev = dev
+			best = String(act)
+	if best == "" or best_dev < 0.08:
+		return ""
+	var v: float = float(b.favour[best])
+	var verb: String = String(Brain.ACTIONS.get(best, {}).get("verb", best))
+	if v > 1.0:
+		return "Leans toward %s  x%.1f" % [verb, v]
+	return "Shies from %s  x%.1f" % [verb, v]
 
 
 func _stat_row(y: float, key: String, label: String, v: float) -> float:
