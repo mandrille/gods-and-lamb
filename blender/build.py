@@ -14,6 +14,7 @@ Every path resolves from this file, so the project can be moved without edits.
 --factory-startup matters: it guarantees no user addon or preference changes
 the result. Builds must be reproducible from a clean Blender.
 """
+import math
 import os
 import sys
 import traceback
@@ -553,6 +554,148 @@ def _rig_module(decl):
     return importlib.import_module(decl.get("rig") or "folkrig")
 
 
+def target_blend1(rest):
+    """Build ONE asset into an empty scene and save it as a .blend.
+
+    The worker behind `blend`. Separate process per asset for the same reason
+    `glb` is: kit.M, kit.STATS and kit.SCHEMES are mutable module globals, and
+    seventeen builders in one process cross-contaminate in ways that present
+    as a geometry bug.
+    """
+    import bpy
+    import registry
+
+    if len(rest) < 2:
+        raise SystemExit("FAIL: blend1 needs an asset id and an out path")
+    aid, out = rest[0], rest[1]
+    entry = registry.resolve(aid)
+    _fresh_scene()
+    meshes = _build_subject(entry, "BLEND", {})
+    # One collection per asset, named for the asset, so the merged file has a
+    # usable outliner instead of four hundred loose objects.
+    coll = bpy.data.collections.new(aid.replace("/", "__"))
+    bpy.context.scene.collection.children.link(coll)
+    for ob in meshes:
+        for c in list(ob.users_collection):
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+    bpy.ops.wm.save_as_mainfile(filepath=out)
+    print("  blend %-26s %d object(s)" % (aid, len(meshes)))
+
+
+def target_blend(rest):
+    """Every asset in a category into ONE editable .blend, laid out in a grid.
+
+    For working on the assets BY HAND -- shading, materials, a bevel width --
+    rather than by editing the builder. Modifiers are left live and unapplied,
+    because the Bevel and the Weighted Normal are usually the thing being
+    looked at.
+
+        build.py -- blend                 (every building)
+        build.py -- blend Folk            (a category)
+        build.py -- blend Buildings/mine Buildings/smithy
+
+    Materials arrive once per source file, so `M_adobe.001 .. .017` would be
+    seventeen copies of one material and editing "the" adobe would fix one
+    building. Every numbered duplicate is remapped back onto the original.
+    """
+    import subprocess
+    import bpy
+    import registry
+
+    found = registry.discover()
+    if not rest:
+        want = sorted(a for a in found if a.startswith("Buildings/"))
+        stem = "buildings"
+    elif len(rest) == 1 and "/" not in rest[0]:
+        want = sorted(a for a in found if a.startswith(rest[0] + "/"))
+        stem = rest[0].lower()
+    else:
+        want = list(rest)
+        stem = "assets"
+    missing = [a for a in want if a not in found]
+    if missing:
+        raise SystemExit("FAIL: no such asset(s): %s" % ", ".join(missing))
+    if not want:
+        raise SystemExit("FAIL: nothing matched")
+
+    work = os.path.join(OUT, "blend", "parts")
+    os.makedirs(work, exist_ok=True)
+    parts = []
+    print("blend: %d asset(s)" % len(want))
+    for aid in want:
+        path = os.path.join(work, aid.replace("/", "__") + ".blend")
+        cmd = [sys.argv[0], "--background", "--factory-startup",
+               "--python", os.path.abspath(__file__), "--", "blend1", aid, path]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        line = [ln for ln in (r.stdout or "").splitlines()
+                if ln.startswith("  blend ")]
+        print(line[0] if line else "  %-26s FAIL" % aid)
+        if r.returncode != 0:
+            body = (r.stdout or "") + (r.stderr or "")
+            for ln in body.splitlines():
+                if ln.startswith("FAIL") or "Error" in ln:
+                    print("    %s" % ln)
+            raise SystemExit("FAIL: %s did not build" % aid)
+        parts.append((aid, path))
+
+    _fresh_scene()
+    # The palette the fresh scene just created would itself be a duplicate set
+    # once the first file is appended, so it goes first.
+    for m in list(bpy.data.materials):
+        bpy.data.materials.remove(m)
+
+    cols = max(1, int(math.ceil(math.sqrt(len(parts)))))
+    pitch = 3.4                      # every building is under 2.6 m in plan
+    for i, (aid, path) in enumerate(parts):
+        name = aid.replace("/", "__")
+        before = set(bpy.data.objects)
+        bpy.ops.wm.append(directory=os.path.join(path, "Collection"),
+                          filename=name, link=False)
+        fresh = [o for o in bpy.data.objects if o not in before]
+        dx = float(i % cols) * pitch
+        dy = -float(i // cols) * pitch
+        for ob in fresh:
+            if ob.parent is None:
+                ob.location.x += dx
+                ob.location.y += dy
+    _merge_duplicate_materials()
+
+    outdir = os.path.join(OUT, "blend")
+    out = os.path.join(outdir, "%s.blend" % stem)
+    bpy.ops.wm.save_as_mainfile(filepath=out)
+    print("wrote %s" % out)
+    print("  %d asset(s), %d object(s), %d material(s), grid %d wide at %.1f m"
+          % (len(parts), len(bpy.data.objects), len(bpy.data.materials),
+             cols, pitch))
+
+
+def _merge_duplicate_materials():
+    """Point every `X.001` at `X` and delete the copy.
+
+    Appending N files brings N copies of every shared material. Without this
+    the file looks right and is unusable: changing the adobe changes one wall.
+    """
+    import bpy
+    originals = {m.name: m for m in bpy.data.materials if "." not in m.name}
+    merged = 0
+    for m in list(bpy.data.materials):
+        stem = m.name.rsplit(".", 1)[0]
+        if m.name == stem:
+            continue
+        keep = originals.get(stem)
+        if keep is None:
+            # The first copy seen becomes the original everything else joins.
+            m.name = stem
+            originals[stem] = m
+            continue
+        m.user_remap(keep)
+        bpy.data.materials.remove(m)
+        merged += 1
+    if merged:
+        print("  merged %d duplicate material(s)" % merged)
+
+
 def _asset_glb_name(aid):
     """Category__variant.glb. Godot rewrites . : @ / % in NODE names, so the
     file name avoids them entirely rather than relying on a mapping."""
@@ -1044,6 +1187,8 @@ TARGETS = {
     "rig": target_rig,
     "glb": target_glb,
     "library": target_library,
+    "blend": target_blend,
+    "blend1": target_blend1,
     "export": target_export,
     "lit": target_lit,
     "ao": target_ao,
