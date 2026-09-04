@@ -143,6 +143,7 @@ static func capture(root, now_unix: int, away_seed: int) -> Dictionary:
 			"total_eaten": v.total_eaten,
 			"richness": _floats(v._richness),
 		},
+		"daylight": root.daylight.to_doc() if root.daylight != null else {},
 		"divinity": _capture_divinity(d),
 		"root": {
 			"next_seed": root._next_seed,

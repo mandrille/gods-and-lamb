@@ -133,6 +133,8 @@ var _save_how := ""
 ## override for the one probe that DOES want the disk.
 var load_saves := false
 var saving: Persistence = null
+## The day clock. Public so the HUD can read it and a probe can wind it on.
+var daylight: Daylight = null
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
 
@@ -211,6 +213,9 @@ func _ready() -> void:
 	village.census(builder.placed_props)
 	village.pop_cap = islands.pop_cap() + village.passive_add("pop_cap_add")
 	social = Social.new(20260901)
+	daylight = Daylight.new()
+	daylight.from_doc(_save_doc.get("daylight", {}))
+	daylight.night_fell.connect(_on_night)
 
 	divinity = Divinity.new()
 	divinity.name = "Divinity"
@@ -616,7 +621,38 @@ func _restore_followers(doc: Dictionary) -> void:
 	apply_boons()
 
 
-## The disk layer, and the away log if this launch opened a save.
+## Night. For now this marks the day and saves; the Day Summary and the
+## overnight aura are the next piece, and this is the seam they attach to.
+func _on_night(which: int) -> void:
+	if divinity != null:
+		divinity.notice.emit("Night falls on day %d." % which)
+	if sfx != null:
+		sfx.play("coin", 0.8)
+	# A day boundary is exactly the moment a player might close the tab, so it
+	# is worth a write of its own rather than waiting for the autosave.
+	if saving != null:
+		saving.save_now("night")
+
+
+## Warm the light as the day runs out.
+##
+## The sun's own colour and angle, interpolated away from the measured daytime
+## values and back -- those stay the noon anchor and are never retuned here.
+## Without this the countdown is a number on a panel; with it the world itself
+## is the clock, which is what a player actually notices.
+func _sky_for(dusk: float) -> void:
+	if light == null or light.sun == null:
+		return
+	var warm := Color(0.99, 0.72, 0.42)
+	light.sun.light_color = ValeLight.SUN_COLOR.lerp(warm, dusk * 0.85)
+	light.sun.light_energy = ValeLight.SUN_ENERGY * (1.0 - 0.35 * dusk)
+	var e := ValeLight.SUN_EULER
+	# Down toward the horizon, never past it: the shadows lengthen, the plot
+	# stays readable, and nobody has to play in the dark.
+	light.sun.rotation_degrees = Vector3(e.x + 22.0 * dusk, e.y, e.z)
+
+
+## The disk layer, and the away log if this launch opened a save.## The disk layer, and the away log if this launch opened a save.
 func _add_persistence() -> void:
 	saving = Persistence.new()
 	saving.name = "Persistence"
@@ -1468,6 +1504,9 @@ func _process(delta: float) -> void:
 			live.append(f)
 	folk = live
 	village.tick(delta)
+	if daylight != null:
+		daylight.tick(delta)
+		_sky_for(daylight.dusk_amount())
 	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)

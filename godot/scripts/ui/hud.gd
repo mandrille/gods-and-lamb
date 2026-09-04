@@ -322,6 +322,7 @@ func _draw() -> void:
 	if divinity == null or host == null:
 		return
 	_ledger()
+	_daybar()
 	_goal()
 	_combo()
 	_hand()
@@ -536,7 +537,8 @@ func _toast() -> void:
 	if _notices.is_empty():
 		return
 	var vp := get_viewport_rect().size
-	var y := PAD + 4.0
+	# Below the day bar, which now owns the top centre.
+	var y := PAD + 52.0
 	for n in _notices:
 		var text := String(n["text"])
 		var w := float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
@@ -554,7 +556,108 @@ func _toast() -> void:
 		y += 36.0
 
 
-## What to aim at, one line under the ledger.
+## THE DAY, at the top centre, with the sun going down beside it.
+##
+## The single most important thing on this screen for a player who has never
+## seen the game before: it says there is an END, how far off it is, and -- by
+## being a countdown rather than a percentage -- that it is worth staying for.
+## Eight minutes of anything is a long time to give a stranger without telling
+## them what they are waiting for.
+func _daybar() -> void:
+	if host == null or host.get("daylight") == null:
+		return
+	var d = host.daylight
+	var vp := get_viewport_rect().size
+	var w := 268.0
+	var r := Rect2((vp.x - w) * 0.5, PAD - 2.0, w, 52.0)
+	var dusk: float = d.dusk_amount()
+
+	draw_rect(r, PANEL, true)
+	draw_rect(r, PANEL_EDGE, false, 1.0)
+	# A warm rim once dusk starts, so the panel itself changes state and not
+	# just the text inside it.
+	if dusk > 0.0:
+		draw_rect(r.grow(1.0), Color(WARN.r, WARN.g, WARN.b, 0.55 * dusk),
+				  false, 2.0)
+
+	# The sky, in a box: a bar that fills as the day runs out, warming toward
+	# dusk so the colour says the same thing the number does.
+	var track := Rect2(r.position + Vector2(58.0, 35.0), Vector2(w - 74.0, 6.0))
+	draw_rect(track, Color(1, 1, 1, 0.12), true)
+	var lit := track
+	lit.size.x = track.size.x * d.fraction()
+	draw_rect(lit, GOLD.lerp(Color(0.62, 0.66, 0.92), dusk), true)
+
+	# Day number and the clock, the clock in amber once dusk starts.
+	draw_string(_font, r.position + Vector2(58.0, 25.0), "Day %d" % d.day,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
+	var left: String = d.clock()
+	var tint := INK if dusk <= 0.0 else WARN
+	# A slow pulse over the last minute. The countdown is the one element on
+	# this screen that should get LOUDER as it matters more, and a player who
+	# has stopped reading the panel will still catch something breathing.
+	if d.seconds_left() <= 60.0:
+		var beat: float = 0.72 + 0.28 * sin(float(Time.get_ticks_msec()) * 0.006)
+		tint = Color(WARN.r, WARN.g, WARN.b, beat)
+	var tw := float(_font.get_string_size(left, HORIZONTAL_ALIGNMENT_LEFT,
+										  -1, 24).x)
+	draw_string(_font, r.position + Vector2(w - 16.0 - tw, 28.0), left,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 24, tint)
+	if dusk > 0.0:
+		draw_string(_font, r.position + Vector2(w - 16.0 - tw - 62.0, 27.0),
+					"nightfall", HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+					Color(WARN.r, WARN.g, WARN.b, 0.55 + 0.45 * dusk))
+	_sky_token(r.position + Vector2(30.0, 26.0), d.fraction(), dusk)
+
+
+## A sun that becomes a moon.
+##
+## Both are drawn every frame and cross-faded, rather than swapped at a
+## threshold: a hard swap reads as a bug the first time a player catches it
+## mid-blink, and the whole point of the icon is to show a CHANGE happening.
+## The sun also rides an arc across the token, so it is descending rather than
+## merely dimming.
+func _sky_token(at: Vector2, frac: float, dusk: float) -> void:
+	var sun_a: float = 1.0 - dusk
+	var moon_a: float = dusk
+	# Along a shallow arc: left at dawn, right at dusk, highest at noon.
+	var x: float = (frac - 0.5) * 26.0
+	var y: float = -7.0 * sin(PI * frac) + 3.5
+	var c := at + Vector2(x, y)
+
+	if sun_a > 0.01:
+		var warm := Color(1.0, 0.86, 0.36).lerp(Color(1.0, 0.55, 0.28), dusk)
+		for i in 8:
+			var a := TAU * float(i) / 8.0
+			var dir := Vector2(cos(a), sin(a))
+			draw_line(c + dir * 9.5, c + dir * 13.5,
+					  Color(warm.r, warm.g, warm.b, 0.75 * sun_a), 2.0, true)
+		draw_circle(c, 7.5, Color(warm.r, warm.g, warm.b, sun_a))
+	if moon_a > 0.01:
+		# The same crescent the rest glyph uses, so the two read as one idea:
+		# night, and rest.
+		var pale := Color(0.93, 0.95, 1.00, moon_a)
+		var mr := 10.0
+		# A FAT crescent. The bite circle sits further out and is barely wider
+		# than the moon, which leaves a thick sickle rather than the fingernail
+		# a 0.55/1.15 pair produces -- at this size a thin one reads as a smudge.
+		var bd := mr * 0.78
+		var br := mr * 1.02
+		var hx := (bd * bd - br * br + mr * mr) / (2.0 * bd)
+		var hy := sqrt(maxf(mr * mr - hx * hx, 0.0))
+		var a1 := atan2(hy, hx)
+		var b1 := atan2(hy, hx - bd)
+		var pts: Array = []
+		for i in 15:
+			var a := lerpf(a1, TAU - a1, float(i) / 14.0)
+			pts.append(c + Vector2(cos(a), sin(a)) * mr)
+		for i in range(1, 14):
+			var b := lerpf(TAU - b1, b1, float(i) / 14.0)
+			pts.append(c + Vector2(bd + cos(b) * br, sin(b) * br))
+		draw_colored_polygon(PackedVector2Array(pts), pale)
+
+
+## What to aim at, one line under the ledger.## What to aim at, one line under the ledger.
 func _goal() -> void:
 	if host == null or not host.has_method("next_goal"):
 		return
