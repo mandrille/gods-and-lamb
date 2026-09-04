@@ -27,7 +27,7 @@ ASSET = dict(
     category=CATEGORY,
     # MEASURED, not derived -- the rotated roof slab and the sign bracket both
     # reach past the plan arithmetic on the wall box alone.
-    footprint=(2.02, 1.81),
+    footprint=(1.98, 1.96),
     anchor="floor",
     slots=(),
 )
@@ -77,19 +77,21 @@ def build(tag="TAVERN", **kw):
 
     fy = -D * 0.5
     _arch_cut(walls, 0.0, fy + DOOR_DEPTH * 0.5, DOOR_W, DOOR_H, DOOR_DEPTH * 2.0)
-    boolean(walls, box("wincut", (WIN_X, fy + WIN_DEPTH * 0.5, WIN_Z),
-                       (WIN_W, WIN_DEPTH * 2.0, WIN_H), None))
+    for wx in (WIN_X, -WIN_X):
+        boolean(walls, box("wincut_%d" % int(wx * 100), (wx, fy + WIN_DEPTH * 0.5, WIN_Z),
+                           (WIN_W, WIN_DEPTH * 2.0, WIN_H), None))
     P.append(walls)
 
     P.extend(_arch_fill(tag + "_DoorDark", 0.0, fy + DOOR_DEPTH, DOOR_W, DOOR_H,
                         M["hollow"]))
-    P.append(box(tag + "_WinDark", (WIN_X, fy + WIN_DEPTH, WIN_Z),
-                 (WIN_W, 0.04, WIN_H), M["hollow"]))
-    # The one lit window -- `accent` resolves to `warmglow` for this scheme,
-    # so this is the scheme's own colour rather than a hardcoded material,
-    # unlike the house windows (which stay lit under every house colourway).
-    P.append(box(tag + "_Pane", (WIN_X, fy - 0.005, WIN_Z),
-                 (WIN_W - 0.055, 0.05, WIN_H - 0.055), accent))
+    # TWO lit windows, one each side of the door: at play scale the tavern
+    # with one was the cottage (review), and "lit windows" is the reference's
+    # identity. `accent` resolves to `warmglow` for this scheme.
+    for wx in (WIN_X, -WIN_X):
+        P.append(box("%s_WinDark%d" % (tag, int(wx * 100)), (wx, fy + WIN_DEPTH, WIN_Z),
+                     (WIN_W, 0.04, WIN_H), M["hollow"]))
+        P.append(box("%s_Pane%d" % (tag, int(wx * 100)), (wx, fy - 0.005, WIN_Z),
+                     (WIN_W - 0.055, 0.05, WIN_H - 0.055), accent))
 
     r = DOOR_W * 0.5
     spring = DOOR_H - r
@@ -116,17 +118,20 @@ def build(tag="TAVERN", **kw):
     # from it. No text -- at fifteen pixels a board of the trim colour with
     # one accent dot reads as "a sign" exactly as well as painted lettering
     # would, for a triangle count text cannot approach.
+    # Hung from the EAVES on a bracket projecting 0.35 m, so it breaks the
+    # roofline -- at door height projecting 15 cm it never left the wall's
+    # own silhouette and the tavern was the cottage (review).
     bx = SIGN_X
-    bracket_z = DOOR_H + 0.06
-    P.append(box(tag + "_Bracket", (bx, fy - 0.09, bracket_z),
-                 (0.03, 0.16, 0.03), M["iron_dark"]))
-    board_z = bracket_z - 0.12
-    P.append(box(tag + "_SignBoard", (bx, fy - 0.155, board_z),
-                 (0.20, 0.025, 0.16), trim))
+    bracket_z = H - 0.04
+    P.append(box(tag + "_Bracket", (bx, fy - 0.19, bracket_z),
+                 (0.035, 0.36, 0.035), M["iron_dark"]))
+    board_z = bracket_z - 0.16
+    P.append(box(tag + "_SignBoard", (bx, fy - 0.31, board_z),
+                 (0.26, 0.03, 0.20), trim))
     # A painted mark, not the emissive `accent` -- the sign is read by
     # daylight, and a glowing dot on a board would read as a second window.
-    P.append(box(tag + "_SignMark", (bx, fy - 0.168, board_z),
-                 (0.09, 0.01, 0.07), M["cloth_red"]))
+    P.append(box(tag + "_SignMark", (bx, fy - 0.328, board_z),
+                 (0.13, 0.012, 0.10), M["cloth_red"]))
 
     hero = [walls] + roof_parts
     plain = [p for p in P if p not in hero]

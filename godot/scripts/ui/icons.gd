@@ -294,14 +294,24 @@ static func _moon(ci: CanvasItem, at: Vector2, s: float) -> void:
 	# Rest. A crescent made by punching one disc out of another with the
 	# background colour would need to know the background, so it is drawn as a
 	# filled arc band instead and works on anything.
-	var pts: Array = []
+	# The two arcs must MEET at the horns. The previous pair of arcs did not:
+	# they crossed, the polygon self-intersected, and every frame that drew a
+	# rest floater printed "Invalid polygon data, triangulation failed" and drew
+	# nothing. The horns are the intersection of the two circles, solved for.
 	var r := s * 0.40
-	for i in 13:
-		var a := lerpf(PI * 0.35, PI * 1.65, float(i) / 12.0)
+	var d := r * 0.55            # how far the bite circle sits to the right
+	var rb := r * 1.15           # its radius
+	var hx := (d * d - rb * rb + r * r) / (2.0 * d)
+	var hy := sqrt(maxf(r * r - hx * hx, 0.0))
+	var a1 := atan2(hy, hx)      # horn, from the outer circle's centre
+	var b1 := atan2(hy, hx - d)  # the same horn, from the bite circle's centre
+	var pts: Array = []
+	for i in 15:
+		var a := lerpf(a1, TAU - a1, float(i) / 14.0)
 		pts.append(at + Vector2(cos(a), sin(a)) * r)
-	for i in 13:
-		var a := lerpf(PI * 1.65, PI * 0.35, float(i) / 12.0)
-		pts.append(at + Vector2(cos(a) * r * 1.25 + r * 0.55, sin(a) * r * 0.92))
+	for i in range(1, 14):       # open interval: the horns are already in
+		var b := lerpf(TAU - b1, b1, float(i) / 14.0)
+		pts.append(at + Vector2(d + cos(b) * rb, sin(b) * rb))
 	_poly(ci, pts, Color(0.86, 0.88, 0.96))
 
 

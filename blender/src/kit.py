@@ -250,8 +250,11 @@ def init_materials():
         "mine_rock":          {"body": "stone_dark", "trim": "wood_dark", "roof": "terracotta", "accent": "cloth_red"},
         "smithy_adobe":       {"body": "adobe", "trim": "stone_dark", "roof": "adobe", "accent": "iron_dark"},
         "barracks_terracotta": {"body": "terracotta", "trim": "wood", "roof": "shingle", "accent": "gold"},
-        "farm_red":           {"body": "cloth_red", "trim": "plaster", "roof": "shingle", "accent": "crop_ripe"},
-        "farm_green":         {"body": "tile_green", "trim": "plaster", "roof": "shingle", "accent": "crop_ripe"},
+        # Review: both farms wore a brown `shingle` roof over a saturated barn,
+        # warm-on-warm across the largest colour area. A red barn takes a green
+        # roof (the reference), a green barn a slate one.
+        "farm_red":           {"body": "cloth_red", "trim": "wood_dark", "roof": "tile_green", "accent": "crop_ripe"},
+        "farm_green":         {"body": "tile_green", "trim": "wood_dark", "roof": "slate", "accent": "crop_ripe"},
         "windmill_stone":     {"body": "stone", "trim": "wood_dark", "roof": "shingle", "accent": "leaf"},
     })
 

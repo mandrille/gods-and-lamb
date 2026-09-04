@@ -63,14 +63,17 @@ def build(tag="LAMB", **kw):
 
     # --- head: one small wool mass, no separate muzzle -- the reference's
     # face is a single rounded lump with ears and eyes on it, not a jaw.
+    # `stone`, not wool: head, body, ears and tail all in wool gave the
+    # head zero separation from the fleece and the asset no hue (review);
+    # the reference lamb has a visibly darker face.
     plain.append(box(tag + "_Head", (0, -0.24, 0.22),
-                     (0.13, 0.14, 0.135), M["wool"]))
+                     (0.13, 0.14, 0.135), M["stone"]))
     # Small and drooping, not upright -- a lamb's ears hang, a wolf's prick up.
     for sx in (-1, 1):
         side = "L" if sx < 0 else "R"
         plain.append(box("%s_Ear%s" % (tag, side),
-                         (sx * 0.075, -0.23, 0.275),
-                         (0.05, 0.045, 0.03), M["wool"],
+                         (sx * 0.085, -0.23, 0.275),
+                         (0.08, 0.06, 0.035), M["petal_pink"],
                          rot=(20, -18 * sx, 0)))
     # Dark dots pushed just past the head's own front edge -- flush with it
     # disappears behind the head's front wall in the ortho front render, the

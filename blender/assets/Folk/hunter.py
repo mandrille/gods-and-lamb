@@ -31,7 +31,7 @@ ASSET = dict(
     category=CATEGORY,
     # MEASURED: the bow's limbs set X, the quiver on the back sets Y --
     # both past the shared body's own column.
-    footprint=(0.41, 0.41),
+    footprint=(0.44, 0.37),
     anchor="floor",
     slots=(),
 )
@@ -48,8 +48,11 @@ def build(tag="HUNTER", **kw):
         # Stern brow: one thin dark box, level, right above the eyes.
         box(tag + "_Brow", BROW, (0.16, 0.02, 0.03), M["hair_dark"]),
         # Hood collar -- wraps the whole neck like folkbody's own kerchief.
+        # `cloth_orange`: green tunic + green hood + green sleeves was one
+        # green mass on green grass (review); the reference carries a warm
+        # trim band, and this is the follower that most needs one.
         box(tag + "_Hood", (0, 0.0, BROW[2] - 0.30),
-           (0.27, 0.24, 0.075), M["cloth_green"]),
+           (0.27, 0.24, 0.075), M["cloth_orange"]),
         box(tag + "_Belt", BELT, (0.26, 0.20, 0.032), M["leather"]),
         box(tag + "_Pouch1", (HIP_L[0] - 0.01, HIP_L[1] - 0.05, HIP_L[2] + 0.06),
            (0.07, 0.06, 0.08), M["leather"]),
@@ -57,14 +60,14 @@ def build(tag="HUNTER", **kw):
            (0.07, 0.06, 0.08), M["leather"]),
         # Bow in the left hand: grip plus two angled limbs, all wood, plus a
         # thin taut string running between the tips.
+        # Limbs at 4.5 cm: three 2.4 cm sticks were one dark line at 40 px
+        # (review). The 1 cm string cost a box and read as nothing -- gone.
         box(tag + "_BowGrip", (HAND_L[0], HAND_L[1] - 0.025, HAND_L[2]),
-           (0.026, 0.026, 0.10), M["wood"]),
-        box(tag + "_BowUpper", (HAND_L[0] - 0.022, HAND_L[1] - 0.025, HAND_L[2] + 0.115),
-           (0.024, 0.024, 0.19), M["wood"], rot=(0, -16, 0)),
-        box(tag + "_BowLower", (HAND_L[0] - 0.022, HAND_L[1] - 0.025, HAND_L[2] - 0.115),
-           (0.024, 0.024, 0.19), M["wood"], rot=(0, 16, 0)),
-        box(tag + "_BowString", (HAND_L[0] - 0.05, HAND_L[1] - 0.05, HAND_L[2]),
-           (0.01, 0.01, 0.42), M["hair_dark"]),
+           (0.045, 0.045, 0.11), M["wood"]),
+        box(tag + "_BowUpper", (HAND_L[0] - 0.03, HAND_L[1] - 0.025, HAND_L[2] + 0.125),
+           (0.045, 0.045, 0.20), M["wood"], rot=(0, -18, 0)),
+        box(tag + "_BowLower", (HAND_L[0] - 0.03, HAND_L[1] - 0.025, HAND_L[2] - 0.125),
+           (0.045, 0.045, 0.20), M["wood"], rot=(0, 18, 0)),
         # Quiver on the back, angled off the diagonal like the adventurer's
         # pack strap -- a detail, not a pose.
         cyl(tag + "_Quiver", (BACK[0] + 0.03, BACK[1], BACK[2]), 0.045, 0.26,

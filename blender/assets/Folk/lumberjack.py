@@ -72,10 +72,13 @@ def build(tag="LUMBERJACK", **kw):
         # the head box hid the axe head completely -- invisible in every
         # angle despite existing. Screen-space occlusion here is about
         # X/Z overlap through the camera, not just Y depth.
-        box(tag + "_Axe", (HAND_R[0], HAND_R[1] - 0.02, 0.42),
-           (0.032, 0.032, 0.34), M["wood"]),
-        box(tag + "_AxeHead", (0.22, HAND_R[1] - 0.02, 0.565),
-           (0.16, 0.05, 0.095), M["stone_dark"]),
+        # Whole axe out at x 0.235 so shaft and head read as one L (review:
+        # the haft at x 0.156 was occluded by the torso and only the head
+        # survived as a dark tab beside the ear).
+        box(tag + "_Axe", (0.235, HAND_R[1] - 0.03, 0.45),
+           (0.034, 0.034, 0.36), M["wood"]),
+        box(tag + "_AxeHead", (0.235, HAND_R[1] - 0.03, 0.60),
+           (0.15, 0.06, 0.11), M["stone_dark"]),
     ]
 
     return finish(hero, plain, extra_plain=extra_plain)

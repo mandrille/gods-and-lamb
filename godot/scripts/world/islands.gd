@@ -56,9 +56,9 @@ const FOOTPRINTS := {
 	"Buildings/cottage": [2.4, 2.2], "Buildings/cottage_b": [2.4, 2.2],
 	"Buildings/market_stall": [1.6, 1.2], "Buildings/well": [1.0, 1.0],
 	"Buildings/shrine": [2.5, 2.0], "Buildings/bridge": [0.5, 0.62],
-	"Buildings/mansion": [2.6, 2.4], "Buildings/tavern": [2.2, 1.9],
-	"Buildings/hotel": [2.4, 2.0], "Buildings/lumber_camp": [2.5, 2.2],
-	"Buildings/mine": [2.4, 2.2], "Buildings/smithy": [2.2, 2.0],
+	"Buildings/mansion": [2.6, 2.4], "Buildings/tavern": [2.2, 2.1],
+	"Buildings/hotel": [2.4, 2.0], "Buildings/lumber_camp": [2.5, 2.4],
+	"Buildings/mine": [2.4, 2.2], "Buildings/smithy": [2.2, 2.2],
 	"Buildings/barracks": [2.5, 2.5], "Buildings/farm": [2.6, 2.6],
 	"Buildings/farm_b": [2.6, 2.6], "Buildings/windmill": [2.4, 1.4],
 }

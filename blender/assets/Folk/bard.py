@@ -28,7 +28,7 @@ ASSET = dict(
     family="folk",
     variant="bard",
     category=CATEGORY,
-    footprint=(0.40, 0.34),   # MEASURED: 0.390 x 0.325 -- the lute sits inside the arms
+    footprint=(0.49, 0.36),   # MEASURED: 0.390 x 0.325 -- the lute sits inside the arms
     anchor="floor",
     slots=(),
 )
@@ -55,11 +55,16 @@ def build(tag="BARD", **kw):
     # three tiny pegs at the tip. Held in front at chest height, offset left
     # of centre the way a lute actually sits against the strumming arm.
     lx, ly, lz = CHEST[0] + 0.02, CHEST[1] - 0.03, CHEST[2] - 0.02
-    plain.append(box(tag + "_LuteBody", (lx, ly, lz), (0.13, 0.06, 0.16),
+    # Narrower and 3 cm lower than the first pass, which covered the whole
+    # tunic front and hid the orange/blue patchwork that IS the bard; the
+    # neck is shorter and swung well out so it no longer crosses the face
+    # (the pegs were landing on the cheek and read as a moustache).
+    lz -= 0.03
+    plain.append(box(tag + "_LuteBody", (lx, ly, lz), (0.10, 0.06, 0.15),
                      M["plaster"]))
-    plain.append(box(tag + "_LuteNeck", (lx - 0.03, ly - 0.01, lz + 0.16),
-                     (0.032, 0.032, 0.17), M["wood_dark"], rot=(0, 12, 8)))
-    peg_x, peg_z = lx - 0.05, lz + 0.245
+    plain.append(box(tag + "_LuteNeck", (lx - 0.055, ly - 0.01, lz + 0.115),
+                     (0.032, 0.032, 0.11), M["wood_dark"], rot=(0, 30, 8)))
+    peg_x, peg_z = lx - 0.10, lz + 0.165
     for i, mat in enumerate(("petal_red", "petal_blue", "petal_gold")):
         plain.append(box("%s_LutePeg%d" % (tag, i),
                          (peg_x + i * 0.02, ly - 0.02, peg_z),

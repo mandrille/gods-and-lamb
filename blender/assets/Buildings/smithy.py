@@ -38,7 +38,7 @@ ASSET = dict(
     category=CATEGORY,
     # MEASURED. The block's own wide bevel and the anvil standing forward of
     # the forge mouth both reach past the arithmetic box size.
-    footprint=(2.01, 1.86),
+    footprint=(2.01, 2.08),
     anchor="floor",
     slots=(),
 )
@@ -55,11 +55,12 @@ CHIM_W = 0.25
 CHIM_H = 0.55
 CHIM_X, CHIM_Y = -0.30, 0.27
 
-ANVIL_X, ANVIL_Y = 0.62, -0.95   # clear of the jamb (x = +-0.363), or the
+ANVIL_X, ANVIL_Y = 0.62, -1.17   # -0.95 before the fix round   # clear of the jamb (x = +-0.363), or the
                                   # anvil and the arch frame overlap in the
                                   # front elevation even though neither
                                   # mesh actually touches the other
-STUMP_R, STUMP_H = 0.14, 0.45   # hip-height on a 0.855 m follower
+STUMP_R, STUMP_H = 0.15, 0.55   # taller, and the anvil stands clear of the
+                                # jambs it used to smudge into (review)
 
 RACK_X = SW * 0.5 + 0.02
 
@@ -88,8 +89,10 @@ def build(tag="SMITHY", **kw):
     # The fire, well forward of the back wall and proud of the coal bed --
     # sunk flush it falls into its own shadow, the same lesson the cottage's
     # window pane learned.
-    plain.append(box(tag + "_Fire", (0, back_y - 0.14, 0.14),
-                 (ARCH_W - 0.16, 0.09, 0.20), M["warmglow"]))
+    # Fills the arch: the reference's whole identity is the fire, and a
+    # 20 cm slab at z 0.14 was mostly behind the jambs (review).
+    plain.append(box(tag + "_Fire", (0, back_y - 0.14, 0.30),
+                 (ARCH_W - 0.16, 0.09, 0.38), M["warmglow"]))
 
     # Stone surround, proud of the adobe face -- the hue break an arch needs
     # against a body of the exact colour its own roof will be.

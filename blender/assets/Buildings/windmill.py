@@ -49,7 +49,7 @@ ROOF_OVER = 0.05
 DOOR_W, DOOR_H = 0.28, 0.46
 DOOR_DEPTH = 0.20
 
-HUB_Y = -TOWER_R - 0.03
+HUB_Y = -TOWER_R * 0.76 - 0.03   # against the TAPERED wall at hub height
 HUB_R = 0.06
 
 SAIL_LEN = 1.05
@@ -59,8 +59,10 @@ SAIL_LEN = 1.05
 # the down-pointing blade measured z = -0.466: `-- measure` never lies, but
 # a sail's reach past its own hub is easy to forget while eyeballing a
 # tower's proportions.
-HUB_Z = HUB_R + SAIL_LEN + 0.08
-TOWER_H = HUB_Z + 0.03          # eaves just above the hub mount
+HUB_Z = 1.50                    # sails in an X clear the ground by a margin
+TOWER_H = HUB_Z + 0.06          # eaves just above the hub mount; 1.56 m --
+                                # a 1.2 m drum under a cone read as a silo
+TOP_R = TOWER_R * 0.76          # tapered, like the reference
 SAIL_W, SAIL_T = 0.11, 0.028
 PAD_W, PAD_T = 0.14, 0.030
 PAD_RS = (0.34, 0.72)           # two lattice pads per blade, at these radii
@@ -72,8 +74,8 @@ def build(tag="WINDMILL", **kw):
     body, trim, roof, accent = scheme(kw.get("scheme", "windmill_stone"))
     hero, plain = [], []
 
-    tower = cyl(tag + "_Tower", (0, 0, TOWER_H * 0.5), TOWER_R, TOWER_H,
-               body, verts=12)
+    tower = cone(tag + "_Tower", (0, 0, TOWER_H * 0.5), TOWER_R, TOP_R, TOWER_H,
+                 body, verts=12)
     boolean(tower, box("door_cut",
                        (0, -TOWER_R - DOOR_DEPTH, DOOR_H * 0.5),
                        (DOOR_W, DOOR_DEPTH * 2.0, DOOR_H), None))
@@ -83,7 +85,7 @@ def build(tag="WINDMILL", **kw):
                  (DOOR_W, 0.04, DOOR_H), M["hollow"]))
 
     hero.append(cone(tag + "_Roof", (0, 0, TOWER_H + ROOF_RISE * 0.5),
-                     TOWER_R + ROOF_OVER, 0.02, ROOF_RISE, roof, verts=12))
+                     TOP_R + ROOF_OVER, 0.02, ROOF_RISE, roof, verts=12))
 
     # Ivy: three overlapping leaf boxes climbing the base -- the one warm-
     # green break in an otherwise all-stone silhouette.
@@ -101,7 +103,9 @@ def build(tag="WINDMILL", **kw):
     # Four sails, each one box offset to ONE side of the hub -- see the
     # module docstring for why this is not a single centred bar rotated.
     for i in range(4):
-        ang = math.radians(90.0 * i)
+        # +45: at 0/90/180/270 one sail ran straight down the tower face
+        # through the roof, the wall and the door (review).
+        ang = math.radians(90.0 * i + 45.0)
         s, c = math.sin(ang), math.cos(ang)
         r_mid = HUB_R + SAIL_LEN * 0.5
         plain.append(box("%s_Sail%d" % (tag, i),

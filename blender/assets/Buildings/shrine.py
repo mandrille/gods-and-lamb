@@ -49,7 +49,8 @@ SIDE_WIN_Z = 0.62
 TOWER_W, TOWER_D = 0.55, 0.55
 TOWER_X = -(NAVE_W * 0.5 + TOWER_W * 0.5 - 0.05)
 TOWER_Y = -NAVE_D * 0.5 + TOWER_D * 0.5 - 0.04
-TOWER_STACK = 0.40                    # tower body rises this far above the nave ridge
+TOWER_STACK = 0.75                    # tower body rises this far above the nave ridge
+                                      # (0.40 read as a chimney -- review)
 TOWER_ROOF_H = 0.30
 
 
@@ -101,9 +102,12 @@ def build(tag="SHRINE", **kw):
     # its whole length, cut down to one each because a building this small is
     # drawn a handful of times, not close enough to count a second.
     for sx in (-1, 1):
-        boolean(walls, box("sidewin_%d" % sx,
-                           (sx * (NAVE_W * 0.5 - WIN_DEPTH * 0.5), 0.0, SIDE_WIN_Z),
-                           (WIN_DEPTH * 2.0, WIN_W, WIN_H), None, rot=None))
+        # Two per side, not one at y=0: the long nave wall was blank adobe in
+        # the `along` view, the side the play camera usually sees (review).
+        for wy in (-0.42, 0.42):
+            boolean(walls, box("sidewin_%d_%d" % (sx, int(wy * 100)),
+                               (sx * (NAVE_W * 0.5 - WIN_DEPTH * 0.5), wy, SIDE_WIN_Z),
+                               (WIN_DEPTH * 2.0, WIN_W, WIN_H), None, rot=None))
     P.append(walls)
 
     # The door's dark fill and the two arch windows' blue glazing. Front
@@ -118,12 +122,13 @@ def build(tag="SHRINE", **kw):
         # arch -- the long wall is thin on triangle budget already from the
         # tower and a second arch cutter per side was not worth the cost) but
         # still glazed the same hue, so they read as the same window family.
-        P.append(box("%s_SideGlass%d" % (tag, sx),
-                     (sx * (NAVE_W * 0.5 - 0.005), 0.0, SIDE_WIN_Z),
-                     (0.05, WIN_W - 0.05, WIN_H - 0.05), M["tile_blue"]))
-        P.append(box("%s_SideDark%d" % (tag, sx),
-                     (sx * (NAVE_W * 0.5 - WIN_DEPTH), 0.0, SIDE_WIN_Z),
-                     (0.04, WIN_W, WIN_H), M["hollow"]))
+        for wy in (-0.42, 0.42):
+            P.append(box("%s_SideGlass%d_%d" % (tag, sx, int(wy * 100)),
+                         (sx * (NAVE_W * 0.5 - 0.005), wy, SIDE_WIN_Z),
+                         (0.05, WIN_W - 0.05, WIN_H - 0.05), M["tile_blue"]))
+            P.append(box("%s_SideDark%d_%d" % (tag, sx, int(wy * 100)),
+                         (sx * (NAVE_W * 0.5 - WIN_DEPTH), wy, SIDE_WIN_Z),
+                         (0.04, WIN_W, WIN_H), M["hollow"]))
 
     # Door jambs -- timber against adobe, the hue break the palette needs.
     r = DOOR_W * 0.5
@@ -171,10 +176,12 @@ def build(tag="SHRINE", **kw):
     # cross base needs to sit INSIDE it by a couple of centimetres or the two
     # meet at a zero-area seam that reads as a gap in a raking light.
     cross_z = tower_top + TOWER_ROOF_H + 0.08
-    P.append(box(tag + "_CrossV", (TOWER_X, TOWER_Y, cross_z),
-                 (0.025, 0.025, 0.20), trim))
-    P.append(box(tag + "_CrossH", (TOWER_X, TOWER_Y, cross_z + 0.035),
-                 (0.13, 0.025, 0.025), trim))
+    # 5 cm section in `gold`, 0.30 tall: 2.5 cm `wood_dark` was sub-pixel
+    # against the sky at 70 px, and the cross is the entire identity (review).
+    P.append(box(tag + "_CrossV", (TOWER_X, TOWER_Y, cross_z + 0.05),
+                 (0.05, 0.05, 0.30), M["gold"]))
+    P.append(box(tag + "_CrossH", (TOWER_X, TOWER_Y, cross_z + 0.10),
+                 (0.22, 0.05, 0.05), M["gold"]))
 
     # HERO carries the visible bevel: the nave walls, the roof slabs and the
     # tower -- the three masses that make the silhouette. Trim, glazing and

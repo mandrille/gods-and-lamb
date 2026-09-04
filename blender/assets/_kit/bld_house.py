@@ -120,6 +120,15 @@ def build(tag, scheme_key, size="hut", **kw):
 
     P.extend(_arch_opening(tag + "_DoorDark", 0.0, fy + DOOR_DEPTH,
                            DOOR_W, DOOR_H, M["hollow"]))
+    # Door jambs in the ACCENT: on the plaster colourway the accent was
+    # spent on a 5 cm flower and body/roof/trim were three warm neutrals
+    # (review). Two jambs put the scheme's one hue where the eye lands.
+    _jr = DOOR_W * 0.5
+    _spring = DOOR_H - _jr
+    for _sx in (-1, 1):
+        P.append(box("%s_Jamb%s" % (tag, "L" if _sx < 0 else "R"),
+                     (_sx * (_jr + 0.035), fy - 0.016, _spring * 0.5),
+                     (0.06, 0.045, _spring), accent))
     for sx, side in ((-1, "L"), (1, "R")):
         P.append(box("%s_WinDark%s" % (tag, side),
                      (sx * WIN_X, fy + WIN_DEPTH, WIN_Z),

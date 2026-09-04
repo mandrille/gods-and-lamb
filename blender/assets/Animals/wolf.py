@@ -92,8 +92,11 @@ def build(tag="WOLF", **kw):
     # standing one.
     hero.append(box(tag + "_Body", (0, 0.0, BARREL_Z),
                     (0.24, 0.42, 0.22), M["hair_dark"]))
+    # `wood_dark` on the ruff: body, ruff, head and legs were all in the dark
+    # end and read as one black mass with two red dots at play scale
+    # (review). One value step at the shoulders separates head from barrel.
     hero.append(box(tag + "_Ruff", (0, -0.16, BARREL_Z + 0.04),
-                    (0.27, 0.18, 0.26), M["hair_dark"]))
+                    (0.27, 0.18, 0.26), M["wood_dark"]))
     # The rump is plain, not hero -- a sharper corner here reads as haunch
     # muscle rather than fleece, and the budget the sheep spends on a third
     # bevelled mass goes to the face and the paws instead.
@@ -108,7 +111,7 @@ def build(tag="WOLF", **kw):
     plain.append(box(tag + "_Head", (0, -0.38, 0.335),
                      (0.19, 0.19, 0.185), M["hair_dark"]))
     plain.append(box(tag + "_Muzzle", (0, -0.475, 0.285),
-                     (0.13, 0.15, 0.115), M["hair_dark"]))
+                     (0.13, 0.15, 0.115), M["wood_dark"]))
     plain.append(box(tag + "_Snout", (0, -0.555, 0.265),
                      (0.075, 0.06, 0.075), M["hair_dark"]))
     # A slab proud of the head's own front edge -- the shadow that gives this
@@ -171,12 +174,14 @@ def build(tag="WOLF", **kw):
     # --- tail, three segments that DROOP rather than the sheep's raised
     # puffy one -- a low tail is part of what makes this read as stalking
     # rather than idle livestock, even before it moves.
-    plain.append(box(tag + "_Tail1", (0, 0.34, 0.26),
+    # Sweeps UP, like the reference -- stepping down in the body's own colour
+    # it never appeared in silhouette at all (review).
+    plain.append(box(tag + "_Tail1", (0, 0.34, 0.32),
                      (0.08, 0.08, 0.08), M["hair_dark"]))
-    plain.append(box(tag + "_Tail2", (0, 0.405, 0.22),
+    plain.append(box(tag + "_Tail2", (0, 0.405, 0.36),
                      (0.07, 0.07, 0.07), M["hair_dark"]))
-    plain.append(box(tag + "_Tail3", (0, 0.465, 0.18),
-                     (0.055, 0.055, 0.055), M["hair_dark"]))
+    plain.append(box(tag + "_Tail3", (0, 0.465, 0.385),
+                     (0.06, 0.06, 0.06), M["wood_dark"]))
 
     # 0.03 -- sharper still than the cow's 0.045, relative to this body's
     # narrower cross-section. The cow's ratio of bevel to half-width is ~26%;

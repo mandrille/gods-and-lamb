@@ -38,7 +38,9 @@ ASSET = dict(
     slots=(),
 )
 
-PALETTE = dict(tunic="leather", hair="hair_warm", skin="skin",
+# `cloth_blue`: leather + leather + wood_dark + iron_dark was five browns
+# and darks with no hue (review); blue also separates him from the builder.
+PALETTE = dict(tunic="cloth_blue", hair="hair_warm", skin="skin",
                boots="leather", legs="wood_dark")
 
 
@@ -60,10 +62,10 @@ def build(tag="MINER", **kw):
         # the whole pick vanished, the same screen-space-occlusion trap the
         # lumberjack's axe hit -- an X/Z overlap with a closer, opaque part
         # hides a prop regardless of which bone claims it.
-        box(tag + "_Pick", (HAND_R[0], HAND_R[1] - 0.02, 0.44),
-           (0.03, 0.03, 0.40), M["wood"], rot=(0, 20, 0)),
-        box(tag + "_PickHead", (0.27, HAND_R[1] - 0.02, 0.63),
-           (0.17, 0.045, 0.05), M["iron_dark"]),
+        box(tag + "_Pick", (HAND_R[0] + 0.01, HAND_R[1] - 0.02, 0.44),
+           (0.034, 0.034, 0.40), M["wood"], rot=(0, 12, 0)),
+        box(tag + "_PickHead", (0.21, HAND_R[1] - 0.02, 0.63),
+           (0.17, 0.05, 0.06), M["iron_dark"]),
         # Ore sack on the hip, sand-coloured.
         box(tag + "_Sack", HIP_L, (0.14, 0.12, 0.15), M["sand"]),
     ]

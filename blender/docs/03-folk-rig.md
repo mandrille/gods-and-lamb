@@ -264,26 +264,32 @@ were chopping.
 
 ## 8. What is NOT done
 
-**Nothing carries this into the game.** `library`, `export` and `guards` are
-still in `build.py`'s `PLANNED` tuple, so the rigged result lives in
-`out/rig/<asset>_rigged.blend` and reaches Godot by no route at all. When the
-exporter lands it will need glTF **skin + animation** support, which is a
-larger question than this target — armature export, bone node hierarchy, the
-animation sampler, and the Godot-side `AnimationPlayer`. Do not assume the
-existing per-asset `.glb` plan covers it.
+**Idle, carry and the tile-hop are still not clips of their own.** The walk,
+idle, pickup and chop clips exist and export (`-- glb` reads back `anims 4`
+on every human); a carry pose and the hop the tween does are not written.
 
-**The adventurer is rigged but not repose.** `-- rig Folk/adventurer` runs
-clean at 588 tris, but that asset still has a pose baked in (staff arm forward,
-one boot leading), so it walks with a permanent lean. Squaring it up is the
-same job section 3 describes.
+**critterrig is still its own module.** It imports folkrig for the asserts and
+the bake order and defines its own skeleton, groups and clips -- two files
+that both know what a bone roll is for. A third body plan (a bird, a fish)
+would be the moment to ask whether the generic half wants its own module.
 
-**One clip.** There is a walk and nothing else. Idle, carry and the tile-hop
-that the tween currently does are all unwritten.
+**The shared body has one strap.** `_kit/folkbody.py` always draws the
+diagonal `_Strap`; there is no flag to omit or reposition it, so every job
+that wanted its own bag (adventurer's pack, nurse's satchel) drew a second
+one beside it. A `strap=` parameter is the fix and was not in scope.
 
-**No shared rig kit.** `critterrig` imports folkrig for the asserts and the
-bake order and defines its own skeleton, groups and clips. That is two files
-that both know what a bone roll is for. A third animal shape — a bird, a fish
--- would be the moment to ask whether the generic half wants its own module.
+### 8b. What WAS done since this section was written
+
+- **The exporter landed.** `-- library` writes one `.glb` per asset into
+  `godot/assets/library/` with skin + animation; Godot's `Follower` finds the
+  clips by name.
+- **The adventurer is squared.** Its baked head yaw, arm tilt and leading boot
+  are gone; it rests symmetric like the villager and its walk no longer leans.
+- **There is a shared BODY.** `_kit/folkbody.py` owns every human proportion
+  and builds the body; `SKELETON` here is imported from it, so the coordinate
+  table at the top of this document can no longer drift from the geometry.
+  Nine humans stand on it (villager, adventurer, and seven jobs), each a
+  ~40-line file of palette + props. See `assets/README.md` §"Humans".
 
 ---
 

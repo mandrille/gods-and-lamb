@@ -158,8 +158,13 @@ func _draw() -> void:
 		# competing with everything else on screen.
 		if (f == hovered or f == selected or highlight_all) \
 				and JOB_ICON.has(f.brain.job):
-			Icons.draw_icon(self, String(JOB_ICON[f.brain.job]),
-							p + Vector2(14, -10), 14.0)
+			# On a dark disc, and bigger: a 14 px glyph drawn straight onto
+			# bright grass was invisible at play distance, so the badge that
+			# tells a miner from a bard told nobody anything.
+			var badge := p + Vector2(15, -11)
+			draw_circle(badge, 11.0, Color(0.08, 0.09, 0.12, 0.72))
+			draw_arc(badge, 11.0, 0.0, TAU, 20, Color(1, 1, 1, 0.35), 1.5, true)
+			Icons.draw_icon(self, String(JOB_ICON[f.brain.job]), badge, 17.0)
 
 		# GUILT IS THE ONE THING ALWAYS WORTH DRAWING.
 		#

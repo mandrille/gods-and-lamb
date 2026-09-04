@@ -138,16 +138,17 @@ def _plot(tag, accent):
         P.append(box("%s_RailY%d" % (tag, sy),
                      (cx, sy * hd, POST_H * 0.62),
                      (PLOT_W + POST, 0.05, 0.07), M["wood"]))
-    for sx in (-1, 1):
-        P.append(box("%s_RailX%d" % (tag, sx),
-                     (cx + sx * hw, 0, POST_H * 0.62),
-                     (0.05, PLOT_D + POST, 0.07), M["wood"]))
 
     for i, rx in enumerate(ROW_X):
         P.append(box("%s_Soil%d" % (tag, i), (cx + rx, 0, SOIL_H * 0.5),
                      (ROW_W, ROW_D, SOIL_H), M["soil"]))
-        P.append(box("%s_Crop%d" % (tag, i), (cx + rx, 0, SOIL_H + CAP_H * 0.42),
-                     (ROW_W - 0.02, ROW_D - 0.05, CAP_H), accent))
+        # Five short tufts with gaps per row -- one continuous 1.9 m cap at
+        # the fence-rail height read as a slatted bench (review).
+        for t in range(5):
+            ty = (t - 2) * (ROW_D * 0.19)
+            P.append(box("%s_Crop%d_%d" % (tag, i, t),
+                         (cx + rx, ty, SOIL_H + CAP_H * 0.55),
+                         (ROW_W - 0.02, ROW_D * 0.11, CAP_H * 1.3), accent))
     return P
 
 

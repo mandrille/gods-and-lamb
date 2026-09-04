@@ -85,7 +85,13 @@ HIP_L = (-0.066, -0.02, 0.10)
 HIP_R = (0.066, -0.02, 0.10)
 BROW = (0.0, -HEAD_D * 0.5 + 0.01, HEAD_C + 0.06)
 CROWN = (0.0, 0.02, HEAD_Z + HEAD_H + 0.02)
-BELT = (0.0, -0.09, BODY_Z + 0.02)
+# TORSO CENTRE at waist height, not a front-face point. The first value here
+# was y = -0.09 (the tunic's front face) with nothing saying so, and three jobs
+# centred a 20 cm-deep wrap box on it and got a shelf standing 9 cm proud of
+# the chest in every walk frame -- the review's single most visible defect.
+# A belt is a thing that goes AROUND the body: centre it, size it to the tunic
+# (0.24 x 0.19) plus a few mm, and it wraps.
+BELT = (0.0, -0.005, BODY_Z + 0.02)
 
 # ------------------------------------------------------------------ palette
 # Keys a job's palette dict may set; anything omitted falls back to these.
@@ -139,9 +145,12 @@ def _hair_curly(tag, hero, plain, P):
     would spend triangles this asset does not have. Kept off the front third
     of the head so the face stays readable.
     """
+    # Radius and size are the whole point: at HEAD_W * 0.46 with 8.5 cm
+    # curls, every curl sat INSIDE the head's own silhouette and the bard read
+    # bald from all three angles. They have to break the outline to exist.
     n = 7
-    r = HEAD_W * 0.46
-    top = HEAD_C + HEAD_H * 0.40
+    r = HEAD_W * 0.56
+    top = HEAD_C + HEAD_H * 0.42
     for i in range(n):
         ang = math.pi * 2.0 * i / n
         cx, cy = r * math.sin(ang), r * math.cos(ang) * 0.6
@@ -149,7 +158,7 @@ def _hair_curly(tag, hero, plain, P):
             continue
         plain.append(box("%s_HairCurl%d" % (tag, i),
                          (cx, cy + 0.03, top - abs(cx) * 0.15),
-                         (0.085, 0.085, 0.085), P["hair"]))
+                         (0.11, 0.11, 0.11), P["hair"]))
 
 
 def _hair_topknot(tag, hero, plain, P):
@@ -179,7 +188,8 @@ _HAIR_STYLES = {
 
 
 # --------------------------------------------------------------------- body
-def body(tag, palette, hair="cap", apron=True, kerchief=True, hands="level"):
+def body(tag, palette, hair="cap", apron=True, kerchief=True, hands="level",
+         strap=True):
     """The shared human, in symmetric rest pose. Returns (hero, plain).
 
     `hero` carries the silhouette and is meant to go through
@@ -223,8 +233,12 @@ def body(tag, palette, hair="cap", apron=True, kerchief=True, hands="level"):
     # different strap colour yet). Rotated about Y, not Z: a Z yaw spins a
     # long box in PLAN, so this runs shoulder to hip and stays inside the
     # tunic width instead of sticking out of the ribs.
-    plain.append(box(tag + "_Strap", (0, -0.112, BODY_Z + 0.14),
-                     (0.26, 0.026, 0.042), M["leather"], rot=(0, 34, 0)))
+    # Optional since the review: on nine of nine humans this was the most
+    # repeated shape in the crowd, and the jobs that carry their own bag
+    # (satchel, quiver, pack) were drawing a second strap beside it.
+    if strap:
+        plain.append(box(tag + "_Strap", (0, -0.112, BODY_Z + 0.14),
+                         (0.26, 0.026, 0.042), M["leather"], rot=(0, 34, 0)))
 
     # Arms, SHORT and LEVEL -- no rot=. The ArmL/ArmR bones swing them at
     # runtime; a rest-pose tilt here is a tilt added to every frame of every

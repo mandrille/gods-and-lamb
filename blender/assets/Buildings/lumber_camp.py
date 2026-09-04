@@ -38,7 +38,7 @@ ASSET = dict(
     category=CATEGORY,
     # MEASURED. The roof overhang sets the plan reach on every side; the wheel
     # and log pile both sit inside its shadow rather than past it.
-    footprint=(2.50, 2.14),
+    footprint=(2.34, 2.29),   # re-measured after the fix round
     # X measures 2.492 -- inside the project's 2.5 m plan ceiling with an
     # 8 mm margin, not against it.
     anchor="floor",
@@ -51,7 +51,7 @@ ASSET = dict(
 # for. Everything below is that draft scaled by roughly 1.5x, with the wheel
 # set directly to a 1.0 m diameter rather than scaled, since it is the one
 # part the batch gave an explicit target for.
-W, D = 1.95, 1.58
+W, D = 1.82, 1.58          # X trimmed: 1.95 put the plan on the 2.5 m ceiling
 H = 1.02
 RISE = 0.66
 OVERHANG = 0.23
@@ -73,9 +73,10 @@ WHEEL_MINOR = 0.060
 WHEEL_Z = WHEEL_R + WHEEL_MINOR   # so the RING's bottom, not its centre,
                                   # touches the ground -- the ring reaches
                                   # major+minor past its own centre.
-WHEEL_X = -W * 0.5 - 0.05     # proud of the wall face, not flush -- flush
-                              # would z-fight the wall's own flat side
-WHEEL_Y = -0.30
+# On the FRONT (-Y) face, disc toward the camera: on the left side wall the
+# one prop that names the building was invisible from the front (review).
+WHEEL_X = -W * 0.5 + 0.34
+WHEEL_Y = -D * 0.5 - 0.10
 SPOKES = 6
 
 PILE_X, PILE_Y = W * 0.5 - 0.18, -D * 0.5 - 0.15
@@ -121,23 +122,24 @@ def build(tag="LUMBER", **kw):
     # The water wheel. Hub, then six spokes each offset to ONE side of it --
     # not a single bar through the centre, which would draw twice as many.
     plain.append(torus(tag + "_Wheel", (WHEEL_X, WHEEL_Y, WHEEL_Z), WHEEL_R,
-                 WHEEL_MINOR, M["wood_dark"], plane="YZ", verts=16, rings=6))
+                 WHEEL_MINOR, M["wood_dark"], plane="XZ", verts=16, rings=6))
     plain.append(cyl(tag + "_Hub", (WHEEL_X, WHEEL_Y, WHEEL_Z), 0.083, 0.075,
-                 accent, axis="X", verts=8))
+                 accent, axis="Y", verts=8))
     for i in range(SPOKES):
         ang = math.radians(360.0 / SPOKES * i)
         r_mid = WHEEL_R * 0.52
         plain.append(box("%s_Spoke%d" % (tag, i),
-                     (WHEEL_X, WHEEL_Y + r_mid * math.sin(ang),
+                     (WHEEL_X + r_mid * math.sin(ang), WHEEL_Y,
                       WHEEL_Z + r_mid * math.cos(ang)),
-                     (0.042, WHEEL_R * 0.9, 0.042), trim,
-                     rot=(math.degrees(ang), 0, 0)))
-    plain.append(cyl(tag + "_Axle", (WHEEL_X + 0.042, WHEEL_Y, WHEEL_Z),
-                 0.033, 0.15, accent, axis="X", verts=8))
+                     (0.042, 0.042, WHEEL_R * 0.9), trim,
+                     rot=(0, -math.degrees(ang), 0)))
+    plain.append(cyl(tag + "_Axle", (WHEEL_X, WHEEL_Y + 0.042, WHEEL_Z),
+                 0.033, 0.15, accent, axis="Y", verts=8))
     # A short trickle at the foot of the wheel -- the accent hue break that
     # keeps a wooden wheel from reading as one more log against the wall.
-    plain.append(box(tag + "_Water", (WHEEL_X, WHEEL_Y, 0.038),
-                 (0.15, WHEEL_R * 1.3, 0.075), M["water"]))
+    # A pond under the wheel, not a blue plank beside it.
+    plain.append(box(tag + "_Water", (WHEEL_X, WHEEL_Y - 0.10, 0.03),
+                 (WHEEL_R * 1.5, 0.55, 0.06), M["water"]))
 
     # The log pile. Two on the ground, one nested in the saddle -- a triangle
     # cross-section is what makes a pile of round things sit still.

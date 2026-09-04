@@ -28,12 +28,12 @@ ASSET = dict(
     category=CATEGORY,
     # MEASURED: the balcony platform and the sign bracket both project past
     # the wall-box plan, and the rotated roof slab reaches past it too.
-    footprint=(1.96, 1.77),
+    footprint=(2.20, 1.90),   # re-measured after the fix round
     anchor="floor",
     slots=(),
 )
 
-W, D = 1.56, 1.36
+W, D = 1.80, 1.52          # was 1.56 x 1.36: SMALLER than the tavern (review)
 F1_H, F2_H, F3_H = 0.62, 0.58, 0.52       # three storeys, implied by timber bands
 H = F1_H + F2_H + F3_H
 RISE, OVERHANG, ROOF_T = 0.54, 0.16, 0.12
@@ -137,6 +137,16 @@ def build(tag="HOTEL", **kw):
                      (sx * (GWIN_X * 0.55), ty2, F1_H + F2_H + F3_H * 0.5),
                      (0.30, BEAM_T, BEAM_T * 1.3), M["wood_dark"],
                      rot=(0, sx * 28, 0)))
+
+    # Jettied upper storeys: each steps 8 cm out over the one below on the
+    # front face, so the three floors are a silhouette and not three lines
+    # painted on one flat wall (review).
+    for k, (z0, hh) in enumerate(((F1_H, F2_H), (F1_H + F2_H, F3_H))):
+        jut = 0.08 * (k + 1)
+        P.append(box("%s_Jetty%d" % (tag, k), (0, fy - jut * 0.5 + 0.005, z0 + hh * 0.5),
+                     (W - 0.04, jut + 0.01, hh - 0.02), body))
+        P.append(box("%s_JettyLip%d" % (tag, k), (0, fy - jut, z0 + 0.02),
+                     (W - 0.02, 0.05, 0.05), M["wood_dark"]))
 
     roof_parts = gable_roof(tag + "_Roof", (0, 0, H), W, D, RISE, roof,
                             overhang=OVERHANG, thickness=ROOF_T)

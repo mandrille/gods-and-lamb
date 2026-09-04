@@ -20,7 +20,7 @@ tilted in HandL is where this asset keeps its asymmetry.
 import os
 
 from kit import M, box
-from folkbody import HAND_L, body, finish
+from folkbody import CHEST, HAND_L, body, finish
 
 CATEGORY = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +29,7 @@ ASSET = dict(
     family="folk",
     variant="priest",
     category=CATEGORY,
-    footprint=(0.40, 0.35),   # MEASURED: 0.384 x 0.330, same as villager's own AABB
+    footprint=(0.39, 0.39),   # MEASURED: 0.384 x 0.330, same as villager's own AABB
     anchor="floor",
     slots=(),
 )
@@ -52,20 +52,22 @@ def build(tag="PRIEST", **kw):
     # cassock so they do not z-fight, plus two dark dots for the trim the
     # reference shows without spending a third strip on it.
     for sx in (-1, 1):
+        # `cloth_blue`, not wool: stone cassock + wool stole + plaster pages
+        # was three neutrals under one key light (review, hue-not-value).
+        # The dots were 2 cm boxes, under the visibility floor -- gone.
         plain.append(box("%s_Stole%s" % (tag, "L" if sx < 0 else "R"),
-                         (sx * 0.045, -0.108, 0.33), (0.032, 0.018, 0.26),
-                         M["wool"]))
-    plain.append(box(tag + "_StoleDot1", (-0.045, -0.112, 0.42),
-                     (0.02, 0.012, 0.02), M["hair_dark"]))
-    plain.append(box(tag + "_StoleDot2", (0.045, -0.112, 0.30),
-                     (0.02, 0.012, 0.02), M["hair_dark"]))
+                         (sx * 0.045, -0.108, 0.33), (0.036, 0.018, 0.26),
+                         M["cloth_blue"]))
 
     # The book: a wood spine with two plaster pages, tilted up as if held open
     # for reading rather than just carried.
-    plain.append(box(tag + "_BookSpine", HAND_L, (0.018, 0.10, 0.13),
-                     M["wood_dark"], rot=(-30, 0, 0)))
-    plain.append(box(tag + "_BookPages", (HAND_L[0] + 0.045, HAND_L[1] - 0.01,
-                     HAND_L[2] + 0.01), (0.10, 0.09, 0.015), M["plaster"],
-                     rot=(-30, 0, 0)))
+    # Held OPEN at the chest, front and centre, 16 cm wide -- at HAND_L it
+    # was side-on and 10 cm, and the one prop that says "priest" never
+    # showed from the front (review). Still on the ArmL bone by name.
+    bx, by, bz = CHEST[0], CHEST[1] - 0.05, CHEST[2] + 0.02
+    plain.append(box(tag + "_BookSpine", (bx, by, bz), (0.018, 0.06, 0.12),
+                     M["wood_dark"], rot=(-35, 0, 0)))
+    plain.append(box(tag + "_BookPages", (bx, by - 0.012, bz),
+                     (0.16, 0.10, 0.012), M["plaster"], rot=(-35, 0, 0)))
 
     return finish(hero, plain)

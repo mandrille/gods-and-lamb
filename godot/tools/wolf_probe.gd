@@ -20,6 +20,9 @@ var _faults: Array[String] = []
 var _removed: Array[String] = []
 var _elapsed := 0.0
 var _phase := 0
+var _shot := false
+var _saved := false
+var _pair: Array = []
 
 
 func _initialize() -> void:
@@ -48,6 +51,15 @@ func _process(delta: float) -> bool:
 
 	if _phase == 1:
 		_elapsed += delta
+		if not _shot and _elapsed > 0.9:
+			_shot = true
+			_frame_pair()
+			return false
+		if _shot and not _saved:
+			_saved = true
+			get_root().get_texture().get_image().save_png(
+				"res://shots/wolf_hunt.png")
+			print("[WOLF] wrote res://shots/wolf_hunt.png")
 		if _removed.has("Animals/sheep"):
 			print("[WOLF] the wolf caught the sheep at t=%.1f game-s" % _elapsed)
 			_phase = 2
@@ -67,8 +79,43 @@ func _process(delta: float) -> bool:
 	return true
 
 
+## Point the camera at the predator and its prey, whatever they are doing.
+func _frame_pair() -> void:
+	var live: Array = []
+	for n in _pair:
+		if is_instance_valid(n):
+			live.append(n.global_position)
+	if live.is_empty():
+		return
+	var mid := Vector3.ZERO
+	for v in live:
+		mid += v
+	mid /= float(live.size())
+	# Clear the thicket in front of them. The pair spawns wherever the grid
+	# offers ground, and twice that was behind three bushes and a pine.
+	var doomed: Array = []
+	for e in _root.builder.placed_props:
+		var node = e.get("node")
+		if is_instance_valid(node) and node.global_position.distance_to(mid) < 4.0:
+			doomed.append(e)
+	for e in doomed:
+		_root.builder.remove_prop(e)
+	_root.queue_grid_rebuild()
+	_root.rig.focus = mid
+	_root.rig.dist = 8.0
+	_root.rig.call("_place")
+
+
 func _start_hunt() -> void:
+	# Both ends of the 3 m gap have to be ground. A random cell put the sheep
+	# past the island rim, standing on the backdrop.
 	var cell: Vector2i = _root.grid.random_cell(_root._rng)
+	for _try in 200:
+		var c: Vector2i = _root.grid.random_cell(_root._rng)
+		var away: Vector3 = _root.grid.world_of(c) + Vector3(3.0, 0, 0)
+		if _root.grid.is_plain(c) and _root.grid.is_plain(_root.grid.cell_of(away)):
+			cell = c
+			break
 	var at: Vector3 = _root.grid.world_of(cell)
 	if not _root._spawn_beast("Animals/wolf", at):
 		_faults.append("could not spawn a wolf")
@@ -76,6 +123,10 @@ func _start_hunt() -> void:
 	if not _root._spawn_beast("Animals/sheep", at + Vector3(3.0, 0, 0)):
 		_faults.append("could not spawn a sheep")
 		return
+	# Remembered so the shot can be framed on where they ACTUALLY are when the
+	# shutter falls -- a wolf that has run 3 m is not where it was spawned.
+	_pair = [_root.beasts[_root.beasts.size() - 2],
+			 _root.beasts[_root.beasts.size() - 1]]
 	print("[WOLF] wolf spawned, sheep 3 m away")
 
 

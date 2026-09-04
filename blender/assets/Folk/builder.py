@@ -22,12 +22,14 @@ ASSET = dict(
     family="folk",
     variant="builder",
     category=CATEGORY,
-    footprint=(0.42, 0.34),   # MEASURED: 0.414 x 0.335 -- the hammer head sets X
+    footprint=(0.58, 0.34),   # MEASURED: 0.414 x 0.335 -- the hammer head sets X
     anchor="floor",
     slots=(),
 )
 
-PALETTE = dict(tunic="sand", hair="hair_warm", skin="skin",
+# `cloth_teal`, not sand: sand tunic + leather cap + leather belt + leather
+# pouches was four warm browns (review); the reference is olive over leather.
+PALETTE = dict(tunic="cloth_teal", hair="hair_warm", skin="skin",
                boots="leather", legs="wood_dark")
 
 
@@ -51,16 +53,19 @@ def build(tag="BUILDER", **kw):
 
     # The hammer in HandR: a wood haft leaning back over the shoulder as if
     # just swung down, a stone head crossing the top.
-    haft_z = HAND_R[2] + 0.13
-    plain.append(box(tag + "_Hammer", (HAND_R[0], HAND_R[1], haft_z),
-                     (0.032, 0.032, 0.26), M["wood"], rot=(18, 0, 0)))
+    # Head-sized, like the reference, and out past the head box in X so it
+    # is not a detached grey tab beside the ear (review). Haft starts IN the
+    # hand and leans out, not back -- a back lean hid it behind the skull.
+    haft_z = HAND_R[2] + 0.14
+    plain.append(box(tag + "_Hammer", (HAND_R[0] + 0.04, HAND_R[1] - 0.02, haft_z),
+                     (0.034, 0.034, 0.30), M["wood"], rot=(0, -16, 0)))
     plain.append(box(tag + "_HammerHead",
-                     (HAND_R[0] + 0.01, HAND_R[1] - 0.05, haft_z + 0.125),
-                     (0.11, 0.06, 0.06), M["stone"], rot=(18, 0, 0)))
+                     (HAND_R[0] + 0.085, HAND_R[1] - 0.02, haft_z + 0.15),
+                     (0.16, 0.08, 0.08), M["stone"], rot=(0, -16, 0)))
 
     # The rock in HandL, dark stone so it does not disappear against the
     # tunic sleeve it sits beside.
-    plain.append(box(tag + "_Rock", HAND_L, (0.075, 0.07, 0.065),
-                     M["stone_dark"]))
+    plain.append(box(tag + "_Rock", (HAND_L[0] - 0.03, HAND_L[1] - 0.05,
+                     HAND_L[2] + 0.05), (0.12, 0.11, 0.10), M["stone_dark"]))
 
     return finish(hero, plain)

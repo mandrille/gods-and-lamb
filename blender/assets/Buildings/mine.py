@@ -37,7 +37,7 @@ ASSET = dict(
     # MEASURED. The rock's own wide bevel eats into its declared box size less
     # than the hut's roof reaches past ITS wall, so the two ends of the
     # asset do not scale the same way the arithmetic suggests.
-    footprint=(2.16, 1.88),
+    footprint=(2.13, 2.09),
     anchor="floor",
     slots=(),
 )
@@ -68,19 +68,28 @@ def build(tag="MINE", **kw):
 
     # The rock. Cut BEFORE the wide bevel -- boolean on a bevelled face tears
     # the cut edge, which is gotcha #1 in every builder in this tree.
-    rock = box(tag + "_Rock", (ROCK_CX, 0, RH * 0.5), (RW, RD, RH), body)
+    # The rock stands BACK (+0.22 in Y) as a backdrop and the timbered mouth
+    # stands forward of it: the first pass put the largest mass in front and
+    # squeezed the dark entrance -- the thing the reference leads with --
+    # into a slot (review).
+    ROCK_Y = 0.22
+    rock = box(tag + "_Rock", (ROCK_CX, ROCK_Y, RH * 0.5), (RW, RD, RH), body)
     boolean(rock, box("tun_cut",
-                      (ROCK_CX, -RD * 0.5 + TUN_DEPTH * 0.5, TUN_H * 0.5),
+                      (ROCK_CX, ROCK_Y - RD * 0.5 + TUN_DEPTH * 0.5, TUN_H * 0.5),
                       (TUN_W, TUN_DEPTH * 2.0, TUN_H), None))
     hero.append(rock)
 
     plain.append(box(tag + "_TunDark",
-                 (ROCK_CX, -RD * 0.5 + TUN_DEPTH, TUN_H * 0.5),
+                 (ROCK_CX, ROCK_Y - RD * 0.5 + TUN_DEPTH, TUN_H * 0.5),
                  (TUN_W, 0.05, TUN_H), M["hollow"]))
+    # A dark throat from the frame back to the rock, so the mouth reads as a
+    # tunnel and not a doorway painted on the frame.
+    plain.append(box(tag + "_Throat", (ROCK_CX, ROCK_Y - RD * 0.5 - 0.10, TUN_H * 0.5),
+                 (TUN_W, 0.22, TUN_H), M["hollow"]))
 
-    # Timber frame, proud of the rock face -- the hue break that keeps a
+    # Timber frame, 25 cm proud of the rock face -- the hue break that keeps a
     # wooden frame from reading as one more grey surface next to the stone.
-    fy = -RD * 0.5 - 0.030
+    fy = ROCK_Y - RD * 0.5 - 0.25
     for sx in (-1, 1):
         plain.append(box("%s_Jamb%s" % (tag, "L" if sx < 0 else "R"),
                      (ROCK_CX + sx * (TUN_W * 0.5 + JAMB * 0.5), fy,
@@ -88,6 +97,10 @@ def build(tag="MINE", **kw):
                      (JAMB, 0.12, TUN_H + JAMB), trim))
     plain.append(box(tag + "_Lintel", (ROCK_CX, fy, TUN_H + JAMB * 0.5),
                  (TUN_W + JAMB * 2.0, 0.12, JAMB), trim))
+    # The accent on the lintel too: rock + frame + ore was three dark
+    # neutrals with the one red spent on the hut's curtain (review).
+    plain.append(box(tag + "_LintelMark", (ROCK_CX, fy - 0.065, TUN_H + JAMB * 0.5),
+                 (TUN_W * 0.6, 0.012, JAMB * 0.6), accent))
 
     # Ore, spilled in front of the tunnel mouth -- iron_dark rather than
     # another stone, or it vanishes against the rock it just came out of.
@@ -140,6 +153,8 @@ def build(tag="MINE", **kw):
                 (slope_len, HD + HROOF_OVER * 2.0, HROOF_T), roof,
                 rot=(0.0, -pitch, 0.0)))
 
-    soften_all(hero, width=0.18, segments=3)
+    # 0.06, not 0.18: an 18 cm bevel on a 2 m block was a smooth grey
+    # capsule that read as a beanbag (review).
+    soften_all(hero, width=0.06, segments=2)
     soften_all(plain, width=0.0)
     return hero + plain

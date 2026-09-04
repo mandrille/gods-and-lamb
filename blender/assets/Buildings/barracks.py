@@ -158,11 +158,12 @@ def build(tag="BARRACKS", **kw):
                  (0.08, RD2 + 0.30, 0.08), M["wood_dark"]))
 
     # Flagpole at the front-left corner, above the merlon it stands beside.
+    # Doubled: a 10 cm flag on a 2 cm pole was one pixel at play scale.
     plain.append(cyl(tag + "_Pole", (FLAG_X, FLAG_Y, KH + MH + FLAG_H * 0.5),
-                 0.022, FLAG_H, M["wood_dark"], axis="Z", verts=6))
+                 0.04, FLAG_H, M["wood_dark"], axis="Z", verts=6))
     plain.append(box(tag + "_Flag",
-                 (FLAG_X + 0.09, FLAG_Y, KH + MH + FLAG_H - 0.09),
-                 (0.18, 0.014, 0.13), accent))
+                 (FLAG_X + 0.18, FLAG_Y, KH + MH + FLAG_H - 0.14),
+                 (0.36, 0.02, 0.24), accent))
 
     # Merlons are twenty separate boxes -- an earlier pass bevelled them and
     # blew the triangle cap. A crenellation this small reads as a tooth

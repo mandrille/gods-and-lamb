@@ -106,5 +106,19 @@ the livestock use. Both `-- rig` and `-- glb` dispatch on that key, so a new
 body plan costs a kit module and one line in the ASSET dict — not a new
 class.
 
+## Humans share one body
+
+Every human is `assets/_kit/folkbody.py` wearing different colours and props.
+`body(tag, palette, hair=..., apron=..., kerchief=..., hands=...)` returns the
+`(hero, plain)` part lists; `finish(hero, plain, extra_hero=(), extra_plain=())`
+runs the two `soften_all` passes. The rig's `SKELETON` is imported from the same
+file, so proportions cannot drift from the geometry. A new job is a ~40-line
+file: docstring, `ASSET`, a palette dict of `kit.M` keys, and a `build()` that
+calls `body()`, adds 2-4 plain props at the exported anchors (`HAND_R HAND_L
+CHEST BACK HIP_L HIP_R BROW CROWN BELT`), and returns `finish(...)`. Props ride
+the bone that holds them -- a held tool on that hand, a slung thing on the
+torso -- and the part names must be ones `folkrig.GROUPS` claims. Do not add
+proportions to a job file; if the body is wrong, fix it once in folkbody.
+
 `-- look` is the cheap one and it renders three angles. **Open the PNG.** A
 triangle count cannot tell you that a roof overhangs its own doorway.

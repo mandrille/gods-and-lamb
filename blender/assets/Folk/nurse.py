@@ -27,7 +27,7 @@ ASSET = dict(
     family="folk",
     variant="nurse",
     category=CATEGORY,
-    footprint=(0.40, 0.35),   # MEASURED: 0.384 x 0.330 -- the veil sides land inside
+    footprint=(0.43, 0.35),   # MEASURED: 0.384 x 0.330 -- the veil sides land inside
     # the same X the villager's own cap-hair sideburns already claim
     anchor="floor",
     slots=(),
@@ -47,6 +47,11 @@ def build(tag="NURSE", **kw):
     # is what makes it a wimple and not a hat.
     plain.append(box(tag + "_VeilCap", (0, 0.012, HEAD_Z + HEAD_H - 0.01),
                      (HEAD_W + 0.03, HEAD_D + 0.03, 0.17), M["wool"]))
+    # One red band round the wimple: wool veil on a plaster dress on skin
+    # was the batch's worst hue-not-value case, one white mass at play
+    # scale (review). This is also what says "nurse" at 40 px.
+    plain.append(box(tag + "_VeilBand", (0, 0.012, HEAD_Z + HEAD_H - 0.085),
+                     (HEAD_W + 0.05, HEAD_D + 0.05, 0.035), M["cloth_red"]))
     for sx in (-1, 1):
         plain.append(box("%s_VeilSide%s" % (tag, "L" if sx < 0 else "R"),
                          (sx * (HEAD_W * 0.5 - 0.008), 0.045, 0.57),
@@ -54,15 +59,16 @@ def build(tag="NURSE", **kw):
 
     # The hem: swallows the upper leg the way the cassock does for the
     # priest, same colour as the tunic so it reads as one dress, not a trim.
-    plain.append(box(tag + "_Hem", (0, 0, 0.135), (0.26, 0.20, 0.17),
+    # Shorter and higher than the first pass: at 0.17 tall from z 0.135 it
+    # swallowed the legs and the boots swung under a rigid skirt.
+    plain.append(box(tag + "_Hem", (0, 0, 0.16), (0.26, 0.20, 0.12),
                      M["plaster"]))
 
     # The emblem: a small green sprig on the chest, the one saturated hue on
     # an otherwise cream-and-brown asset.
-    plain.append(box(tag + "_EmblemA", (CHEST[0] - 0.012, CHEST[1] - 0.01,
-                     CHEST[2]), (0.03, 0.02, 0.045), M["leaf"]))
-    plain.append(box(tag + "_EmblemB", (CHEST[0] + 0.012, CHEST[1] - 0.01,
-                     CHEST[2] + 0.01), (0.03, 0.02, 0.045), M["leaf"]))
+    # ONE emblem, 12 cm -- two 3 cm sprigs did not exist at 40 px.
+    plain.append(box(tag + "_Emblem", (CHEST[0], CHEST[1] - 0.012, CHEST[2]),
+                     (0.12, 0.02, 0.11), M["leaf"]))
 
     # The satchel on the hip. No strap of its own -- body() already draws one
     # diagonal `_Strap` and the API gives no way to add a second without
@@ -71,6 +77,7 @@ def build(tag="NURSE", **kw):
 
     # The bottle in HandR: a small stone cylinder, not a box -- the one round
     # silhouette on an asset otherwise built entirely from boxes.
-    plain.append(cyl(tag + "_Bottle", HAND_R, 0.028, 0.09, M["stone"]))
+    plain.append(cyl(tag + "_Bottle", (HAND_R[0] + 0.03, HAND_R[1] - 0.05,
+                     HAND_R[2] + 0.03), 0.04, 0.13, M["cloth_blue"]))
 
     return finish(hero, plain)
