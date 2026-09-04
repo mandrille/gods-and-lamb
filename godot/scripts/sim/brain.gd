@@ -319,6 +319,8 @@ var target_cell := Vector2i(-1, -1)
 
 var thought := ""
 var thought_log: Array[String] = []
+## The number this brain was rolled from. Name and personality derive from it.
+var seed_value := 0
 var _thought_timer := 0.0
 
 ## action id -> the village-clock time it becomes available again. Checked in
@@ -354,11 +356,13 @@ var grid = null
 var boons = null
 
 
-func _init(seed_value: int) -> void:
+func _init(value: int) -> void:
 	# Seeded per follower and NOT from the clock, so the village comes up the
 	# same twice and a rendering change can be told apart from a different set
-	# of errands.
-	rng.seed = seed_value
+	# of errands. KEPT, because the save stores this one integer instead of a
+	# name and a personality: both are derived from it and cannot drift.
+	seed_value = value
+	rng.seed = value
 	personality = Personality.roll(rng)
 	memories = Memories.new()
 	for k in STAT_ORDER:

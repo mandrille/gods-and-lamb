@@ -68,11 +68,15 @@ const FOOTPRINTS := {
 const ROAD_EVERY := 23
 const ROAD_WIDE := 2
 
+## The world seed. Named rather than repeated as a literal in three places,
+## because a save stores it and a loader has to ask for the same default.
+const DEFAULT_SEED := 20260901
+
 var unlocked: Dictionary = {}      ## Vector2i slot -> true
-var _seed := 20260901
+var _seed := DEFAULT_SEED
 
 
-func _init(seed_value := 20260901) -> void:
+func _init(seed_value := DEFAULT_SEED) -> void:
 	_seed = seed_value
 	unlocked[home()] = true
 

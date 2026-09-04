@@ -125,17 +125,41 @@ var n_build_ok := 0
 var n_build_moved := 0
 var n_build_fail := 0
 var _rng := RandomNumberGenerator.new()
+## The save this launch opened, and how it went. Empty means a new vale.
+var _save_doc: Dictionary = {}
+var _save_how := ""
+## Turned off by probes that must not read the player's village. The default
+## is safe on its own -- see Persistence.is_real_game -- and this is the
+## override for the one probe that DOES want the disk.
+var load_saves := false
+var saving: Persistence = null
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
 
 func _ready() -> void:
-	islands = Islands.new()
+	# THE SAVE IS READ FIRST, before a single thing is built, because the world
+	# seed and the unlocked plots decide what Islands even generates.
+	var opened: Dictionary = Persistence.probe_read(get_tree(), load_saves)
+	_save_doc = opened.get("doc", {})
+	_save_how = String(opened.get("how", SaveGame.FRESH))
+	var world: Dictionary = _save_doc.get("world", {})
+
+	# Seeded, where it was never seeded at all. This rng drives spawn cells and
+	# every building's yaw, scale and colourway, so an unseeded one meant a
+	# saved village came back wearing different roofs.
+	_rng.seed = int(world.get("seed", Islands.DEFAULT_SEED))
+	if world.has("rng_state"):
+		_rng.state = int(world["rng_state"])
+
+	islands = Islands.new(int(world.get("seed", Islands.DEFAULT_SEED)))
+	for key in world.get("unlocked", []):
+		islands.unlocked[SaveGame.cell_key(String(key))] = true
 	builder = BUILDER.new()
 	builder.name = "Vale"
 	# Handed the generated archipelago BEFORE it enters the tree: the builder
 	# reads data/vale.json in _ready() otherwise, and add_child runs _ready
 	# immediately.
-	builder.source_doc = islands.build_doc()
+	builder.source_doc = SaveGame.doc_for(islands, world)
 	add_child(builder)
 
 	light = LIGHT.new()
@@ -172,6 +196,18 @@ func _ready() -> void:
 	village = Village.new()
 	village.islands = islands
 	village.host = self
+	var saved_v: Dictionary = _save_doc.get("village", {})
+	if not saved_v.is_empty():
+		# JSON has one number type, so every store comes back as a float and
+		# the ledger would read "16.0 / 24". Cast on the way in.
+		for k in (saved_v.get("stores", {}) as Dictionary):
+			village.stores[String(k)] = int(saved_v["stores"][k])
+		village.now = float(saved_v.get("now", 0.0))
+		village.total_gathered = int(saved_v.get("total_gathered", 0))
+		village.total_eaten = int(saved_v.get("total_eaten", 0))
+		for key in (saved_v.get("richness", {}) as Dictionary):
+			village._richness[SaveGame.cell_key(String(key))] = 				float(saved_v["richness"][key])
+	# RE-DERIVED, never restored: both are functions of what now stands.
 	village.census(builder.placed_props)
 	village.pop_cap = islands.pop_cap() + village.passive_add("pop_cap_add")
 	social = Social.new(20260901)
@@ -183,6 +219,9 @@ func _ready() -> void:
 	divinity.islands = islands
 	divinity.builder = builder
 	divinity.grid = grid
+	if _save_doc.has("divinity"):
+		# Before add_child, so nothing has ticked with the wrong numbers.
+		SaveGame.apply_divinity(divinity, _save_doc["divinity"])
 	add_child(divinity)
 
 	_add_fx()
@@ -193,10 +232,14 @@ func _ready() -> void:
 	sfx.name = "SFX"
 	add_child(sfx)
 
-	_add_followers()
+	if _save_doc.is_empty():
+		_add_followers()
+	else:
+		_restore_followers(_save_doc)
 	_add_ui()
 	_wire_feedback()
 	_add_menu()
+	_add_persistence()
 
 
 ## Load an optional script, tolerating one that is missing OR broken.
@@ -496,7 +539,15 @@ func _pick_job() -> String:
 ## and falls back to the plain villager body when the job's GLB has not landed
 ## yet, per the batch's rule that a missing asset must fail SOFTLY rather than
 ## take the spawn down.
-func _spawn_thinker(job: String, at: Vector3, speed: float) -> Node:
+## `seed_value` < 0 takes the next one in sequence. A RESTORED follower passes
+## the seed it was born with, which is what brings back their name and their
+## whole personality without either being stored.
+##
+## Restoring goes through THIS function rather than a second spawn path on
+## purpose: a parallel path is how _wire_follower gets forgotten on one side
+## and every loaded villager's chop goes silent.
+func _spawn_thinker(job: String, at: Vector3, speed: float,
+					seed_value := -1) -> Node:
 	var asset_id := Jobs.asset_of(job)
 	if builder._packed_of(asset_id) == null:
 		asset_id = "Folk/villager"
@@ -504,9 +555,11 @@ func _spawn_thinker(job: String, at: Vector3, speed: float) -> Node:
 	if f == null:
 		return null
 	f.position = at
-	f.think(grid, _next_seed, speed, village, divinity.boons)
+	var use: int = _next_seed if seed_value < 0 else seed_value
+	f.think(grid, use, speed, village, divinity.boons)
 	f.set_walk_boost(divinity.boons.walk())
-	_next_seed += 1
+	if seed_value < 0:
+		_next_seed += 1
 	folk.append(f)
 	if f.brain != null:
 		f.brain.job = job
@@ -515,7 +568,77 @@ func _spawn_thinker(job: String, at: Vector3, speed: float) -> Node:
 	return f
 
 
-## Sound and one-shot FX for everything the player does or watches happen.
+## Put the village back: the people, their state, and the animals.
+##
+## Names and personalities are NOT restored -- they are re-derived from the one
+## seed each brain was rolled from, so they cannot drift out of step with the
+## code that generates them. Mid-errand state (the current action, the path,
+## the cooldowns) is deliberately dropped: _replan() re-decides on the next
+## frame anyway, and an interrupted chop is not worth a field or a bug.
+func _restore_followers(doc: Dictionary) -> void:
+	for row in (doc.get("folk", []) as Array):
+		var cell := Vector2i(int(row.get("c", 0)), int(row.get("r", 0)))
+		var at: Vector3 = grid.world_of(cell)
+		var f := _spawn_thinker(String(row.get("job", "villager")), at,
+								float(row.get("walk", 1.0)),
+								int(row.get("seed", 0)))
+		if f == null:
+			continue
+		var b = f.brain
+		b.age = float(row.get("age", 0.0))
+		b.adult = bool(row.get("adult", true))
+		b.morality = float(row.get("morality", 0.0))
+		for k in (row.get("stats", {}) as Dictionary):
+			b.stats[String(k)] = float(row["stats"][k])
+		for k in (row.get("favour", {}) as Dictionary):
+			b.favour[String(k)] = float(row["favour"][k])
+		for e in (row.get("mem", []) as Array):
+			b.memories.entries.append({
+				"kind": String(e.get("k", "")), "text": String(e.get("t", "")),
+				"other": String(e.get("o", "")),
+				"valence": float(e.get("v", 0.0)),
+				"heat": float(e.get("h", 0.0)),
+				"age": float(e.get("a", 0.0))})
+		for line in (row.get("log", []) as Array):
+			b.thought_log.append(String(line))
+		if not b.adult:
+			f.become_child()
+	_next_seed = maxi(_next_seed, int((doc.get("root", {}) as Dictionary)
+									  .get("next_seed", 1)))
+	for n in (doc.get("root", {}) as Dictionary).get("milestones_paid", []):
+		_milestones_paid[int(n)] = true
+	for row in (doc.get("beasts", []) as Array):
+		var cell := Vector2i(int(row.get("c", 0)), int(row.get("r", 0)))
+		_spawn_beast(String(row.get("kind", "Animals/sheep")),
+					 grid.world_of(cell))
+	# Boons are state ON THE BODY for walk speed, so they are pushed once here
+	# rather than left to whatever set them last.
+	apply_boons()
+
+
+## The disk layer, and the away log if this launch opened a save.
+func _add_persistence() -> void:
+	saving = Persistence.new()
+	saving.name = "Persistence"
+	saving.host = self
+	saving.armed = load_saves or Persistence.is_real_game(get_tree())
+	add_child(saving)
+	if _save_doc.is_empty():
+		return
+	var log := saving.open_log(_save_doc,
+							   int(Time.get_unix_time_from_system()))
+	if log.is_empty() or float(log.get("faith", 0.0)) <= 0.0:
+		return
+	divinity.add_faith(float(log["faith"]))
+	# v1 shows the log through the notice stack, which now holds three. The
+	# Day Summary screen is where it gets a room of its own.
+	for line in (log.get("lines", []) as Array):
+		divinity.notice.emit(String(line))
+	divinity.notice.emit("While you were away: %d Faith."
+		% int(log["faith"]))
+
+
+## Sound and one-shot FX for everything the player does or watches happen.## Sound and one-shot FX for everything the player does or watches happen.
 ##
 ## Wired HERE rather than inside each system, so Divinity and Social stay
 ## testable without an audio bus or a particle pool -- both of the headless

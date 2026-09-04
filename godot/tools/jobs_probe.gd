@@ -103,6 +103,7 @@ func _check_priest() -> void:
 	var pos: Vector3 = _root.grid.world_of(cell) + Vector3(0, 0, 1.6)
 	var priest = _root._spawn_thinker("priest", pos, 1.8)
 	var neighbour = _root._spawn_thinker("villager", pos + Vector3(0.6, 0, 0), 1.8)
+	_stand_beside(priest, neighbour, 0.6)
 	if priest == null or neighbour == null:
 		_faults.append("could not spawn a priest and a neighbour")
 		return
@@ -137,10 +138,28 @@ func _check_priest() -> void:
 		_faults.append("bless_flock did not raise a neighbour's favour")
 
 
+## Put the second one WHERE THIS PROBE MEANS, after the spawn.
+##
+## Spawning re-plans, and a re-plan snaps a follower onto a walkable cell --
+## so "half a metre to the side" is only half a metre away if that spot
+## happened to be free. It usually was, while the world was generated from an
+## unseeded rng and every run got a different layout. The moment the world
+## became deterministic (the save stores its seed) this probe landed on a
+## staging where the neighbour was snapped FOUR metres off and the priest's
+## three-metre blessing correctly missed them -- a real check failing for a
+## reason that had nothing to do with the thing it checks.
+func _stand_beside(who, other, gap: float) -> void:
+	if who == null or other == null:
+		return
+	other.position = who.position + Vector3(gap, 0, 0)
+	other.path.clear()
+
+
 func _check_nurse() -> void:
 	var pos: Vector3 = _root.grid.world_of(_root.grid.random_cell(_root._rng))
 	var nurse = _root._spawn_thinker("nurse", pos, 1.8)
 	var patient = _root._spawn_thinker("villager", pos + Vector3(0.4, 0, 0), 1.8)
+	_stand_beside(nurse, patient, 0.4)
 	if nurse == null or patient == null:
 		_faults.append("could not spawn a nurse and a patient")
 		return
@@ -166,6 +185,7 @@ func _check_bard() -> void:
 	var pos: Vector3 = _root.grid.world_of(_root.grid.random_cell(_root._rng))
 	var bard = _root._spawn_thinker("bard", pos, 1.8)
 	var neighbour = _root._spawn_thinker("villager", pos + Vector3(0.5, 0, 0), 1.8)
+	_stand_beside(bard, neighbour, 0.5)
 	if bard == null or neighbour == null:
 		_faults.append("could not spawn a bard and a neighbour")
 		return

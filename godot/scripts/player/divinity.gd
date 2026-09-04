@@ -208,15 +208,16 @@ func _init() -> void:
 	boons = Boons.new(20260901)
 
 
-func _process(delta: float) -> void:
+## Faith per second, right now, from everyone alive plus the buildings.
+##
+## Pulled out of _process so the SAVE can stamp one float and the away roll can
+## be a function of it -- an offline payout that had to reason about Brain,
+## mood and personality would need the whole village instantiated to compute.
+func income_per_s() -> float:
 	if host == null:
-		return
-	var folk: Array = host.folk
-	# Faith is EARNED, per follower, weighted by their own faith and mood. A
-	# miserable village is a poor one, which is the pressure that makes
-	# blessing worth spending on.
+		return 0.0
 	var income := 0.0
-	for f in folk:
+	for f in host.folk:
 		if not is_instance_valid(f) or f.brain == null:
 			continue
 		var devotion: float = float(f.brain.stats["faith"])
@@ -225,10 +226,20 @@ func _process(delta: float) -> void:
 		income += (FAITH_PER_FOLLOWER * boons.zeal() * weight
 			* (0.35 + devotion * 0.65) * (0.4 + mood * 0.6))
 	# The shrine's own trickle, independent of any one follower's devotion --
-	# a BUILDING income, not a person income, so it is added once per tick
-	# rather than folded into the per-follower loop above.
+	# a BUILDING income, not a person income, so it is added once rather than
+	# folded into the per-follower loop above.
 	if village != null:
 		income += village.passive_faith()
+	return income
+
+
+func _process(delta: float) -> void:
+	if host == null:
+		return
+	# Faith is EARNED, per follower, weighted by their own faith and mood. A
+	# miserable village is a poor one, which is the pressure that makes
+	# blessing worth spending on.
+	var income := income_per_s()
 	if income > 0.0:
 		add_faith(income * delta)
 
