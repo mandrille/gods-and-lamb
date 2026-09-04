@@ -41,7 +41,7 @@ CACHE_PATH = os.path.join(ROOT, "out", "library_cache.json")
 CORE = [
     os.path.join(ROOT, "build.py"),
     os.path.join(HERE, "kit.py"),
-    os.path.join(HERE, "aobake.py"),
+    os.path.join(HERE, "vfold.py"),
     os.path.join(HERE, "export_gltf.py"),
     os.path.join(HERE, "verify_export.py"),
 ]

@@ -20,8 +20,11 @@ answer is still ours. Three things are deliberately different:
 
 1. **GL Compatibility, not Forward+.** Godot's web export only runs the
    Compatibility renderer. No volumetric fog, no SSAO, emissives clamped.
-   Contact shading comes from **AO baked into vertex colours**, not from a
-   screen-space effect.
+   **There is no ambient occlusion at all** -- there was a vertex-AO bake and
+   it was removed: one value per vertex, and a wall with a boolean window cut
+   triangulates into slivers spanning the whole facade, so a dark window
+   corner smeared a grey wedge across the wall. Adjacent surfaces separate by
+   HUE, and the sun's own shadow map does the rest.
 2. **Nothing has physics.** Followers hop tile to tile on a tween. There are no
    rigidbodies, no colliders, no `rb_col_*`. Do not port collision machinery.
 3. **A library, not a diorama.** Each asset exports as its own `.glb` and Godot
@@ -64,7 +67,6 @@ question with a *full sweep*.
 | does the whole village hold together | `build.py -- scene` | **~30 s** (renders BOTH ways) |
 | does it pass the gate | `build.py -- asset <asset_id>` | **~0.5 s** |
 | does EVERY asset pass | `build.py -- assets` | **~45 s** (27 assets, one process each) |
-| does the AO bake show | `build.py -- ao <asset_id>` | **~3 s** |
 | does a folk rig and walk | `build.py -- rig <folk asset_id>` | **~6 s** (`blender/docs/03-folk-rig.md`) |
 
 Measured on this machine, not inherited. The numbers carried over from the
@@ -80,8 +82,8 @@ a relationship between two pieces is invisible in a picture of one.
 **EEVEE is not the expensive one.** The received wisdom that a lit render costs
 40-70x a Workbench one is about *Cycles*. Measured on the island at a matched
 1600x1000, three Workbench frames took **2.0 s** and three EEVEE frames took
-**2.3 s**, plus **0.4 s** for the AO bake. `-- look` is the shape loop because
-it skips the merge and the bake, not because its renderer is cheaper.
+**2.3 s**. `-- look` is the shape loop because it skips the merge, not because
+its renderer is cheaper.
 
 **`-- asset` EXISTS and is a real gate.** It collects every fault in one pass:
 triangle cap, declared footprint against the measured AABB, the `anchor="floor"`

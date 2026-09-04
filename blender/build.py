@@ -195,61 +195,6 @@ def target_measure(rest):
     print("  fronts -Y; +Z here is +Y in Godot")
 
 
-def target_ao(rest):
-    """Bake AO to vertex colour and render the bake ALONE, plus the material.
-
-    Rendered with Workbench in VERTEX colour mode, so the picture is the
-    occlusion map by itself rather than the occlusion multiplied into the
-    palette. That is the point: a bake that is silently flat and a bake that is
-    working look identical once a green tile is drawn over the top of it.
-
-    No ground plane here, deliberately. Rays are cast against the whole scene,
-    so a 60 m plane under the subject reads as an occluder and every
-    downward-facing vertex comes back fully dark.
-    """
-    import registry
-    import shot
-    import kit
-    import aobake
-
-    if not rest:
-        raise SystemExit("FAIL: ao needs an asset id, e.g. Buildings/hut")
-    aid, kw = rest[0], _kwargs(rest[1:])
-    entry = registry.resolve(aid)
-
-    _fresh_scene()
-    parts = _build_subject(entry, "AO", kw)
-    # MERGE FIRST. The bake writes one value per vertex, and before the merge
-    # the parts are unbevelled boxes -- a wall is eight corners, so the whole
-    # face is an interpolation between four numbers and a crease gets nothing.
-    # merge_many() runs convert(), which bakes the Bevel modifiers, and the
-    # bevel puts a vertex loop exactly where the creases are. Same reason
-    # mark_sharp() runs on final geometry: AO on an intermediate mesh measures
-    # a shape that never ships.
-    n_parts = len(parts)
-    before = sum(len(p.data.vertices) for p in parts)
-    merged = kit.merge_many(parts, entry["decl"]["variant"] + "_mesh")
-    parts = [merged]
-    print("  merged %d part(s), %d -> %d verts"
-          % (n_parts, before, len(merged.data.vertices)))
-
-    stats = aobake.bake(parts)
-    print("ao %s: %d verts  min %.3f  mean %.3f  max %.3f"
-          % (aid, stats["verts"], stats["min"], stats["mean"], stats["max"]))
-    ok, lines = aobake.verify_written(parts)
-    for line in lines:
-        print("  " + line)
-    if not ok:
-        raise SystemExit("FAIL: the AO bake did not survive on the mesh. See "
-                         "the lines above.")
-
-    stem = aid.replace("/", "_")
-    path = os.path.join(OUT, "look", "%s_ao.png" % stem)
-    shot.render(path, parts, res=(1400, 1000), fill=0.90,
-                dirv=(-0.85, -1.00, 0.42), color_type="VERTEX")
-    print("wrote out/look/%s_ao.png" % stem)
-
-
 def target_lit(rest):
     """Three angles under the GAME light rig: EEVEE, one warm sun, a sky.
 
@@ -283,7 +228,6 @@ def target_lit(rest):
     merged = kit.merge_many(parts, entry["decl"]["variant"] + "_mesh")
     print("lit %s: merged %d part(s) -> %d verts"
           % (aid, n_parts, len(merged.data.vertices)))
-    lit.bake_isolated([merged])
     lit.ground()
 
     stem = aid.replace("/", "_")
@@ -392,10 +336,6 @@ def target_scene(rest):
     print("wrote out/look/vale_{hero,high,low}.png")
 
     import lit
-    # The lit pass runs SECOND, always. lit.bake_isolated() ends in
-    # aobake.wire_all(), which rewires every material in the file -- a
-    # Workbench render taken after that is no longer the render -- look gives.
-    lit.bake_isolated(placed)
     for name, dirv in (("hero", (-0.72, -1.00, 0.88)),
                        ("high", (-0.55, -1.00, 1.00)),
                        ("low", (-0.85, -1.00, 0.66))):
@@ -794,15 +734,16 @@ def target_glb(rest):
     exported WITH the armature. Everything else is merged to a single mesh
     first, which is what MultiMesh and a draw-call budget both want.
 
-    AO is baked here rather than in the engine, per asset, in isolation. It is
-    the whole contact-shading budget under GL Compatibility, and glTF COLOR_0
-    is defined as multiplying into base colour -- so the multiply survives to
-    the Compatibility renderer with nothing to configure.
+    There is no AO bake. It was per vertex, and on a wall with a boolean window
+    cut the triangulation is slivers spanning the whole facade, so one dark
+    corner smeared a wedge across the wall. COLOR_0 survives for the FOLD --
+    skinned meshes carry albedo there and ship one material, which was 88.8%
+    of a follower's frame cost under GL Compatibility.
     """
     import bpy
     import registry
     import kit
-    import aobake
+    import vfold
     import export_gltf
     import verify_export
 
@@ -846,7 +787,6 @@ def target_glb(rest):
         arm = None
         subjects = [mesh]
 
-    aobake.bake(subjects)
     if rigged:
         # Skinned meshes only. GL Compatibility runs a skinning update per
         # SURFACE per frame, so eight flat-colour materials on a villager cost
@@ -854,9 +794,13 @@ def target_glb(rest):
         # Static assets keep their material slots: the same split costs nothing
         # there (353 props and 7338 tiles draw in 1.05 ms) and the per-material
         # authoring is how the whole library is written.
-        for nm, was, now in aobake.fold_to_vertex_colour(subjects):
+        vfold.ensure_neutral(subjects)
+        for nm, was, now in vfold.fold_to_vertex_colour(subjects):
             print("  folded %s: %d surfaces -> %d" % (nm, was, now))
-    aobake.wire_all()
+        # Only the folded meshes get a Color Attribute node. Wiring the static
+        # ones too would put a COLOR_0 on every building that multiplies by
+        # white -- payload and a channel to misread, for nothing.
+        vfold.wire_all()
 
     # The vocabulary the engine reads. Custom properties become glTF extras,
     # and Godot must key on THOSE, never on node names -- validate_node_name()
@@ -873,7 +817,7 @@ def target_glb(rest):
     else:
         export_gltf.export_static([mesh], path)
     info = verify_export.assert_glb_readback(
-        path, want_skin=rigged, want_animation=rigged)
+        path, want_skin=rigged, want_animation=rigged, want_color0=rigged)
     print("  glb %-26s %6d B  nodes %d  meshes %d  skins %d  anims %d  "
           "COLOR_0 %s" % (aid, os.path.getsize(path), info["nodes"],
                           info["meshes"], info["skins"], info["animations"],
@@ -1132,7 +1076,6 @@ def target_rig(rest):
     print("  max vertex travel %.3f m   loop gap %.6f m   floor sink %.4f "
           "float %.4f" % (travel, gap, -sink, float_))
 
-    lit.bake_isolated([skinned])
     lit.ground()
     # A hidden box the size of the whole stride, so every frame is solved
     # against the SAME bounds. Hidden from the render, not from the solver --
@@ -1209,7 +1152,6 @@ TARGETS = {
     "blend1": target_blend1,
     "export": target_export,
     "lit": target_lit,
-    "ao": target_ao,
     "field": target_field,
     "scene": target_scene,
     "asset": target_asset,

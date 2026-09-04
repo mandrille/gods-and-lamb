@@ -33,7 +33,7 @@ def read_json_chunk(path):
 
 
 def assert_glb_readback(path, want_extras=("lamb_id",), want_skin=False,
-                        want_animation=False):
+                        want_animation=False, want_color0=False):
     """Reopen a GLB and fail if it is missing what it was exported for.
 
     `want_extras` is the check that pays for this whole module. export_extras
@@ -59,6 +59,16 @@ def assert_glb_readback(path, want_extras=("lamb_id",), want_skin=False,
                       "it is a static character")
     if want_animation and not doc.get("animations"):
         faults.append("no animations: the actions did not come across")
+    # A folded mesh carries its ALBEDO in COLOR_0 and ships one white
+    # material. Without the channel it is not a slightly wrong asset, it is a
+    # white one -- and the exporter only emits COLOR_0 when a material reads
+    # the attribute, which is one un-wired material away from silently gone.
+    has_color0 = any("COLOR_0" in p.get("attributes", {})
+                     for m in meshes for p in m.get("primitives", []))
+    if want_color0 and not has_color0:
+        faults.append("no COLOR_0: this mesh was folded to one material and "
+                      "carries its albedo per vertex, so without the channel "
+                      "it renders white. vfold.wire_all() did not reach it.")
 
     if faults:
         raise SystemExit("FAIL: %s did not export what it was asked for:%s  %s"

@@ -79,8 +79,11 @@ Constraints that follow from shipping on web:
 
 - Godot's web export runs **GL Compatibility** only. No volumetric fog, no
   SSAO, clamped emissives.
-- So contact shading is **ambient occlusion baked into vertex colours** in
-  Blender, multiplied into albedo. Free on every device.
+- **There is no ambient occlusion.** A vertex-AO bake shipped for a while and
+  was removed on 2026-09-04: one value per vertex, and a wall with a boolean
+  window cut triangulates into slivers spanning the whole facade, so a dark
+  window corner smeared a grey wedge across the wall. Giving it enough
+  vertices to be correct cost more triangles than the shading was worth.
 - One warm directional light with soft shadows, plus a cool gradient sky for
   ambient fill.
 - Adjacent surfaces separate by **hue, not value** — there is no AO pass to do
@@ -92,7 +95,7 @@ Constraints that follow from shipping on web:
   terrain, buildings and plants are static meshes and stay that way, and the
   rig has not been carried into Godot yet.
 - Terrain instances through `MultiMeshInstance3D`; per-instance tint carries
-  neighbour-aware darkening that baked vertex AO cannot know about.
+  neighbour-aware darkening, and is now the only occlusion cue in the game.
 
 Portrait first: the 3D village occupies roughly the top 60% of a phone screen,
 the card hand sits along the bottom. Desktop gets a wider framing of the same

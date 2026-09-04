@@ -934,6 +934,10 @@ disjoint -- a bolt circle, a row of vent slots -- can still be joined.
 
 ## 61. Bake AO on the MERGED geometry, not on the parts
 
+**SUPERSEDED by #76: there is no AO bake any more.** The rule it teaches --
+anything that measures shape runs on the geometry that ships -- still stands,
+and #76 is what happens when you follow it and the answer is still wrong.
+
 Vertex AO writes one value per vertex, so its resolution is the vertex count.
 Before the merge, the hut is nine unbevelled boxes totalling **86** vertices --
 a wall is eight corners, so a whole face is an interpolation between four
@@ -953,9 +957,10 @@ that ships, never on an intermediate.
 type FLOAT_COLOR -- the render came back indistinguishable from a flat shade,
 through two rounds of "fixing" a bake that was working the whole time.
 
-Do not verify vertex data with a picture. `aobake.verify_written()` reads the
-values back off the mesh and reports domain, type, count, range and which
-attribute is active. That is the check; the render is decoration.
+Do not verify vertex data with a picture. The bake's `verify_written()` read
+the values back off the mesh and reported domain, type, count, range and which
+attribute was active. That was the check; the render was decoration. (The bake
+is gone -- see #76 -- but the rule outlives it: read the numbers.)
 
 Related: setting `color_attributes.active_color` inside a bare `try/except pass`
 made this worse, because a silently dead setting and a flat bake look identical.
@@ -977,7 +982,7 @@ slopes then fly outward and meet nowhere.
 
 ## 64. A wired vertex-colour material renders BLACK on a mesh without the layer
 
-`aobake.wire_all()` puts a Vertex Color node into **every** material, so every
+`vfold.wire_all()` puts a Vertex Color node into **every** material, so every
 material now multiplies its albedo by the `AO` attribute. A `ShaderNodeVertexColor`
 pointing at a layer the mesh does not have does **not** fall back to white — it
 evaluates to **black**, and the multiply annihilates the albedo.
@@ -986,7 +991,7 @@ The first lit render of a hut on a ground plane came back with the hut correct
 and the ground gone: frame luma **0.255** against **0.582** for the same shot
 without the bake. It reads as a lighting bug and it is a missing attribute.
 
-`aobake.ensure_neutral(scene.objects)` fills a flat white `AO` layer on any mesh
+`vfold.ensure_neutral(scene.objects)` fills a flat white `AO` layer on any mesh
 that has none, and `lit.render()` calls it immediately before every render. A
 mesh that misses the bake now renders unshaded instead of invisible.
 
@@ -1248,7 +1253,7 @@ villager's eight materials into COLOR_0 with a plain multiply gave:
 Far too dark AND skewed per channel -- the signature of a gamma applied once
 too often, as against a uniform brightness error.
 
-`aobake._encode()` stores the inverse-transformed product so the folded mesh
+`vfold._encode()` stores the inverse-transformed product so the folded mesh
 renders what the unfolded one did:
 
     stored = linear_to_srgb(albedo_linear * srgb_to_linear(ao))
@@ -1279,7 +1284,7 @@ followers, sandwiched against baselines taken before and after each window:
     8 surfaces (before)   +52.75 ms    0.132 ms/follower
     1 surface  (after)    +10.13 ms    0.025 ms/follower
 
-Folding is done in `aobake.fold_to_vertex_colour()` and applied ONLY to
+Folding is done in `vfold.fold_to_vertex_colour()` and applied ONLY to
 `cls == "folk"` in `build.py`. Static assets keep their slots deliberately:
 the split is how the whole library is authored and it costs nothing there.
 
@@ -1287,3 +1292,38 @@ Note the fold is lossless only because parts are `join()`ed rather than
 welded, so no vertex is shared between two materials. That is CHECKED, not
 assumed -- a shared vertex would average two albedos into a seam and nothing
 downstream would notice.
+
+## 76. Vertex AO cannot survive a wall with a hole in it
+
+The bake was correct, ran on merged geometry (#61), on the right domain (#62),
+with the right transform into Godot (#67) -- and it still shipped a visible
+defect, because the artefact is not in the bake at all. It is in the mesh the
+bake writes to.
+
+A wall with a boolean window cut is an ngon with a hole. `clean_mesh()`
+triangulates it, and the only triangulation of that shape is long slivers that
+reach from the window corners to the far side of the wall. AO is per VERTEX,
+so a dark corner beside a recessed window is one corner of a triangle that
+spans the whole facade, and the darkness interpolates across all of it. Four
+houses in a row wore a grey wedge nobody could find in Blender -- where the
+modifiers are live, `-- look` does not render vertex colours, and the mesh
+being complained about does not exist yet.
+
+Measured, on `Buildings/cottage` at 1354 tris against a cap of 2500:
+
+    subdivide every edge over 0.40 m   2976 tris   over cap
+    subdivide every edge over 0.25 m   4676 tris   over cap
+
+That is the honest cost of giving the bake enough vertices to be right, and it
+buys shading the art direction does not depend on: the palette separates
+adjacent surfaces by HUE, and the sun casts a real shadow map. So the bake was
+removed on 2026-09-04 rather than fixed.
+
+What survived is the CHANNEL. `vfold.py` still folds a skinned mesh's material
+slots into one and carries albedo in COLOR_0 (#75) -- that was 88.8% of a
+follower's frame cost and is unrelated to occlusion. Static assets now export
+no COLOR_0 at all.
+
+The transferable lesson: per-vertex data inherits the topology's resolution,
+and a boolean leaves topology chosen for area, not for shading. Before baking
+anything per vertex, look at the triangles it will interpolate across.

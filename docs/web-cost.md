@@ -133,7 +133,9 @@ setting the vertex-colour flag at load:
 
 A **5.2x** cut in per-follower frame cost that also shrank the download,
 because eight materials collapsed into one and the colour they carried moved
-into a vertex channel that was already being shipped for the AO bake.
+into a vertex channel (COLOR_0). That channel was shared with an AO bake at the
+time; the bake was removed on 2026-09-04 and the fold, which is what actually
+bought the 5.2x, kept the channel to itself.
 
 Worth stating plainly, since it cuts against the usual shape: **the axis that
 mattered here was not bytes at all.** Nothing in this size report would ever

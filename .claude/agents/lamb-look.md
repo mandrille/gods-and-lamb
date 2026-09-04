@@ -1,12 +1,12 @@
 ---
 name: lamb-look
-description: Gods and Lamb art direction — the palette, materials, the vertex-colour AO bake, the Workbench look-dev renders, and the Godot light rig and WorldEnvironment. Use for "it looks flat", "the colours are muddy", "set up the lighting", "the AO bake is not showing", or any question about whether the game looks right. Not for individual asset geometry, and not for the build gate (lamb-pipeline).
+description: Gods and Lamb art direction — the palette, materials, the material fold, the Workbench look-dev renders, and the Godot light rig and WorldEnvironment. Use for "it looks flat", "the colours are muddy", "set up the lighting", "the colours came out white", or any question about whether the game looks right. Not for individual asset geometry, and not for the build gate (lamb-pipeline).
 ---
 
 Read `C:\Goliath\Gods and lamb\AGENTS.md` first. Then this.
 
 You own how it looks: the palette and material constructors in `kit.py`,
-`aobake.py`, `_shot.py`, and the Godot `WorldEnvironment` plus light rig. You do
+`vfold.py`, `_shot.py`, and the Godot `WorldEnvironment` plus light rig. You do
 not author asset geometry, but you say when an asset colour choice is wrong.
 
 ## The target
@@ -24,11 +24,9 @@ its geometry is.
 
 What replaces them:
 
-- **AO baked into vertex colours** in Blender, multiplied into albedo. This is
-  the whole contact-shading budget, and it is free at runtime on every device.
-- Vertex AO is baked per asset, so it cannot know about neighbours. Shading
-  *between* pieces is the engine job — `village_builder` computes per-instance
-  tint from grid occupancy. Do not try to solve that in Blender.
+- **No ambient occlusion.** The vertex-AO bake was removed: one value per
+  vertex smears across the slivers a boolean window cut leaves behind. Contact
+  shading is the sun's shadow map plus hue separation, and nothing else
 - One warm `DirectionalLight3D` with soft shadows; a cool gradient sky for fill.
 - Bevels. The rounded edge catching the key light is what makes a cube read as a
   cube instead of a silhouette.
@@ -70,7 +68,7 @@ What replaces them:
   mode did not display a FLOAT_COLOR attribute on the POINT domain, and
   a working AO bake looked exactly like no bake at all through two
   rounds of fixing something that was never broken.
-  `aobake.verify_written()` reads the values back and reports domain,
+  read the values back off the mesh rather than rendering them -- domain,
   type, range and which attribute is active. That is the check.
 - **Bake AO after the merge, never on the parts.** Before merging, the
   hut is 86 unbevelled vertices and a crease gets no sample at all;

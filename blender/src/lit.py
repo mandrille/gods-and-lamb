@@ -19,7 +19,7 @@ on a web export:
   the entire point of the picture is that it tells you what ships.
 
 The contact shading that replaces the effects we do not have is the vertex
-colour AO -- see aobake.py. `bake_isolated()` here is what finally wires it in.
+colour -- see vfold.py.
 
 Camera framing is `shot.solve_camera()`, unchanged and not reimplemented. Read
 its docstring before you are tempted: four other fits were tried and one of
@@ -32,7 +32,7 @@ import time
 import bpy
 from mathutils import Vector
 
-import aobake
+import vfold
 import shot
 
 # ------------------------------------------------------------------- the rig
@@ -162,7 +162,7 @@ def build_sky(name="LitSky"):
     mix.location = (bg.location.x - 200, bg.location.y - 240)
     nt.links.new(lp.outputs["Is Camera Ray"], mix.inputs["Factor"])
     # Blender 4.x+ Mix exposes same-named sockets per data type; index into the
-    # VALUE pair rather than trusting a name lookup (same trap as aobake).
+    # VALUE pair rather than trusting a name lookup (same trap as vfold).
     fl = [s for s in mix.inputs if s.type == "VALUE" and s.name != "Factor"]
     fl[0].default_value = SKY_AMBIENT_STRENGTH     # probe rays
     fl[1].default_value = SKY_BG_STRENGTH          # camera rays
@@ -231,77 +231,6 @@ def ensure_rig(sc):
 
 
 # --------------------------------------------------------------- the AO bake
-def bake_isolated(objects, verbose=True):
-    """Bake vertex AO once per unique MESH, each one alone, then wire it in.
-
-    Two things this has to get right that a naive pass does not.
-
-    ONE: rays are cast against the whole evaluated scene, so a bake run in
-    place measures the neighbours. That is wrong twice over -- the asset ships
-    as a `.glb` and is instanced into arbitrary neighbourhoods, and shading
-    BETWEEN pieces is the engine's job (village_builder tints per instance from
-    grid occupancy). So every object except the one being baked is hidden.
-
-    TWO: the island instances share mesh data, so N objects can be one mesh.
-    Baking per object would recompute the same attribute N times and keep
-    whichever instance happened to go last -- one tile's neighbourhood, applied
-    to all ninety. One bake per unique mesh datablock is both correct and Nx
-    cheaper.
-
-    Callers must pass MERGED geometry (gotcha #61). Before the merge a wall is
-    eight corners and a crease under an eave gets no sample at all.
-    """
-    meshes = {}
-    for ob in objects:
-        if getattr(ob, "type", None) == "MESH" and len(ob.data.vertices):
-            meshes.setdefault(ob.data.name, ob)
-    if not meshes:
-        return {"meshes": 0, "verts": 0, "min": 1.0, "mean": 1.0, "max": 1.0}
-
-    was = {ob.name: ob.hide_viewport for ob in bpy.data.objects}
-    for ob in bpy.data.objects:
-        ob.hide_viewport = True
-
-    t0 = time.time()
-    total, lo, hi, wsum = 0, 1.0, 0.0, 0.0
-    reps = []
-    try:
-        for name in sorted(meshes):
-            rep = meshes[name]
-            rep.hide_viewport = False
-            bpy.context.view_layer.update()
-            st = aobake.bake([rep])
-            rep.hide_viewport = True
-            reps.append(rep)
-            total += st["verts"]
-            lo = min(lo, st["min"])
-            hi = max(hi, st["max"])
-            wsum += st["mean"] * st["verts"]
-    finally:
-        for ob in bpy.data.objects:
-            ob.hide_viewport = was.get(ob.name, False)
-        bpy.context.view_layer.update()
-
-    ok, lines = aobake.verify_written(reps)
-    if verbose:
-        for line in lines:
-            print("  " + line)
-    if not ok:
-        raise SystemExit("FAIL: the AO bake did not survive on the mesh. See "
-                         "the lines above.")
-
-    wired = aobake.wire_all()
-    stats = {"meshes": len(meshes), "verts": total, "min": lo,
-             "max": hi, "mean": (wsum / total) if total else 1.0,
-             "wired": wired, "secs": time.time() - t0}
-    if verbose:
-        print("ao bake: %d mesh(es), %d verts, min %.3f mean %.3f max %.3f, "
-              "%d material(s) wired, %.1f s"
-              % (stats["meshes"], stats["verts"], stats["min"], stats["mean"],
-                 stats["max"], wired, stats["secs"]))
-    return stats
-
-
 # ----------------------------------------------------------------- rendering
 def ground(size=240.0):
     """A grass plane for a single-asset lit shot. Returns the object.
@@ -356,8 +285,8 @@ def render(path, subjects, res=(1200, 800), fill=0.90,
     ensure_rig(sc)
     # Anything in the scene that missed the bake -- a ground plane, a prop
     # added afterwards -- would otherwise multiply its albedo by a black vertex
-    # colour and vanish. See aobake.ensure_neutral().
-    filled = aobake.ensure_neutral(sc.objects)
+    # colour and vanish. See vfold.ensure_neutral().
+    filled = vfold.ensure_neutral(sc.objects)
     if filled:
         print("  ao neutral fill: %d mesh(es) had no bake" % filled)
 
