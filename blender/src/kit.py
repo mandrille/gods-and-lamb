@@ -587,6 +587,39 @@ def weighted_normals_all(objects, mode="FACE_AREA", weight=100, thresh=0.01,
     return added
 
 
+def normal_drift(ob, min_area=0.004):
+    """(worst_degrees, flipped_loops) over faces bigger than `min_area`.
+
+    How far a big face's corner normals have wandered from the face itself.
+    A bevel legitimately bends them ~22 degrees at the strip; a corner that has
+    gone past 120 is pointing INTO the mesh and shades as a hole.
+
+    This exists because the pipeline shipped four buildings with inside-out
+    walls while every check was green. `weighted_normal_coverage` asked whether
+    the modifier is present on the PARTS; nothing asked what the merged mesh
+    that actually ships looks like. Measure the artefact, not the intent.
+    """
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    try:
+        me = ev.to_mesh()
+    except RuntimeError:
+        return 0.0, 0
+    worst = 0.0
+    flipped = 0
+    normals = getattr(me, "corner_normals", None)
+    if normals is not None:
+        for poly in me.polygons:
+            if poly.area < min_area:
+                continue
+            for li in range(poly.loop_start, poly.loop_start + poly.loop_total):
+                ang = math.degrees(poly.normal.angle(normals[li].vector, 0.0))
+                worst = max(worst, ang)
+                flipped += int(ang > 120.0)
+    ev.to_mesh_clear()
+    return worst, flipped
+
+
 def weighted_normal_coverage(objects, skip_names=()):
     """(fraction, offenders) - a mesh counts only if WN exists AND is last."""
     meshes = [o for o in objects if o is not None and o.type == "MESH"
@@ -828,6 +861,27 @@ def merge_many(objects, name):
     merged.name = name
     merged["softened"] = True
     clean_mesh(merged)
+
+    # REDO the weighted-normal pass on the FINAL geometry.
+    #
+    # weighted_normals_all() runs per PART, before this. convert() bakes each
+    # part's result into custom split normals and they survive the join -- but
+    # clean_mesh then welds coincident verts BETWEEN parts, and the surviving
+    # loop keeps whichever part's normal it inherited. A cottage wall corner
+    # ends up carrying the roof slope's normal.
+    #
+    # Measured on the shipped GLBs, worst angle between a big face and its own
+    # corner normals: cottage 30 degrees per part -> 91 after the weld,
+    # market_stall 22.5 -> 74, mine 44 -> 74, hut 30 -> 180 (inside out). The
+    # assets looked right in Blender, where the modifiers are still live, and
+    # wrong in the engine, which is what the merged mesh actually ships.
+    #
+    # mark_sharp's own docstring already said to mark on final merged geometry
+    # "where the bevel is already baked"; this is that call site.
+    stale = merged.data.attributes.get("custom_normal")
+    if stale is not None:
+        merged.data.attributes.remove(stale)
+    weighted_normals_all([merged])
     return merged
 
 

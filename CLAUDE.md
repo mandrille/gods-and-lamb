@@ -30,11 +30,17 @@ Run from `godot/`:
 ```
 godot --headless --path . --import
 godot --headless --path . --script res://tools/village_test.gd
-godot --path . --script res://tools/shots.gd
+godot --position -6000,-6000 --audio-driver Dummy --path . --script res://tools/shots.gd
 ```
 
-The shot tool is deliberately **not** `--headless` — `get_root().get_texture()`
-needs a real swapchain.
+**Always pass `--position -6000,-6000 --audio-driver Dummy` to a shot or
+probe run.** The tool is deliberately not `--headless` (`get_root().get_texture()` needs a real
+swapchain), and `ShotWindow.park()` moves the window off-screen and clears its
+focus flag -- but only once the script is running, so without `--position` the
+window is still created on top of whatever the user is doing and takes focus
+for a moment. The flag places it off-screen from the first frame.
+`--audio-driver Dummy` mutes it: a probe sweep is fifteen launches, and
+fifteen title stings out of a window you cannot see is worse than useless.
 
 Toolchain on this machine:
 

@@ -232,6 +232,7 @@ def target_ao(rest):
     parts = [merged]
     print("  merged %d part(s), %d -> %d verts"
           % (n_parts, before, len(merged.data.vertices)))
+
     stats = aobake.bake(parts)
     print("ao %s: %d verts  min %.3f  mean %.3f  max %.3f"
           % (aid, stats["verts"], stats["min"], stats["mean"], stats["max"]))
@@ -435,6 +436,21 @@ def target_asset(rest):
 
     faults = []
 
+    # THE SHIPPED normals, on the merged mesh. Four buildings went out with
+    # inside-out walls while every check was green: the weighted-normal pass
+    # runs per part, and clean_mesh then welds verts BETWEEN parts, so a wall
+    # corner inherited the roof's normal. Nothing asked what the mesh that
+    # actually ships looks like -- weighted_normal_coverage asks whether the
+    # modifier is on the parts, which is intent, not artefact.
+    drift, flipped = kit.normal_drift(merged)
+    if flipped:
+        faults.append("normals: %d corner(s) on a face bigger than 40 cm2 "
+                      "point more than 120 degrees away from their own face, "
+                      "which is into the mesh. They shade as holes in the "
+                      "engine and look fine in Blender, where the modifiers "
+                      "are still live. Usual cause: a weld after the "
+                      "weighted-normal pass. See kit.merge_many." % flipped)
+
     tris = kit.evaluated_tris(merged)
     cap = registry.tri_cap(decl)
     if tris > cap:
@@ -476,6 +492,8 @@ def target_asset(rest):
                       % ", ".join("%s=%d" % kv for kv in sorted(dirty.items())))
 
     print("%s  (%s.%s.%s)" % (aid, decl["cls"], decl["family"], decl["variant"]))
+    print("  normals: worst %.1f deg off a big face, %d flipped"
+          % (drift, flipped))
     print("  parts %d -> 1 mesh   tris %d / %d   %.3f x %.3f x %.3f m"
           % (n_parts, tris, cap, mx, my, hi[2] - lo[2]))
     print("  nonmanifold %d (reported, not failed: 3-4 face T-junctions are "
