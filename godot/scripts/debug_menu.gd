@@ -186,8 +186,15 @@ func _init_values() -> void:
 
 # -- open / close ----------------------------------------------------------
 
+## F3, NOT Escape.
+##
+## This panel was on Escape, which in a shipped web build is a developer
+## console one keypress away from the most obvious key on the keyboard -- and
+## it meant there was no way to pause, mute or start over, because the one key
+## everybody presses was already taken. Escape is the pause menu now.
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
+	var k := event as InputEventKey
+	if k != null and k.pressed and not k.echo and k.keycode == KEY_F3:
 		toggle()
 		get_viewport().set_input_as_handled()
 

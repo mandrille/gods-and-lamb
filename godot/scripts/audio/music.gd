@@ -55,11 +55,18 @@ func _voice(stream: AudioStreamWAV) -> AudioStreamPlayer:
 	return p
 
 
-## How far into dusk, 0..1. Called every frame; the crossfade is what makes
-## nightfall felt rather than merely displayed.
-func set_dusk(amount: float) -> void:
-	_dusk = move_toward(_dusk, clampf(amount, 0.0, 1.0),
-						get_process_delta_time() / FADE)
+## How far into dusk, 0..1. The crossfade is what makes nightfall felt rather
+## than merely displayed.
+##
+## The delta is passed IN rather than read from get_process_delta_time().
+##
+## This node is driven by ValeRoot's _process, and the engine's own delta is
+## zero while the tree is paused -- so a fade that read it moved nowhere at
+## nightfall, when the tree is paused precisely because night has fallen.
+## Taking the caller's delta also makes the fade testable in one call instead
+## of a hundred and fifty frames.
+func set_dusk(amount: float, delta: float) -> void:
+	_dusk = move_toward(_dusk, clampf(amount, 0.0, 1.0), delta / FADE)
 	_apply()
 
 

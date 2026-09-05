@@ -136,6 +136,8 @@ var saving: Persistence = null
 ## The day clock. Public so the HUD can read it and a probe can wind it on.
 var daylight: Daylight = null
 var day_screen: DayScreen = null
+var pause_menu: PauseMenu = null
+var music: Music = null
 ## What this day has amounted to so far, and the one thing worth retelling.
 ## Snapshotted at dawn and subtracted at dusk, so the summary counts THIS day
 ## rather than the whole run.
@@ -245,6 +247,9 @@ func _ready() -> void:
 	sfx = SFX.new()
 	sfx.name = "SFX"
 	add_child(sfx)
+	music = Music.new()
+	music.name = "Music"
+	add_child(music)
 
 	if _save_doc.is_empty():
 		_add_followers()
@@ -632,6 +637,23 @@ func _restore_followers(doc: Dictionary) -> void:
 	apply_boons()
 
 
+## Losing focus pauses the village.
+##
+## Portals expect it, and it closes a real hole besides: without it, a tab left
+## open in the background keeps burning game time it will never be watched for,
+## and the away roll then measures an absence the village did not actually
+## have. Guarded on the same real-game check the disk layer uses, because every
+## probe parks its window unfocused and a probe that paused itself at startup
+## would hang forever.
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_APPLICATION_FOCUS_OUT:
+		return
+	if not Persistence.is_real_game(get_tree()):
+		return
+	if pause_menu != null and not pause_menu.is_open() 			and (day_screen == null or not day_screen.is_open()):
+		pause_menu.open()
+
+
 ## Night. For now this marks the day and saves; the Day Summary and the
 ## overnight aura are the next piece, and this is the seam they attach to.
 func _on_night(which: int) -> void:
@@ -842,10 +864,13 @@ func _wire_feedback() -> void:
 ## Per-follower feedback, connected as each one is made.
 func _wire_follower(f: Node) -> void:
 	f.arrived_at.connect(func(act):
-		if act == "chop":
-			sfx.play("chop")
-		elif act in ["harvest", "forage", "eat", "wash"]:
-			sfx.play("pick")
+		# Every job STARTS with something. Only chopping and the four gathering
+		# actions made a sound, so quarrying, praying, singing, tending,
+		# hunting and all fourteen build actions began in total silence -- a
+		# villager walked somewhere and then nothing happened for eight
+		# seconds.
+		sfx.play(String(ARRIVAL_SFX.get(act, "pick" if act.begins_with("build_")
+										else "")), 1.0)
 		_first_light(f, act))
 	f.finished.connect(func(act):
 		var at: Vector3 = f.position + Vector3(0, 0.6, 0)
@@ -910,6 +935,16 @@ func _first_light_finished(f: Node) -> void:
 ## that the village felt inert, and the cause was that work was invisible: an
 ## animation played, a number in the corner moved, and nothing connected the
 ## two. A token leaving the person who earned it is that connection.
+## What a job sounds like when it BEGINS, as opposed to when it pays out.
+const ARRIVAL_SFX := {
+	"chop": "chop", "quarry": "chop", "hunt": "chop",
+	"harvest": "pick", "forage": "pick", "eat": "pick", "wash": "pick",
+	"sow": "pick", "tend": "pick",
+	"pray": "chat", "sing": "chat", "play": "chat", "rest": "chat",
+	"bless_flock": "miracle",
+	"steal": "deny", "shirk": "deny", "brawl": "deny",
+}
+
 const JOB_LOOK := {
 	"chop":    {"fx": "chips", "sfx": "chop", "icon": "wood"},
 	"quarry":  {"fx": "chips", "sfx": "chop", "icon": "stone"},
@@ -926,6 +961,10 @@ const JOB_LOOK := {
 	"tend":        {"fx": "mend", "sfx": "chat", "icon": "health"},
 	"sing":        {"fx": "revel", "sfx": "chat", "icon": "fun"},
 	"hunt":        {"fx": "chips", "sfx": "chop", "icon": "bolt"},
+	# Being frightened by a wolf produced NOTHING -- not in this table, not a
+	# build, not a sin, so _report_job found nothing to show and the one moment
+	# the village is in danger passed in silence.
+	"flee":        {"fx": "punish", "sfx": "deny", "icon": "bolt"},
 }
 
 const RESOURCE_ROW := {"wood": "wood", "stone": "stone", "food": "food"}
@@ -1291,6 +1330,25 @@ func _add_ui() -> void:
 	draft.name = "BoonDraft"
 	draft.divinity = divinity
 	ui.add_child(draft)
+	# Escape's home. Above everything, because a paused game that cannot be
+	# unpaused is the worst bug a portal build can have.
+	pause_menu = PauseMenu.new()
+	pause_menu.name = "PauseMenu"
+	ui.add_child(pause_menu)
+	pause_menu.muted_changed.connect(func(on: bool):
+		if sfx != null:
+			sfx.set_muted(on)
+		if music != null:
+			music.set_muted(on))
+	pause_menu.restarted.connect(func():
+		# Wipe the village AND its save: "start over" that leaves yesterday's
+		# save on disk starts nothing over.
+		SaveGame.erase()
+		if saving != null:
+			saving.armed = false
+		get_tree().paused = false
+		get_tree().reload_current_scene())
+
 	# ABOVE the draft: a day that ends while a gift is pending must still end,
 	# and the gift is waiting on the other side of the morning.
 	day_screen = DayScreen.new()
@@ -1447,6 +1505,12 @@ func next_goal() -> String:
 			if village.count_of("Buildings/shrine") <= 0:
 				return "Raise a shrine"
 			return "Earn 500 Faith in all  (%d)" % int(divinity.total_earned)
+		3:
+			if folk.size() < 20:
+				return "Grow to 20 souls  (%d)" % folk.size()
+			return "Bring them through a night"
+		4:
+			return "Hold four plots  (%d)" % islands.count()
 	for n in POP_MILESTONES:
 		if not _milestones_paid.has(n) and folk.size() < n:
 			return "Grow to %d followers  (%d)" % [n, folk.size()]
@@ -1610,6 +1674,8 @@ func _process(delta: float) -> void:
 	if daylight != null:
 		daylight.tick(delta)
 		_sky_for(daylight.dusk_amount())
+		if music != null:
+			music.set_dusk(daylight.dusk_amount(), delta)
 	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)

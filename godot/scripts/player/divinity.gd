@@ -177,6 +177,15 @@ const AGES := [
 	{"name": "The Shrine Age", "lump": 180.0,
 	 "cards": ["mend", "revel", "calm", "upheaval"],
 	 "note": "A shrine stands. The deepest gifts are open to you."},
+	# THE CLIFF. The table stopped at three, and the third landed around minute
+	# six -- so the eight-minute session ran out of firsts exactly when it was
+	# meant to be at its best, and every minute after was quantitative. These
+	# two are hung on things the village already tracks, and each opens
+	# something: a fourth costs nothing but a row.
+	{"name": "The Long Watch", "lump": 320.0, "cards": [],
+	 "note": "Twenty souls, and a night survived. They are a people now."},
+	{"name": "The Wide Vale", "lump": 600.0, "cards": [],
+	 "note": "Your ground runs to the water on every side."},
 ]
 
 ## An age must be allowed to LAND before the next one starts.
@@ -807,6 +816,15 @@ func _check_age() -> void:
 		2:
 			ready = (village.count_of("Buildings/shrine") > 0
 					 and total_earned >= 500.0)
+		3:
+			# A real village that has come through a night. Both halves are
+			# already counted; neither needs a new system.
+			ready = (host.folk.size() >= 20
+					 and host.daylight != null and host.daylight.day >= 2)
+		4:
+			# Four plots and a full deck: the end of the ladder rather than a
+			# rung on it, and worth the largest lump in the game.
+			ready = islands != null and islands.count() >= 4
 	if not ready:
 		return
 
@@ -821,6 +839,11 @@ func _check_age() -> void:
 		draw_seconds = 8.0
 	if age == 3:
 		boons.rank3_open = true
+	# The last two ages unlock no cards -- the deck is full by then -- so their
+	# gift is a bigger lump and the same three-card draft, which by Age IV is
+	# reaching for rank III boons and is worth more than another card would be.
+	if age >= 4:
+		draw_seconds = 7.0
 	notice.emit("%s. %s" % [String(spec["name"]), String(spec["note"])])
 	age_reached.emit(age, String(spec["name"]))
 	# An age is worth a gift, and the gift is the same three-card moment.

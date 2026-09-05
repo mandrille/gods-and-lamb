@@ -115,6 +115,10 @@ func _build(name: String, spec: Dictionary) -> AudioStreamWAV:
 ## four villagers chopping in earshot with the identical sample is the most
 ## obvious tell that a game's audio is a lookup table.
 func play(name: String, pitch := 1.0) -> void:
+	# An empty name is a legitimate "this one is silent", not a mistake: the
+	# arrival table maps some actions to nothing on purpose.
+	if name == "":
+		return
 	if muted or not _streams.has(name) or _voices.is_empty():
 		return
 	var p := _voices[_next % _voices.size()]

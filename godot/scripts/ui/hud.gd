@@ -185,10 +185,24 @@ func _refresh_hot(m: Vector2) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and (_aiming >= 0 or _smiting):
-		_cancel("Cancelled.")
-		get_viewport().set_input_as_handled()
-		return
+	if event.is_action_pressed("ui_cancel"):
+		# Escape peels one layer at a time: an aim first, then a miracle still
+		# riding the cursor, and only then the pause menu. A held miracle had
+		# NO way to be let go early -- release() existed and no input path
+		# reached it -- so a misfire cost seven seconds of standing still.
+		if _aiming >= 0 or _smiting:
+			_cancel("Cancelled.")
+			get_viewport().set_input_as_handled()
+			return
+		if host != null and host.cursor != null and host.cursor.is_active():
+			host.cursor.release()
+			_say("Let go.", 1.5)
+			get_viewport().set_input_as_handled()
+			return
+		if host != null and host.pause_menu != null:
+			host.pause_menu.toggle()
+			get_viewport().set_input_as_handled()
+			return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
@@ -350,7 +364,10 @@ func _age_label() -> String:
 	var n: int = divinity.age
 	if n <= 0:
 		return "-"
-	return ["I", "II", "III"][mini(n, 3) - 1]
+	# Sized from the table rather than a literal list: an age added to AGES
+	# used to fall off the end of a three-item array the moment it was reached.
+	const NUMERALS := ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]
+	return String(NUMERALS[mini(n, NUMERALS.size()) - 1])
 
 
 func _row_width(text: String) -> float:
