@@ -180,3 +180,44 @@ it we make. Everything else is code.
 - **Anything on an actual phone.** Fill rate is the ceiling and no desktop
   number predicts it. `rendering/scaling_3d/scale` in `project.godot` is the
   lever when it is measured.
+
+## Re-measured 2026-09-05, and the lever named
+
+A fresh `--export-release "Web"` after the content batch, the save system, the
+day cycle and the audio bed:
+
+| file | raw | gzip | share of download |
+|---|---|---|---|
+| `index.wasm` | 39,509,339 | **10,141,611** | **87.5%** |
+| `index.pck` | 1,486,088 | 1,379,903 | 11.9% |
+| `index.js` | 279,815 | 68,666 | 0.6% |
+| | | **11.59 MB** | |
+
+Two readings, and only one of them is actionable.
+
+**The game doubled and it did not matter.** `index.pck` went from 739 KB to
+1.38 MB gzip across a batch that added nineteen buildings, thirteen characters,
+a save system, three new screens and a music layer. That is the entire game,
+and it is 12% of the download. The music in particular cost **nothing**: it is
+arithmetic in `scripts/audio/music.gd`, not audio data, which is the whole
+reason it is written that way.
+
+**The engine is 87.5% of it and no amount of art discipline will touch that.**
+39.5 MB of WebAssembly, 10.1 MB compressed, is Godot 4.7's stock release web
+template. The export is already doing the cheap things right -- `--export-release`
+rather than a debug template, `extensions_support=false`, `thread_support=false`.
+
+So the only lever left is **a custom engine build**: `scons platform=web
+target=template_release` with the unused modules compiled out. This project
+uses no physics, no navigation server, no CSG, no GridMap, no XR, no
+multiplayer, no WebRTC, no TextServer beyond the fallback, and one renderer.
+Trimming those typically halves a web template. It is an afternoon of
+infrastructure -- installing emscripten, building, then re-running the probe
+suite against the custom template to prove nothing it dropped was load-bearing
+-- and it is worth roughly 5 MB, which on a bad 4G link is the difference
+between a player waiting and a player leaving.
+
+Not attempted here, because it is a build-infrastructure project rather than a
+gameplay one, and because it needs measuring on a real connection first: a
+portal that serves the file from a CDN close to the player may make the whole
+question academic.

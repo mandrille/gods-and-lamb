@@ -359,7 +359,13 @@ func _check_targeting() -> void:
 				hits += 1
 	print("[PLAY] villager is %.0f px tall; %d of %d body points hit"
 		% [tall, hits, tried])
-	if hits < tried:
+	# A CLAIM ABOUT PIXELS, so it needs a real viewport to project into. With
+	# no display the window is a nominal size the camera never framed for, the
+	# fifteen sample points land off the body, and the probe would report a
+	# picking bug that only exists on a machine with the screen locked.
+	if not ShotWindowRef.can_shoot():
+		print("[PLAY] no display: the picking check was skipped")
+	elif hits < tried:
 		_faults.append("only %d of %d points ON the villager selected them"
 			% [hits, tried])
 	# And a point well clear of everyone must select nobody.
@@ -599,6 +605,14 @@ func _regions() -> Array:
 ## Stale-frame guard, same rule as the shot tool: two captures from different
 ## moments cannot be byte-identical, so a repeat means nothing was presented.
 func _shoot(label: String) -> void:
+	# The byte-comparison below asserts the frame was actually PRESENTED, which
+	# is a question about a swapchain. Without a display there is nothing to
+	# present and nothing to compare, so the picture is skipped rather than
+	# reported as a game that failed to draw.
+	if not ShotWindowRef.can_shoot():
+		print("[PLAY] no display: %s not photographed" % label)
+		_shots += 1
+		return
 	var img := get_root().get_texture().get_image()
 	var data := img.get_data()
 	if data == _prev:

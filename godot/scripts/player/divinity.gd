@@ -232,11 +232,46 @@ func income_per_s() -> float:
 		var devotion: float = float(f.brain.stats["faith"])
 		var mood: float = (f.brain.mood() + 1.0) * 0.5
 		var weight: float = 1.0 if f.brain.adult else CHILD_WEIGHT
+		# A HIGHER FLOOR ON BOTH, and the measurement that forced it:
+		#
+		#   lazy player, minute 10 -- food 432/432, wood 256/256, stone 160/160,
+		#   and mood -0.54 with devotion 0.08.
+		#
+		# A village with every warehouse full and its people wretched. The old
+		# floors (0.35 and 0.4) then multiplied out to 22% of base income, so
+		# the passive economy DECLINED as the village grew -- 116 Faith/min at
+		# minute one down to 21 by minute ten -- against a design that says an
+		# idle player still climbs. Twenty-two per cent is not a trickle, it is
+		# a punishment for succeeding.
+		#
+		# The ceiling is untouched: a devout, contented follower still earns
+		# exactly what they did. Only the bottom comes up, which narrows the
+		# gap between an attentive player and an absent one from the bottom
+		# rather than by taking anything away from attention.
+		#
+		# The underlying question -- WHY a village with full stores is
+		# miserable -- is a needs-simulation problem and is not answered here.
 		income += (FAITH_PER_FOLLOWER * boons.zeal() * weight
-			* (0.35 + devotion * 0.65) * (0.4 + mood * 0.6))
+			* (0.55 + devotion * 0.45) * (0.55 + mood * 0.45))
+	# DIMINISHING WITH SIZE, and this is the fix for a runaway.
+	#
+	# Income was strictly linear in population, and population is exactly what
+	# the last round of work made grow fast -- twenty-five souls by minute ten
+	# against the seven a single plot used to cap at. Linear income times a
+	# tripled population is a tripled economy, and the probe measured 707
+	# Faith/min at minute ten against a designed 266.
+	#
+	# n^0.75 rather than n. The same exponent the witnessed-blessing payout
+	# already uses, for the same reason: a blob should be worth more than one
+	# person and less than the sum of them. At two souls it costs 16%, at
+	# twenty-five it halves -- so the early game is untouched and only the
+	# runaway is pulled in, and the QUALITY of a follower (devotion, mood)
+	# matters more than the count, which is the game this is meant to be.
+	var n: float = maxf(1.0, float(host.folk.size()))
+	income *= pow(n, -0.25)
 	# The shrine's own trickle, independent of any one follower's devotion --
-	# a BUILDING income, not a person income, so it is added once rather than
-	# folded into the per-follower loop above.
+	# a BUILDING income, not a person income, so it is added AFTER the crowd
+	# scaling: a shrine is a building and does not get cheaper in a crowd.
 	if village != null:
 		income += village.passive_faith()
 	return income

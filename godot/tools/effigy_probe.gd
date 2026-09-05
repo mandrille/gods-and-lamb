@@ -79,8 +79,11 @@ func _process(_d: float) -> bool:
 		return false
 
 	var path := "res://shots/effigy_%s.png" % IDS[_i]
-	get_root().get_texture().get_image().save_png(path)
-	print("[EFFIGY] %s -> %s" % [IDS[_i], path])
+	if not ShotWindowRef.can_shoot():
+		print("[EFFIGY] no display: %s not photographed" % IDS[_i])
+	else:
+		get_root().get_texture().get_image().save_png(path)
+		print("[EFFIGY] %s -> %s" % [IDS[_i], path])
 	c.release()
 	_i += 1
 	_settle = 0

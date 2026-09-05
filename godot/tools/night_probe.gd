@@ -15,6 +15,7 @@ var _root: Node = null
 var _faults: Array[String] = []
 var _stage := 0
 var _shots := 0
+var _skipped_shots := false
 
 
 func _initialize() -> void:
@@ -181,6 +182,10 @@ func _shoot(name: String) -> void:
 	# One frame later than the state change, or it photographs the frame before.
 	if _f % 4 != 0:
 		return
+	if not ShotWindowRef.can_shoot():
+		_skipped_shots = true
+		_stage += 1
+		return
 	get_root().get_texture().get_image().save_png("res://shots/%s.png" % name)
 	print("[NIGHT] wrote res://shots/%s.png" % name)
 	_shots += 1
@@ -189,7 +194,10 @@ func _shoot(name: String) -> void:
 
 func _report() -> void:
 	paused = false
-	if _shots < 2:
+	if _skipped_shots:
+		print("[NIGHT] no display: %d picture(s) skipped, checks still ran"
+			% (2 - _shots))
+	elif _shots < 2:
 		_faults.append("only %d of 2 pictures were taken" % _shots)
 	if _faults.is_empty():
 		print("[NIGHT] ok")

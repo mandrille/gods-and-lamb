@@ -71,8 +71,12 @@ func _process(_d: float) -> bool:
 	Engine.time_scale = 1.0
 	_buy_land_and_check()
 	# A picture of the saturated village, because "no two footprints intersect"
-	# is checkable and "it looks like a village" is not.
-	get_root().get_texture().get_image().save_png("res://shots/build_full.png")
+	# is checkable and "it looks like a village" is not. Skipped when the
+	# machine has no display -- the assertions above are the probe, and a
+	# locked session should not fail a build.
+	if ShotWindowRef.can_shoot():
+		get_root().get_texture().get_image().save_png(
+			"res://shots/build_full.png")
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true

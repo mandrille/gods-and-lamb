@@ -17,6 +17,7 @@ var _faults: Array[String] = []
 var _nights: Array[int] = []
 var _shots := 0
 var _stage := 0
+var _skipped_shots := false
 
 
 func _initialize() -> void:
@@ -58,12 +59,7 @@ func _process(_d: float) -> bool:
 			_root._sky_for(_root.daylight.dusk_amount())
 			_root.hud.queue_redraw()
 		elif _f % 6 == 3:
-			get_root().get_texture().get_image().save_png(
-				"res://shots/%s.png" % names[_stage])
-			print("[DAY] wrote res://shots/%s.png at %s left, dusk %.2f"
-				% [names[_stage], _root.daylight.clock(),
-				   _root.daylight.dusk_amount()])
-			_shots += 1
+			_shoot(names[_stage])
 			_stage += 1
 		return false
 
@@ -149,8 +145,24 @@ func _check_save() -> void:
 		% [4, 123.5, junk.day])
 
 
+## No swapchain, no picture -- and that is the MACHINE's state, not the game's.
+## A locked session or a headless runner cannot open a window at all, so the
+## probe asserts everything it can and reports which pictures it skipped.
+func _shoot(name: String) -> void:
+	if not ShotWindowRef.can_shoot():
+		_skipped_shots = true
+		return
+	get_root().get_texture().get_image().save_png("res://shots/%s.png" % name)
+	print("[DAY] wrote res://shots/%s.png at %s left, dusk %.2f"
+		% [name, _root.daylight.clock(), _root.daylight.dusk_amount()])
+	_shots += 1
+
+
 func _report() -> void:
-	if _shots < 3:
+	if _skipped_shots:
+		print("[DAY] no display: %d picture(s) skipped, checks still ran"
+			% (3 - _shots))
+	elif _shots < 3:
 		_faults.append("only %d of 3 pictures were taken" % _shots)
 	if _faults.is_empty():
 		print("[DAY] ok")

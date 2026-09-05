@@ -272,6 +272,38 @@ func _check_favour() -> void:
 	# no matter what favour said. Cleared here for the same reason `stats` is
 	# reset just above: isolating what this specific check asks about.
 	g.flee_from = null
+	# AND SOMETHING TO CHOP, AND A REASON TO.
+	#
+	# This check failed about one run in three with chop chosen ZERO times out
+	# of two hundred -- which is not "favour barely steers", it is a hard veto.
+	# _demand() returns a flat zero for an action with no destination AND for
+	# one the village does not want, so after six minutes of simulated
+	# woodcutting there were two independent ways to reach zero: no tree left
+	# within reach, and a wood store already at capacity. The fault message
+	# blamed the favour system for facts about the trees and the warehouse.
+	#
+	# Both are removed here. If a tree still cannot be planted the probe says
+	# THAT, rather than accusing the mechanic it is trying to measure.
+	_root.village.stores["wood"] = 0
+	var here: Vector2i = _root.grid.cell_of(_root.folk[1].position)
+	var planted := false
+	for r in range(1, 7):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				if planted or (absi(dx) != r and absi(dy) != r):
+					continue
+				var c: Vector2i = here + Vector2i(dx, dy)
+				if _root.grid.is_buildable(c) and _root.builder.add_prop(
+						"Nature/tree", c.x, c.y):
+					planted = true
+		if planted:
+			break
+	_root.grid.rebuild_props(_root.builder.live_doc())
+	if not planted:
+		_faults.append("could not plant a tree within six cells of the "
+			+ "follower, so the favour check could not be run at all")
+		return
+
 	var chops := 0
 	for i in 200:
 		if g.choose_action() == "chop":

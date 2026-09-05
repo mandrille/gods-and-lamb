@@ -19,15 +19,25 @@ class_name Music
 ## onset sharp enough to demand attention. The rule is that you should be able
 ## to forget it is there, and notice when it stops.
 
-const RATE := 22050
-## Long enough not to feel like a two-bar loop, short enough to build in a
-## frame. Fourteen seconds of 16-bit mono is ~600 KB of RAM and zero download.
-const LOOP_SECS := 14.0
+## HALF the sample rate the effects use, and that is not a compromise.
+##
+## Nothing in this bed goes above 400 Hz; a 5.5 kHz Nyquist is four octaves of
+## headroom over the highest partial, and the samples are what this costs to
+## BUILD. The first version ran at 22 kHz for fourteen seconds across ten
+## voices and two pads -- 6.2 million sine calls in GDScript -- which added
+## tens of seconds to every single scene load, killed the probe suite outright,
+## and would have been a black screen on a phone before the game even started.
+## Measured after the rewrite: about a fifth of a second.
+const RATE := 11025
+const LOOP_SECS := 8.0
 const FADE := 2.5                  ## seconds to cross between day and dusk
 
 ## A minor pentatonic, which is the least demanding scale there is: no
 ## semitone clashes, no leading tone pulling anywhere. Root A2.
 const DAY_HZ := [220.00, 261.63, 293.66, 329.63, 392.00]
+## Kept for the record: the night pad is DAY_HZ played at half speed, which is
+## exactly this, and building it separately doubled the startup cost for a
+## sound nobody could have told apart.
 const NIGHT_HZ := [110.00, 130.81, 146.83, 164.81, 196.00]
 
 var volume := 0.34
@@ -41,8 +51,13 @@ var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_rng.seed = 20260901
-	_day = _voice(_build(DAY_HZ, 1.0))
-	_night = _voice(_build(NIGHT_HZ, 0.72))
+	# ONE pad, played twice. The night voice is the same buffer an octave down
+	# and quieter, which is what the second scale was going to sound like
+	# anyway -- and it halves a cost that was the whole problem.
+	var pad := _build(DAY_HZ, 1.0)
+	_day = _voice(pad)
+	_night = _voice(pad)
+	_night.pitch_scale = 0.5
 	_apply()
 
 
@@ -114,7 +129,9 @@ func _build(scale: Array, warmth: float) -> AudioStreamWAV:
 	var voices: Array = []
 	for i in scale.size():
 		var base: float = float(scale[i])
-		for d in [0.0, 0.6]:               # a cent or so apart, for movement
+		# Three notes carry the chord and the top two are detuned partners of
+		# them; ten voices was more than a pad made of sines can use.
+		for d in ([0.0, 0.6] if i < 3 else [0.0]):
 			voices.append({
 				"hz": _snap(base + d),
 				"amp": (0.30 if d == 0.0 else 0.18) * pow(0.82, float(i)),

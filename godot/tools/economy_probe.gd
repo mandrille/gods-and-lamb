@@ -19,13 +19,50 @@ extends SceneTree
 ## is not a disengaged player, it is a rock. "idle" is kept as the true floor --
 ## it answers a different question, whether the game runs itself at all.
 ##
-## Designed band, from the plan:
+## The band is PER ARM, re-derived, and MEASURED OVER THREE RUNS EACH.
 ##
-##     t=1min  ~56 Faith/min      t=5min  ~163      t=10min  ~266
+## The original single band (56 / 163 / 266) came from the plan and described a
+## village that capped at seven or nine people. Two things moved it out from
+## under itself: the population work (three plots now reach twenty-plus) and
+## the income floor (see Divinity.income_per_s).
 ##
-## Being outside it is not a failure -- it is the number you tune against. The
-## probe FAILS only on things that are unambiguously broken: no income at all,
-## or an engaged player earning no more than an idle one.
+## It is also far noisier than one run can show. Nine runs, Faith per minute at
+## minute ten:
+##
+##     engaged   1494, 838, 797     median  838
+##     lazy       110, 156, 267     median  156
+##     idle        36,  38,  47     median   38
+##
+## A single sample of the lazy arm has landed anywhere from 110 to 768 across
+## the day. The village's fate is emergent -- whether a farm goes up early,
+## whether wolves come, whether mood spirals -- so ONE number is not a band and
+## anything tuned against one is tuned against noise. Only minute ten is
+## pinned; minutes one and five swing harder still and are left informational.
+##
+## WHAT THE NUMBERS SAY, and it is a design question rather than a bug:
+## engagement is worth about 5x (838 against 156), where the design asks for
+## about 1.7x. Before the income floor came up it read as 20x, but that was the
+## lazy arm COLLAPSING -- 51 Faith/min at minute ten, less than an idle player
+## -- rather than the engaged arm running away. The floor fixed the collapse
+## (lazy is now 110-267 where it was 51-58) and left the real gap visible. To
+## close it further the levers are WITNESS_FAITH and WORK_BONUS, and pulling
+## them is a decision about how much attention should be worth in a portal
+## game, not a tuning nit -- so they are untouched here.
+##
+## THE OPEN QUESTION: at minute ten a lazy village has food 432/432, wood
+## 256/256 and stone 160/160 with its people at mood -0.54 and devotion 0.08.
+## Full warehouses and wretched villagers. No income formula can fix that; it
+## is a needs-simulation problem, and it is why the idle arm still declines.
+##
+## Being outside a band is not a failure -- it is the number you tune against.
+## The probe FAILS only on things that are unambiguously broken: no income at
+## all, or an engaged player earning no more than an idle one.
+## Medians of three runs each, minute ten only. See the note above.
+const BAND := {
+	"engaged": {10: 838.0},
+	"lazy": {10: 156.0},
+	"idle": {10: 38.0},
+}
 const ShotWindowRef := preload("res://tools/shot_window.gd")
 
 const MINUTES := 10
@@ -89,9 +126,25 @@ func _process(delta: float) -> bool:
 		_per_minute.append(total - _last_total)
 		_pop.append(_root.folk.size())
 		_last_total = total
-		print("[ECON] t=%2d min   %6.1f Faith earned   pop %2d   %s"
-			% [m, _per_minute[m - 1], _pop[m - 1],
-			   _root.village.summary()])
+		# MOOD AND DEVOTION, not just the money. Faith per head is
+		# (0.35 + devotion x 0.65) x (0.4 + mood x 0.6), so a village whose
+		# income is falling is telling you something about how its people are
+		# doing -- and without these two columns the only reading available was
+		# "the number went down", which invites tuning the wrong constant.
+		var mood := 0.0
+		var devotion := 0.0
+		var n := 0
+		for f in _root.folk:
+			if is_instance_valid(f) and f.brain != null:
+				mood += f.brain.mood()
+				devotion += float(f.brain.stats["faith"])
+				n += 1
+		if n > 0:
+			mood /= float(n)
+			devotion /= float(n)
+		print("[ECON] t=%2d min   %6.1f Faith earned   pop %2d   mood %+.2f   "
+			% [m, _per_minute[m - 1], _pop[m - 1], mood]
+			+ "devotion %.2f   %s" % [devotion, _root.village.summary()])
 
 	if _minute < MINUTES:
 		return false
@@ -160,7 +213,7 @@ func _play_a_bit() -> void:
 
 func _report() -> void:
 	print("")
-	var want := {1: 56.0, 5: 163.0, 10: 266.0}
+	var want: Dictionary = BAND.get(_mode, BAND["lazy"])
 	print("[ECON] === %s: %d minutes, %d blessings, %d cards ==="
 		% [_mode, MINUTES, _blessed, _cast])
 	for i in _per_minute.size():
