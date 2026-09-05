@@ -30,6 +30,9 @@ var host = null                         ## ValeRoot
 var armed := false                      ## may this touch the disk at all
 var aura := ""                          ## set at nightfall; steers the away roll
 var away: Dictionary = {}               ## the roll from this launch, if any
+## How many CALENDAR days in a row this village has been opened. The actual
+## daily hook: an absence pays a capped amount, but showing up pays a streak.
+var streak := 1
 
 var _high_water := 0                    ## the latest unix time ever seen
 var _last_write_ms := 0
@@ -97,6 +100,7 @@ func save_now(why := "") -> bool:
 	doc["meta"]["max_seen_unix"] = maxi(now_unix, _high_water)
 	if aura != "":
 		doc["meta"]["aura"] = aura
+	doc["meta"]["streak"] = streak
 	return SaveGame.write(doc)
 
 
@@ -106,8 +110,34 @@ func save_now(why := "") -> bool:
 func open_log(doc: Dictionary, now_unix: int) -> Dictionary:
 	if doc.is_empty():
 		return {}
-	note_time(int((doc.get("meta", {}) as Dictionary).get("max_seen_unix", 0)))
-	aura = String((doc.get("meta", {}) as Dictionary).get("aura", ""))
+	var meta: Dictionary = doc.get("meta", {})
+	note_time(int(meta.get("max_seen_unix", 0)))
+	aura = String(meta.get("aura", ""))
+	streak = _streak_for(meta, now_unix)
 	away = Away.roll(doc, now_unix)
+	away["streak"] = streak
 	note_time(now_unix)
 	return away
+
+
+## A new CALENDAR day continues the streak; a whole day missed ends it.
+##
+## Calendar days rather than 24-hour blocks, because "come back tomorrow" is
+## what a person means by tomorrow -- a player who plays at 9pm and again at
+## 8am the next morning has come back two days running, and telling them
+## otherwise because eleven hours is not twenty-four would be pedantry the
+## streak exists to avoid.
+func _streak_for(meta: Dictionary, now_unix: int) -> int:
+	var was := int(meta.get("streak", 1))
+	var then := int(meta.get("saved_at", now_unix))
+	if now_unix < then:
+		return was                       # a clock correction is not a lapse
+	var a := Time.get_datetime_dict_from_unix_time(then)
+	var b := Time.get_datetime_dict_from_unix_time(now_unix)
+	if a["year"] == b["year"] and a["month"] == b["month"] and a["day"] == b["day"]:
+		return was                       # same day, same streak
+	# One night away continues it; two ends it. 48 hours is the honest cutoff
+	# for "yesterday" without needing a calendar library.
+	if now_unix - then <= 48 * 3600:
+		return was + 1
+	return 1

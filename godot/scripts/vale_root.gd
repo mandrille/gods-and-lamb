@@ -135,6 +135,15 @@ var load_saves := false
 var saving: Persistence = null
 ## The day clock. Public so the HUD can read it and a probe can wind it on.
 var daylight: Daylight = null
+var day_screen: DayScreen = null
+## What this day has amounted to so far, and the one thing worth retelling.
+## Snapshotted at dawn and subtracted at dusk, so the summary counts THIS day
+## rather than the whole run.
+var _day_mark := {}
+var _day_drama := ""
+## A probe must never be stopped by a modal it did not ask for. The real game
+## opens the night screen and pauses; anything else rolls straight on.
+var night_screen := true
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
 
@@ -244,7 +253,9 @@ func _ready() -> void:
 	_add_ui()
 	_wire_feedback()
 	_add_menu()
+	night_screen = Persistence.is_real_game(get_tree())
 	_add_persistence()
+	_start_day()
 
 
 ## Load an optional script, tolerating one that is missing OR broken.
@@ -624,14 +635,57 @@ func _restore_followers(doc: Dictionary) -> void:
 ## Night. For now this marks the day and saves; the Day Summary and the
 ## overnight aura are the next piece, and this is the seam they attach to.
 func _on_night(which: int) -> void:
-	if divinity != null:
-		divinity.notice.emit("Night falls on day %d." % which)
 	if sfx != null:
 		sfx.play("coin", 0.8)
 	# A day boundary is exactly the moment a player might close the tab, so it
 	# is worth a write of its own rather than waiting for the autosave.
 	if saving != null:
 		saving.save_now("night")
+	if not night_screen or day_screen == null:
+		_start_day()
+		return
+	# The HUD does not process while paused, so it would keep whatever frame it
+	# last drew -- yesterday's day number, under a screen announcing tonight.
+	# Drawing is not pause-gated, only processing, so one request is enough.
+	if hud != null:
+		hud.queue_redraw()
+	day_screen.open_night(_day_summary(which))
+	# STOP the village. The point of nightfall is that the day is over, and a
+	# summary you have to read while the simulation runs on underneath it is a
+	# summary nobody reads.
+	get_tree().paused = true
+
+
+## The numbers this day earned, as deltas against the mark taken at dawn.
+func _day_summary(which: int) -> Dictionary:
+	var built := 0
+	for aid in village.structures:
+		if String(aid).begins_with("Buildings/"):
+			built += int(village.structures[aid])
+	return {
+		"day": which,
+		"built": maxi(0, built - int(_day_mark.get("built", 0))),
+		"newcomers": maxi(0, folk.size() - int(_day_mark.get("folk", 0))),
+		"faith": maxf(0.0, divinity.total_earned
+					  - float(_day_mark.get("earned", 0.0))),
+		"gathered": maxi(0, village.total_gathered
+						 - int(_day_mark.get("gathered", 0))),
+		"drama": _day_drama,
+		"aura": saving.aura if saving != null else "",
+	}
+
+
+## Dawn: unpause, take the mark the next summary will be measured against.
+func _start_day() -> void:
+	get_tree().paused = false
+	var built := 0
+	for aid in village.structures:
+		if String(aid).begins_with("Buildings/"):
+			built += int(village.structures[aid])
+	_day_mark = {"built": built, "folk": folk.size(),
+				 "earned": divinity.total_earned,
+				 "gathered": village.total_gathered}
+	_day_drama = ""
 
 
 ## Warm the light as the day runs out.
@@ -663,15 +717,43 @@ func _add_persistence() -> void:
 		return
 	var log := saving.open_log(_save_doc,
 							   int(Time.get_unix_time_from_system()))
-	if log.is_empty() or float(log.get("faith", 0.0)) <= 0.0:
+	var streak: int = int(log.get("streak", 1))
+	var gift := _streak_gift(streak)
+	var faith: float = float(log.get("faith", 0.0))
+	if faith <= 0.0 and gift == "" and (log.get("lines", []) as Array).is_empty():
 		return
-	divinity.add_faith(float(log["faith"]))
-	# v1 shows the log through the notice stack, which now holds three. The
-	# Day Summary screen is where it gets a room of its own.
-	for line in (log.get("lines", []) as Array):
-		divinity.notice.emit(String(line))
-	divinity.notice.emit("While you were away: %d Faith."
-		% int(log["faith"]))
+	divinity.add_faith(faith)
+	if not night_screen or day_screen == null:
+		return
+	log["day"] = daylight.day
+	log["gift"] = gift
+	log["span"] = _span(float(log.get("seconds", 0.0)))
+	day_screen.open_morning(log)
+	get_tree().paused = true
+
+
+## What showing up again is worth. Small, escalating, and never a substitute
+## for playing -- the streak is a reason to open the tab, not a way to win.
+func _streak_gift(streak: int) -> String:
+	if streak < 2:
+		return ""
+	if streak >= 5:
+		divinity.add_faith(80.0)
+		divinity.grant_draft("streak")
+		return "A gift, and 80 Faith."
+	if streak >= 3:
+		divinity.grant_draft("streak")
+		return "A gift waits for you."
+	divinity.add_faith(40.0)
+	return "40 Faith for your return."
+
+
+func _span(seconds: float) -> String:
+	if seconds < 3600.0:
+		return "You were gone %d minutes." % maxi(1, int(seconds / 60.0))
+	if seconds < 48.0 * 3600.0:
+		return "You were gone %d hours." % int(seconds / 3600.0)
+	return "You were gone %d days." % int(seconds / 86400.0)
 
 
 ## Sound and one-shot FX for everything the player does or watches happen.## Sound and one-shot FX for everything the player does or watches happen.
@@ -858,6 +940,7 @@ func _report_job(f: Node, act: String, spec: Dictionary, at: Vector3) -> void:
 	# announced, it is marked over their head (see Overhead), and there is a
 	# few-second window in which striking them is justice rather than cruelty.
 	if bool(spec.get("sin", false)):
+		_day_drama = "%s took the easy way." % f.brain.name
 		divinity.notice.emit("%s: %s." % [f.brain.name,
 			String(spec.get("verb", act)).capitalize()])
 		fxe.burst("wrath", at + Vector3(0, 0.8, 0), 0.5)
@@ -1208,6 +1291,24 @@ func _add_ui() -> void:
 	draft.name = "BoonDraft"
 	draft.divinity = divinity
 	ui.add_child(draft)
+	# ABOVE the draft: a day that ends while a gift is pending must still end,
+	# and the gift is waiting on the other side of the morning.
+	day_screen = DayScreen.new()
+	day_screen.name = "DayScreen"
+	ui.add_child(day_screen)
+	day_screen.aura_chosen.connect(func(id):
+		if saving != null:
+			saving.aura = id
+		divinity.notice.emit("The village sleeps under %s." % id))
+	day_screen.rested.connect(func():
+		day_screen.close()
+		_start_day()
+		if saving != null:
+			saving.save_now("rest"))
+	day_screen.resumed.connect(func():
+		day_screen.close()
+		_start_day())
+
 	divinity.draft_offered.connect(draft.open)
 	draft.chosen.connect(func(id):
 		divinity.take_boon(id)
@@ -1312,6 +1413,8 @@ func _maybe_newcomer(delta: float) -> void:
 	var who = folk[folk.size() - 1]
 	fxe.burst("bless", who.position + Vector3(0, 0.8, 0))
 	sfx.play("coin")
+	if _day_drama == "":
+		_day_drama = "%s came up the road and stayed." % who.brain.name
 	divinity.notice.emit("You have a new follower: %s." % who.brain.name)
 
 
