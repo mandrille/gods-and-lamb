@@ -21,6 +21,11 @@ class_name Calamity
 ## design: the village should thank you, and a crisis should leave the place
 ## more devout than it found it.
 
+## NOT SAVED, and that is a decision rather than an omission. A calamity is a
+## sixty-second thing that wants answering while you are watching; restoring one
+## on load would mean opening the game to a fire already half through the trees,
+## with no chance to have caught it early. Closing the tab puts it out. The
+## ground it already ate stays eaten, which is the part that should persist.
 const KINDS := ["fire", "drought", "tornado"]
 
 ## What answers what. A miracle whose id is in here, cast within reach, ends
