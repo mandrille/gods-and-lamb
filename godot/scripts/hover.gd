@@ -15,6 +15,8 @@ class_name HoverPick
 ## touching a material would light up all of them at once.
 
 signal hovered(entry: Dictionary)      ## {} when nothing is under the cursor
+## The ground itself, when no prop was under the pointer.
+signal ground_picked(at: Vector3)
 signal picked(entry: Dictionary)
 
 const HOVER_TINT := Color(1.0, 1.0, 1.0, 0.20)
@@ -97,21 +99,50 @@ func _process(_d: float) -> void:
 	_set_hover(_pick_at(m))
 
 
+## A CLICK IS A PRESS AND A RELEASE IN THE SAME PLACE.
+##
+## This used to fire on release whenever anything was hovered, with a comment
+## claiming it checked that the cursor had barely moved. It did not: a camera
+## pan that happened to finish over a tree picked the tree. That was harmless
+## while a prop click only printed a line; now that touching a tree drops
+## apples and touching dirt grows grass, every pan across the map would plant a
+## garden behind it.
+const SLOP := 8.0                  ## pixels of travel still counted as a click
+
+var _press := Vector2(-9999, -9999)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
-			# On RELEASE, and only if the cursor barely moved. Otherwise every
-			# pan ends by selecting whatever the drag happened to finish over.
-			if _hover.size() > 0:
-				_set_picked(_hover)
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			_press = mb.position
+		elif _press.distance_to(mb.position) <= SLOP:
+			_claim(mb.position)
 	elif event is InputEventScreenTouch:
 		var st := event as InputEventScreenTouch
 		if st.pressed:
-			# Touch has no hover, so a tap has to do both jobs at once.
-			var hit := _pick_at(st.position)
-			_set_hover(hit)
-			_set_picked(hit)
+			_press = st.position
+			# Touch has no hover, so the tap has to find its own target.
+			_set_hover(_pick_at(st.position))
+		elif _press.distance_to(st.position) <= SLOP:
+			_claim(st.position)
+
+
+## What was under the finger: a prop if there is one, otherwise the ground.
+func _claim(screen: Vector2) -> void:
+	var hit := _pick_at(screen)
+	if hit.size() > 0:
+		_set_hover(hit)
+		_set_picked(hit)
+		return
+	if rig == null or rig.cam == null:
+		return
+	var at = rig.ground_at(screen)
+	if at != null:
+		ground_picked.emit(at)
 
 
 func _pick_at(screen: Vector2) -> Dictionary:

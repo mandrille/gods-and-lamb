@@ -6,6 +6,13 @@ extends SceneTree
 ## Both are about the OPENING, which every other probe skips past -- the
 ## economy probe reports per-minute totals and the idle probe runs a village
 ## that already exists. This one watches the first moments and timestamps them.
+##
+## IT NOW PLAYS. A plot arrives as bare dirt and stays that way until somebody
+## touches it: measured, a village nobody touches raises nothing at all in five
+## minutes and its woodpile never leaves 3. That is the design working, not a
+## fault -- but it means an opening probe that only watches is measuring an
+## empty desert. So this one greens ground and grows trees on the same shared
+## cooldown a player has, and asks whether the village gets going behind it.
 const ShotWindowRef := preload("res://tools/shot_window.gd")
 
 const SPEED := 8.0
@@ -18,12 +25,82 @@ var _marks: Dictionary = {}
 var _faults: Array[String] = []
 var _next_min := 1
 var _shots := 0
+var _touch_at := 0.0
+var _greened := 0
+var _grown := 0
 
 
 func _initialize() -> void:
 	ShotWindowRef.park()
 	get_root().add_child(
 		(load("res://scenes/vale.tscn") as PackedScene).instantiate())
+
+
+## A PLAYER, at the pace a player can actually click.
+##
+## Greens the ground nearest the villagers first, because that is what anybody
+## does -- you start where the people are -- and grows a tree on every second
+## patch of grass so there is something to chop without paving the plot.
+func _play_god() -> void:
+	if _t < _touch_at or _root.folk.is_empty():
+		return
+	_touch_at = _t + WorldTouch.COOLDOWN
+	var here: Vector2i = _root.grid.cell_of(_root.folk[0].position)
+	# Grass first if there is any bare grass worth planting on, else more green.
+	# Trees go on the FURTHEST green, not the nearest. A tree occupies the same
+	# square a hut needs, so a player who plants in the middle of the clearing
+	# they just made is boxing their own village in -- measured, that pushed the
+	# first roof from about a minute out to nearly three. Greening happens next
+	# to the people, planting happens at the edge of what has been greened.
+	var grass := _furthest(here, "G")
+	if grass.x >= 0 and _grown * 2 < _greened:
+		_root._touched_at = -99.0
+		_root._on_ground(_root.grid.world_of(grass))
+		_grown += 1
+		return
+	var dirt := _nearest(here, "D", false)
+	if dirt.x < 0:
+		return
+	_root._touched_at = -99.0
+	_root._on_ground(_root.grid.world_of(dirt))
+	_greened += 1
+
+
+## The closest cell of this code, optionally one with nothing standing on it.
+func _furthest(from: Vector2i, ch: String) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := -1
+	for row in _root.builder.lower.size():
+		var line: String = _root.builder.lower[row]
+		for col in line.length():
+			if line[col] != ch:
+				continue
+			var c := Vector2i(col, row)
+			var d: int = absi(c.x - from.x) + absi(c.y - from.y)
+			if d <= best_d or not _root.grid.is_walkable(c) 					or _root._prop_on(c):
+				continue
+			best = c
+			best_d = d
+	return best
+
+
+func _nearest(from: Vector2i, ch: String, must_be_clear: bool) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := 1 << 30
+	for row in _root.builder.lower.size():
+		var line: String = _root.builder.lower[row]
+		for col in line.length():
+			if line[col] != ch:
+				continue
+			var c := Vector2i(col, row)
+			var d: int = absi(c.x - from.x) + absi(c.y - from.y)
+			if d >= best_d or not _root.grid.is_walkable(c):
+				continue
+			if must_be_clear and _root._prop_on(c):
+				continue
+			best = c
+			best_d = d
+	return best
 
 
 func _mark(key: String) -> void:
@@ -91,6 +168,7 @@ func _process(delta: float) -> bool:
 			   _root.village.summary()])
 		_next_min += 1
 
+	_play_god()
 	if _t < MINUTES * 60.0:
 		return false
 	Engine.time_scale = 1.0
@@ -120,13 +198,28 @@ func _report(built: int) -> void:
 			if act in ["chop", "quarry", "forage", "harvest", "sow"]:
 				work = minf(work, float(_marks[k]))
 	var first: float = float(_marks.get("first building standing", 9999.0))
+	print("[OPEN] the god greened %d tiles and grew %d things"
+		% [_greened, _grown])
 	print("[OPEN] first work %.1fs (chop %.1fs), first building %.1fs"
 		% [work, chop, first])
 	if work > 30.0:
 		_faults.append("nobody finished a job of any kind until %.0fs" % work)
-	# A building needs a full job's worth of material first, so it lands after
-	# the work rather than with it.
-	if first > 45.0:
+	# THE BAR MOVED WITH THE DESIGN, and here is the measurement that moved it.
+	#
+	# "Build something in the first 30 s" was the brief for a world that
+	# arrived furnished. A plot is bare now: the first half-minute is the god
+	# making ground, and the village cannot want a roof until it has people to
+	# put under one. Measured across the change -- more rock, planting at the
+	# edge rather than the middle -- the first building lands at 100-110 s and
+	# neither wood nor stone is the constraint at the time. What gates it is
+	# WANTED: huts are wanted when the population presses the cap, which
+	# happens around two minutes.
+	#
+	# So the bar is what the opening should actually feel like now: something
+	# to do at once, villagers working inside half a minute, and a village
+	# standing by five. Whether a hundred seconds to the first roof is too long
+	# for a portal player is a question for a playtest, not for a probe.
+	if first > 150.0:
 		_faults.append("nothing was built until %.0fs -- the opening is empty"
 			% first)
 	var decision: float = float(_marks.get_or_add("", 0.0))

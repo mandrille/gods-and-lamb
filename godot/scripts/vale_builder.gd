@@ -37,6 +37,9 @@ var water_drop := 0.06
 var cols := 0
 var rows := 0
 var lower: Array = []
+## The ground, in a form that can be edited one tile at a time. See set_tile.
+var _ground_xforms: Dictionary = {}      ## asset_id -> Array[Transform3D]
+var _tile_aid: Dictionary = {}           ## Vector2i -> asset_id (flat tiles)
 var upper: Array = []
 
 ## Every prop that was actually placed: {id, node, pos}. Hover picking and the
@@ -130,6 +133,64 @@ func world_of(col: int, row: int) -> Vector3:
 	var ox := -float(cols - 1) * tile * 0.5
 	var oz := -float(rows - 1) * tile * 0.5
 	return Vector3(ox + col * tile, 0.0, oz + (rows - 1 - row) * tile)
+
+
+## Change one tile, in the ground and in the document.
+##
+## THE WHOLE POINT OF THE DESERT. The world starts as dirt and the player turns
+## it green a click at a time, so this runs constantly and cannot afford to
+## rebuild anything: the tile's transform moves from one multimesh batch to
+## another and only those two are re-uploaded. A thousand transforms is well
+## under a millisecond, against ~30 ms to rebuild the ground.
+##
+## Only flat tiles -- a cliff top is two stacked blocks and is not something
+## the player is turning into a meadow.
+func set_tile(col: int, row: int, ch: String) -> bool:
+	var cell := Vector2i(col, row)
+	if not _tile_aid.has(cell):
+		return false
+	var code: Dictionary = doc.get("code", {})
+	if not code.has(ch):
+		return false
+	var want := String(code[ch])
+	var had := String(_tile_aid[cell])
+	if want == had:
+		return false
+
+	var base := world_of(col, row)
+	var moved := false
+	var from: Array = _ground_xforms.get(had, [])
+	for i in from.size():
+		if (from[i] as Transform3D).origin.distance_squared_to(base) < 0.001:
+			from.remove_at(i)
+			moved = true
+			break
+	if not moved:
+		return false
+	if not _ground_xforms.has(want):
+		_ground_xforms[want] = []
+	(_ground_xforms[want] as Array).append(Transform3D(Basis(), base))
+	_tile_aid[cell] = want
+	_upload(had)
+	_upload(want)
+
+	# The DOCUMENT too, or the change is a lick of paint: the walk grid, the
+	# save and every buildability test read this, not the multimesh.
+	if row >= 0 and row < lower.size():
+		var line: String = lower[row]
+		if col >= 0 and col < line.length():
+			lower[row] = line.substr(0, col) + ch + line.substr(col + 1)
+	return true
+
+
+func _upload(aid: String) -> void:
+	var inst := _multi_for(aid)
+	if inst == null:
+		return
+	var xforms: Array = _ground_xforms.get(aid, [])
+	inst.multimesh.instance_count = xforms.size()
+	for i in xforms.size():
+		inst.multimesh.set_instance_transform(i, xforms[i])
 
 
 func code_at(layer: Array, col: int, row: int) -> String:
@@ -259,6 +320,17 @@ func _build_ground() -> void:
 			for b in range(1, upper_blocks):
 				_stack(batches, fill, base + Vector3(0, lift * b, 0))
 			_stack(batches, code[up], base + Vector3(0, lift * upper_blocks, 0))
+
+	# KEPT, so one tile can change later without rebuilding the world.
+	# `_ground_xforms` is the same data the multimeshes hold, in a form that
+	# can be edited; `_tile_aid` says which batch a cell currently lives in.
+	_ground_xforms = batches
+	_tile_aid.clear()
+	for row in rows:
+		for col in cols:
+			var lo := code_at(lower, col, row)
+			if lo != "." and code_at(upper, col, row) == "." and code.has(lo):
+				_tile_aid[Vector2i(col, row)] = String(code[lo])
 
 	var total := 0
 	for aid in batches:
@@ -527,6 +599,31 @@ func live_doc() -> Dictionary:
 ## did not list is genuinely new ground; everything else comes from what is
 ## actually standing.
 func carry_doc(base: Dictionary) -> Dictionary:
+	# THE GROUND THE PLAYER MADE COMES WITH THEM.
+	#
+	# Buying land regenerates the world from the generator, and the generator
+	# now emits bare dirt -- so without this every tile the player had greened
+	# turned back to desert the moment they bought a plot. The whole opening,
+	# undone by the reward for finishing it.
+	#
+	# The rule is simple and covers more than grass: wherever the OLD document
+	# had a tile, that tile wins. New land arrives as whatever the generator
+	# says, which is dirt, and that is exactly right -- a plot you have just
+	# bought should be bare.
+	var carried: Array = []
+	var base_lower: Array = base.get("lower", [])
+	for row in base_lower.size():
+		var line: String = base_lower[row]
+		if row < lower.size():
+			var old_line: String = lower[row]
+			var out := ""
+			for col in line.length():
+				var had := "." if col >= old_line.length() else old_line[col]
+				out += line[col] if had == "." else had
+			line = out
+		carried.append(line)
+	base["lower"] = carried
+
 	var was := {}
 	for p in (doc.get("props", []) as Array):
 		was["%d,%d" % [int(p["col"]), int(p["row"])]] = true

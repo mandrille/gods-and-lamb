@@ -44,6 +44,8 @@ func _process(_d: float) -> bool:
 			printerr("[GALLERY] FAIL: no scene root")
 			quit(1)
 			return true
+		# Grass, because this probe is not about the desert.
+		TestGround.green(_root)
 		_root.draft.close()
 		_root.divinity.pending_draft = []
 		for n in _root.POP_MILESTONES:

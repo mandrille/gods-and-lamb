@@ -46,6 +46,8 @@ func _process(delta: float) -> bool:
 			printerr("[SIM] FAIL: no scene root with a village")
 			quit(1)
 			return true
+		# Grass, because this probe is not about the desert.
+		TestGround.green(_root)
 		# Time compression. The needs are tuned for an idle game -- minutes per
 		# bar -- so a real-time probe would watch nothing happen and pass.
 		Engine.time_scale = SPEED

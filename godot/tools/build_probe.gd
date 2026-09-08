@@ -43,6 +43,7 @@ func _process(_d: float) -> bool:
 			printerr("[BUILD] FAIL: no scene root")
 			quit(1)
 			return true
+		# Grass, because this probe is not about the desert.
 		# Run on the nearly-empty map that exists at frame 20, BEFORE the
 		# saturation phase below fills it -- staging twenty buildings after
 		# 3200 frames of forty builders working means fighting the very
@@ -150,6 +151,9 @@ func _check_new_buildings() -> void:
 		if slots.is_empty():
 			break
 		_root.divinity.buy_island(slots[0])
+	# Grass AFTER the purchases: a bought plot arrives bare, and this probe is
+	# about where buildings land rather than about the desert.
+	TestGround.green(_root)
 
 	var referenced: Dictionary = {}
 	for a in Brain.ACTIONS:

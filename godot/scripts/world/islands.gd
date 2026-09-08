@@ -168,11 +168,16 @@ func build_doc() -> Dictionary:
 		upper.append(b)
 
 	# 1. The land itself: every cell of every owned plot, and nothing else.
+	#
+	# DIRT, not grass. A plot arrives bare and the player greens it a click at
+	# a time -- that is the opening now, and it is the reason the god has
+	# anything to do in the first thirty seconds. Every plot bought later
+	# arrives just as bare, so land is a canvas rather than a delivery.
 	for s in unlocked:
 		var o := origin(s)
 		for j in SPAN:
 			for i in SPAN:
-				_put(ground, o.x + i, o.y + j, "G")
+				_put(ground, o.x + i, o.y + j, "D")
 
 	# 2. Global features, in the order things sit on top of each other: water
 	#    cuts the ground, roads cross it on bridges, fields and shelves take
@@ -180,7 +185,7 @@ func build_doc() -> Dictionary:
 	var river := _river_cells(n)
 	for cell in river:
 		var c: Vector2i = cell
-		if _char_at(ground, c.x, c.y) == "G":
+		if _is_land(_char_at(ground, c.x, c.y)):
 			_put(ground, c.x, c.y, String(river[cell]))
 
 	var props: Array = []
@@ -200,6 +205,16 @@ func build_doc() -> Dictionary:
 		"fill": "Terrain/dirt",
 		"lower": ground, "upper": upper, "props": props,
 	}
+
+
+## Ground a village could stand on, whether or not it has been greened yet.
+##
+## Everything used to test for "G" because that is what a plot was made of.
+## A plot is made of "D" now and the player turns it green, so every one of
+## those tests had to stop asking about the colour and start asking about the
+## land.
+static func _is_land(ch: String) -> bool:
+	return ch == "D" or ch == "G"
 
 
 func _put(ground: Array, col: int, row: int, ch: String) -> void:
@@ -258,7 +273,7 @@ func _roads(ground: Array, props: Array, n: int) -> void:
 					var col: int = fixed if axis == 0 else t
 					var row: int = t if axis == 0 else fixed
 					var ch := _char_at(ground, col, row)
-					if ch == "G" or ch == "A" or ch == "C":
+					if _is_land(ch) or ch == "A" or ch == "C":
 						_put(ground, col, row, "P")
 					elif ch == "W":
 						crossings.append(Vector2i(col, row))
@@ -311,7 +326,7 @@ func _fields(ground: Array, n: int) -> void:
 		var h := r.randi_range(4, 8)
 		for j in h:
 			for i in w:
-				if _char_at(ground, spot.x + i, spot.y + j) == "G":
+				if _is_land(_char_at(ground, spot.x + i, spot.y + j)):
 					_put(ground, spot.x + i, spot.y + j, "C")
 
 
@@ -329,8 +344,10 @@ func _cliffs(ground: Array, upper: Array, n: int) -> void:
 				# the grass.
 				if i + j < 2 or (w - 1 - i) + (h - 1 - j) < 2:
 					continue
-				if _char_at(ground, spot.x + i, spot.y + j) != "G":
+				if not _is_land(_char_at(ground, spot.x + i, spot.y + j)):
 					continue
+				# A cliff TOP is grass: it is out of reach of a click,
+				# so leaving it bare would be a bald patch nobody could fix.
 				_put(upper, spot.x + i, spot.y + j, "G")
 
 
@@ -347,14 +364,18 @@ func _scatter(props: Array, ground: Array, upper: Array,
 	for p in props:
 		taken[Vector2i(int(p["col"]), int(p["row"]))] = 2.0
 
-	var plan := [["Nature/tree", 18, 1.5], ["Nature/pine", 7, 1.5],
-				 ["Nature/bush", 14, 1.0], ["Nature/rock", 9, 1.0],
-				 ["Nature/log", 3, 1.0], ["Nature/stump", 3, 0.9],
-				 ["Nature/flowers", 16, 0.7], ["Nature/tall_grass", 24, 0.5],
-				 ["Nature/reeds", 12, 0.6], ["Nature/lily_pad", 7, 0.6],
-				 # Wild grain on the ploughed ground. The villagers sow more.
-				 ["Nature/crop_row", 26, 0.55]]
-
+	# WHAT GROWS BY ITSELF: almost nothing.
+	#
+	# This used to be a full landscape -- eighteen trees, twenty-four tufts of
+	# grass, twenty-six rows of grain -- handed over before the player had done
+	# anything. A world that arrives finished has nothing to ask of a god.
+	#
+	# What is left is the water dressing, which the player cannot make and
+	# which reads as the land having been here before them, plus a handful of
+	# rocks to break for the first stone. Everything green is now grown by
+	# hand, on ground the player has greened first.
+	var plan := [["Nature/rock", 12, 1.0],
+				 ["Nature/reeds", 8, 0.6], ["Nature/lily_pad", 6, 0.6]]
 	for entry in plan:
 		var aid := String(entry[0])
 		var want := int(entry[1])
@@ -369,7 +390,7 @@ func _scatter(props: Array, ground: Array, upper: Array,
 			var col := o.x + r.randi_range(0, SPAN - 1)
 			var row := o.y + r.randi_range(0, SPAN - 1)
 			var ch := _char_at(ground, col, row)
-			var ok := ch == "G"
+			var ok := _is_land(ch)
 			if wants_water:
 				ok = ch == "W"
 			elif wants_bank:

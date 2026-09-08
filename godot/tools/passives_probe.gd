@@ -31,6 +31,8 @@ func _process(_d: float) -> bool:
 		printerr("[PASSIVE] FAIL: no scene root")
 		quit(1)
 		return true
+	# Grass, because this probe is not about the desert.
+	TestGround.green(_root)
 
 	_check_faith()
 	_check_yield()

@@ -126,6 +126,7 @@ var n_build_moved := 0
 var n_build_fail := 0
 var _rng := RandomNumberGenerator.new()
 ## The save this launch opened, and how it went. Empty means a new vale.
+var _touched_at := -99.0            ## village clock of the last world touch
 var _save_doc: Dictionary = {}
 var _save_how := ""
 ## Turned off by probes that must not read the player's village. The default
@@ -202,6 +203,7 @@ func _ready() -> void:
 	add_child(pick)
 	pick.setup(rig, builder, builder.placed_props)
 	pick.picked.connect(_on_picked)
+	pick.ground_picked.connect(_on_ground)
 
 	grid = WALKGRID.new()
 	grid.build(builder.doc)
@@ -355,10 +357,109 @@ func _report_overrides(before: Dictionary, after: Dictionary) -> void:
 		+ "values in vale_light.gd back.")
 
 
+## A PROP WAS TOUCHED. This used to print a line and do nothing.
 func _on_picked(entry: Dictionary) -> void:
-	if entry.size() == 0:
+	if entry.size() == 0 or not _touch_ready():
 		return
-	print("[PICK] %s at %.1f, %.1f" % [entry["id"], entry["pos"].x, entry["pos"].z])
+	var id := String(entry.get("id", ""))
+	var act := WorldTouch.prop_action(id)
+	if act.is_empty():
+		return
+	var at: Vector3 = entry.get("pos", Vector3.ZERO)
+	if bool(act.get("consumes", false)):
+		builder.remove_prop(entry)
+		queue_grid_rebuild()
+	var spawns := String(act.get("spawns", ""))
+	if spawns != "":
+		var cell: Vector2i = grid.beside(grid.cell_of(at), _rng)
+		if builder.add_prop(spawns, cell.x, cell.y, 0.0):
+			queue_grid_rebuild()
+	_touch_paid(act, at)
+
+
+## THE GROUND WAS TOUCHED, which is the verb the whole desert opening is made
+## of: dirt becomes grass, and grass grows something if there is room for it.
+func _on_ground(at: Vector3) -> void:
+	if not _touch_ready():
+		return
+	var cell: Vector2i = grid.cell_of(at)
+	var ch := builder.code_at(builder.lower, cell.x, cell.y)
+	var act := WorldTouch.tile_action(ch)
+	if act.is_empty():
+		return
+	var becomes := String(act.get("becomes", ""))
+	if becomes != "":
+		if not builder.set_tile(cell.x, cell.y, becomes):
+			return
+		grid.set_code(cell, becomes)
+	elif bool(act.get("grows", false)):
+		# Only where there is ROOM. A meadow you can fill by holding the mouse
+		# down is not a decision, and a tree on top of a hut is a bug.
+		if not grid.is_plain(cell) or _prop_on(cell):
+			return
+		if not builder.add_prop(WorldTouch.seed_for(cell), cell.x, cell.y,
+								_rng.randf_range(0.0, 360.0)):
+			return
+		queue_grid_rebuild()
+	_touch_paid(act, grid.world_of(cell))
+
+
+## Is anything already standing here?
+##
+## Asked of the BUILDER rather than the walk grid, because the grid is rebuilt
+## on a coalesced timer -- a tree planted half a second ago is not in it yet,
+## and the second click on the same square would stack a bush inside the tree.
+## The builder knows immediately.
+func _prop_on(cell: Vector2i) -> bool:
+	for e in builder.placed_props:
+		if not is_instance_valid(e.get("node")):
+			continue
+		if int(e.get("col", -1)) == cell.x and int(e.get("row", -1)) == cell.y:
+			return true
+	return false
+
+
+## One shared cooldown for every kind of touch.
+func _touch_ready() -> bool:
+	if village == null:
+		return false
+	if float(village.now) - _touched_at < WorldTouch.COOLDOWN:
+		return false
+	_touched_at = float(village.now)
+	return true
+
+
+## What a touch is worth: the goods, the sight of it, and the faith of whoever
+## was near enough to see a god do something.
+func _touch_paid(act: Dictionary, at: Vector3) -> void:
+	var gives: Dictionary = act.get("gives", {})
+	if not gives.is_empty():
+		village.give(gives)
+		for res in gives:
+			var key := String(res)
+			if floaters != null:
+				floaters.spawn(String(RESOURCE_ROW.get(key, "food")), key,
+							   int(gives[key]), at)
+	var fun := float(act.get("fun", 0.0))
+	var seen := 0
+	for f in folk:
+		if not is_instance_valid(f) or f.brain == null:
+			continue
+		if f.position.distance_to(at) > WorldTouch.WITNESS_RANGE:
+			continue
+		seen += 1
+		f.brain.gain_faith(WorldTouch.FAITH_PER_TOUCH)
+		if fun > 0.0:
+			f.brain.stats["fun"] = minf(1.0, float(f.brain.stats["fun"]) + fun)
+	if fxe != null:
+		fxe.burst(String(act.get("fx", "grove")), at + Vector3(0, 0.4, 0))
+	if sfx != null:
+		sfx.play(String(act.get("sfx", "pick")))
+	if seen > 0 and divinity != null:
+		divinity.notice.emit("%s %d saw it."
+			% [String(act.get("verb", "")), seen])
+	elif divinity != null:
+		divinity.notice.emit(String(act.get("verb", "")))
 
 
 ## The island's residents.

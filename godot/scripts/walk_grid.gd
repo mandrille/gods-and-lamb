@@ -324,6 +324,21 @@ func _mark_built(centre: Vector2i, w: float, d: float) -> void:
 ## Clearing a tree to raise a house is what actually happens, so a tree does
 ## not veto a site -- `ValeBuilder.add_prop` removes what stands in the
 ## footprint when the building goes up.
+## One tile changed under us. Update the cache rather than rebuilding.
+##
+## A full build costs ~30 ms and the player is turning dirt to grass several
+## times a second. Both are walkable, so the pathfinding does not move at all;
+## what changes is `is_plain` and `is_buildable`, which read the codes straight
+## out of this cache.
+func set_code(c: Vector2i, ch: String) -> void:
+	if not _inside(c) or c.y >= _lower.size():
+		return
+	var line: String = _lower[c.y]
+	if c.x >= line.length():
+		return
+	_lower[c.y] = line.substr(0, c.x) + ch + line.substr(c.x + 1)
+
+
 func is_buildable(c: Vector2i) -> bool:
 	return (_inside(c) and _code(_lower, c.x, c.y) == "G"
 			and _built[c.y * cols + c.x] == 0)
