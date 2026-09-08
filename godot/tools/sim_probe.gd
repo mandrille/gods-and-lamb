@@ -256,14 +256,31 @@ func _check_favour() -> void:
 	if b.memories.divine_standing() <= 0.0:
 		_faults.append("blessing did not improve divine standing")
 
-	var mid := float(b.favour["chop"])
-	_root.divinity.judge_cd = 0.0
-	b.punish(1.0)
-	var punished := float(b.favour["chop"])
-	print("[SIM] punish: favour[chop] %.3f -> %.3f, standing now %.2f"
-		% [mid, punished, b.memories.divine_standing()])
-	if punished >= mid:
-		_faults.append("punishment did not lower favour")
+	# FAITH IS A LADDER, not a tank. Blessing has to move it, and it must never
+	# move backwards -- that is the whole promise of the mechanic: everything
+	# else in the village leaks, and this does not.
+	var lvl := int(b.faith_level)
+	var xp := float(b.faith_xp)
+	for i in 8:
+		b.gain_faith(Brain.BLESS_FAITH)
+	var climbed: bool = (int(b.faith_level) > lvl
+						 or float(b.faith_xp) > xp)
+	print("[SIM] faith: %s -> %s after eight blessings"
+		% [Brain.FAITH_TIERS[lvl], b.faith_tier()])
+	if not climbed:
+		_faults.append("eight blessings raised no faith at all")
+	if b.faith_progress() < 0.0 or b.faith_progress() > 1.0:
+		_faults.append("faith_progress left 0..1: %.3f" % b.faith_progress())
+	if b.devotion() < 0.0 or b.devotion() > 1.0:
+		_faults.append("devotion() left 0..1: %.3f" % b.devotion())
+	# The top of the ladder is a wall, not an overflow.
+	for i in 400:
+		b.gain_faith(Brain.BLESS_FAITH)
+	if b.faith_level != Brain.FAITH_TIERS.size() - 1:
+		_faults.append("four hundred blessings did not reach the top tier: %s"
+			% b.faith_tier())
+	if not is_equal_approx(b.devotion(), 1.0):
+		_faults.append("the top tier is not full devotion: %.3f" % b.devotion())
 
 	# And the reweighting must actually change what gets chosen. A favour
 	# dictionary nothing reads is the same as no favour system at all.

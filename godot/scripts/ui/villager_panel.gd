@@ -14,7 +14,6 @@ class_name VillagerPanel
 ## the simulation and the player's eye.
 
 signal bless_pressed(who)
-signal punish_pressed(who)
 signal closed()
 
 const W := 340.0
@@ -36,7 +35,6 @@ var who = null
 var divinity = null                     ## set by ValeRoot; may be null in probes
 var _font: Font
 var _bless: Button
-var _punish: Button
 var _close: Button
 
 
@@ -48,10 +46,8 @@ func _ready() -> void:
 	# the camera underneath -- but it starts hidden.
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_bless = _button("Bless", Color(0.30, 0.62, 0.36))
-	_punish = _button("Punish", Color(0.62, 0.28, 0.30))
 	_close = _button("x", Color(0.28, 0.29, 0.34))
 	_bless.pressed.connect(func(): bless_pressed.emit(who))
-	_punish.pressed.connect(func(): punish_pressed.emit(who))
 	_close.pressed.connect(func(): show_for(null); closed.emit())
 	visible = false
 
@@ -88,7 +84,6 @@ func show_for(f) -> void:
 	who = f
 	visible = f != null and is_instance_valid(f)
 	_bless.visible = visible
-	_punish.visible = visible
 	_close.visible = visible
 	queue_redraw()
 
@@ -108,10 +103,7 @@ func _process(_d: float) -> void:
 	if divinity != null:
 		var ready: bool = divinity.judge_cd <= 0.0
 		_bless.disabled = not ready
-		_punish.disabled = not ready
-		var a := 1.0 if ready else 0.45
-		_bless.modulate.a = a
-		_punish.modulate.a = a
+		_bless.modulate.a = 1.0 if ready else 0.45
 	queue_redraw()
 
 
@@ -160,6 +152,10 @@ func _draw() -> void:
 		draw_string(_font, Vector2(PAD, y + 8), leaning,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 12, SAINT)
 		y += 20
+
+	# THE FAITH LADDER, above the needs, because it is the only thing here that
+	# is permanent and it is the one the player is playing for.
+	y = _faith_row(y, b)
 
 	# The bars (item 2).
 	for k in Brain.STAT_ORDER:
@@ -210,10 +206,9 @@ func _draw() -> void:
 	# Buttons last, so the panel grows to fit whatever was above them.
 	var bh := 26.0
 	var bw := (W - PAD * 2 - 8.0) * 0.5
+	# One button, full width: there is only one thing a good god does.
 	_bless.position = Vector2(PAD, y + 10)
-	_bless.size = Vector2(bw, bh)
-	_punish.position = Vector2(PAD + bw + 8.0, y + 10)
-	_punish.size = Vector2(bw, bh)
+	_bless.size = Vector2(W - PAD * 2.0, bh)
 	_close.position = Vector2(W - PAD - 20.0, PAD - 4.0)
 	_close.size = Vector2(20, 20)
 	var wanted := y + 10 + bh + PAD
@@ -243,6 +238,28 @@ func _favour_line(b) -> String:
 	if v > 1.0:
 		return "Leans toward %s  x%.1f" % [verb, v]
 	return "Shies from %s  x%.1f" % [verb, v]
+
+
+## Name, bar, and how far to the next name.
+##
+## Drawn differently from a need on purpose: needs are a state of repair and
+## this is a rank. Gold rather than the traffic-light tints, the tier spelled
+## out, and no percentage -- "Believer" is the reading, not 62%.
+func _faith_row(y: float, b) -> float:
+	var tier: String = b.faith_tier()
+	var top: bool = b.faith_level >= Brain.FAITH_NEEDED.size()
+	Icons.draw_icon(self, "faith", Vector2(PAD + 8.0, y + 12.0), 16.0)
+	draw_string(_font, Vector2(PAD + 22.0, y + 17.0), tier,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 15, SAINT)
+	if top:
+		draw_string(_font, Vector2(W - PAD - 60.0, y + 17.0), "the highest",
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DIM)
+	var track := Rect2(PAD, y + 24.0, W - PAD * 2.0, BAR_H * 0.7)
+	draw_rect(track, TRACK, true)
+	var fill := track
+	fill.size.x = track.size.x * b.faith_progress()
+	draw_rect(fill, SAINT, true)
+	return y + 42.0
 
 
 func _stat_row(y: float, key: String, label: String, v: float) -> float:

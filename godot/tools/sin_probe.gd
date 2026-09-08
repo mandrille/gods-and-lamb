@@ -106,29 +106,36 @@ func _report() -> void:
 		guilty.brain.last_sin_at = float(_root.village.now)
 		print("[SIN] (no live wrongdoer at the bell; staged one)")
 
+	# A GOOD GOD'S ANSWER TO A SINNER IS A BLESSING.
+	#
+	# This used to assert that striking the guilty paid and striking the
+	# innocent did not. There is no punish verb any more -- see Divinity -- so
+	# what matters now is that a wrongdoer is still MARKED (the player has to
+	# be able to find them) and that blessing them still lands and still
+	# raises them, because that is the only tool left.
 	d.faith = 500.0
 	d.judge_cd = 0.0
-	var before: float = d.faith
-	d.punish(guilty)
-	var for_guilt: float = d.faith - before
-	print("[SIN] punishing the guilty paid %.1f Faith" % for_guilt)
-	if for_guilt <= 0.0:
-		_faults.append("punishing a wrongdoer paid nothing")
+	if not d._is_guilty(guilty):
+		_faults.append("a villager who just sinned is not marked as guilty, "
+			+ "so the player has no way to see who needs attention")
+	var faith_before: int = int(guilty.brain.faith_level)
+	var xp_before: float = float(guilty.brain.faith_xp)
+	if not d.bless(guilty):
+		_faults.append("a sinner could not be blessed")
+	var moved: bool = (int(guilty.brain.faith_level) > faith_before
+					   or float(guilty.brain.faith_xp) > xp_before)
+	print("[SIN] blessing a sinner: %s, faith %s -> %s (+%.1f xp)"
+		% [moved, faith_before, guilty.brain.faith_level,
+		   float(guilty.brain.faith_xp) - xp_before])
+	if not moved:
+		_faults.append("blessing a sinner gave them no faith, so there is "
+			+ "nothing the player can do about a wrongdoer at all")
 
-	if innocent != null:
-		d.judge_cd = 0.0
-		before = d.faith
-		d.punish(innocent)
-		var for_innocent: float = d.faith - before
-		print("[SIN] punishing the innocent paid %.1f Faith" % for_innocent)
-		if for_innocent > 0.0:
-			_faults.append("punishing an innocent paid %.1f -- striking "
-				% for_innocent + "anyone would then be free Faith")
-
-	# And being caught has to settle the account, or one theft pays forever.
-	if _root.divinity._is_guilty(guilty):
-		_faults.append("still guilty after being punished -- the same crime "
-			+ "could be farmed over and over")
+	# Guilt EXPIRES on its own now rather than being settled by a blow. It has
+	# to, or the mark would sit over their head forever.
+	guilty.brain.last_sin_at = float(_root.village.now) - 60.0
+	if d._is_guilty(guilty):
+		_faults.append("guilt never expires, so the mark is permanent")
 
 	if _faults.is_empty():
 		print("[SIN] ok")

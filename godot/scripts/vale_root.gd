@@ -1378,9 +1378,17 @@ func _add_ui() -> void:
 		draft.open(divinity.boons.offer(), draft._source)
 		sfx.play("chat", 1.2))
 
-	overhead.follower_clicked.connect(panel.show_for)
+	# A CLICK IS A BLESSING, and it opens the panel in the same motion.
+	#
+	# Blessing used to cost two clicks and a hunt for a small button: select,
+	# find Bless, press it -- inside a four-second window, on a villager who is
+	# walking. The verb is now the click itself, and the panel comes with it so
+	# the player still learns who they just blessed. One tap, which is also the
+	# only shape that will work on a phone.
+	overhead.follower_clicked.connect(func(who):
+		panel.show_for(who)
+		divinity.bless(who))
 	panel.bless_pressed.connect(func(who): divinity.bless(who))
-	panel.punish_pressed.connect(func(who): divinity.punish(who))
 	panel.closed.connect(func(): overhead.selected = null)
 
 

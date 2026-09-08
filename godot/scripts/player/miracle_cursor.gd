@@ -550,7 +550,7 @@ func _touch_folk(f, delta: float) -> void:
 	if _touched_folk.has(key):
 		return
 	_touched_folk[key] = true
-	b.stats["faith"] = minf(1.0, float(b.stats["faith"]) + 0.35)
+	b.gain_faith(1.2)          # a miracle passing over you is a small sermon
 	b.memories.add(Memories.KIND_MIRACLE, "The sky opened over me.", 0.7, "",
 				   1.0 + b.personality.devotion)
 	var gain: float = divinity.boons.card_kick() * 0.55

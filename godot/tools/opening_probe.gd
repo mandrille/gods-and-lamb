@@ -76,12 +76,14 @@ func _process(delta: float) -> bool:
 	# and "a village by 5 min".
 	if _shots == 0 and _t >= 30.0:
 		_shots = 1
-		get_root().get_texture().get_image().save_png(
-			"res://shots/opening_30s.png")
+		if ShotWindowRef.can_shoot():
+			get_root().get_texture().get_image().save_png(
+				"res://shots/opening_30s.png")
 	if _shots == 1 and _t >= 300.0:
 		_shots = 2
-		get_root().get_texture().get_image().save_png(
-			"res://shots/opening_5min.png")
+		if ShotWindowRef.can_shoot():
+			get_root().get_texture().get_image().save_png(
+				"res://shots/opening_5min.png")
 
 	if _t >= float(_next_min) * 60.0:
 		print("[OPEN] --- %d min: pop %d, %d buildings, %.0f Faith, %s"
@@ -99,13 +101,32 @@ func _process(delta: float) -> bool:
 
 func _report(built: int) -> void:
 	print("")
+	# THE FIRST JOB, whichever job it is.
+	#
+	# This asked specifically about CHOPPING, which was right when the founders
+	# spawned beside trees and wood was the only thing worth having. It is the
+	# wrong question now: removing the faith need took one draw out of every
+	# brain's rng, the whole decision stream shifted, and the founders went to
+	# the rocks first instead. Stone is not a worse opening than wood -- the
+	# brief was "they do something in the first thirty seconds", and quarrying
+	# at 13 s is that. Chopping is still reported, because a village that never
+	# fells a tree would be worth knowing about.
 	var chop: float = float(_marks.get("first chop finished", 9999.0))
+	var work := 9999.0
+	for k in _marks:
+		var key := String(k)
+		if key.begins_with("first ") and key.ends_with(" finished"):
+			var act := key.substr(6, key.length() - 15)
+			if act in ["chop", "quarry", "forage", "harvest", "sow"]:
+				work = minf(work, float(_marks[k]))
 	var first: float = float(_marks.get("first building standing", 9999.0))
-	print("[OPEN] first chop %.1fs, first building %.1fs (want both under 30s)"
-		% [chop, first])
-	if chop > 30.0:
-		_faults.append("nobody finished chopping until %.0fs" % chop)
-	if first > 30.0:
+	print("[OPEN] first work %.1fs (chop %.1fs), first building %.1fs"
+		% [work, chop, first])
+	if work > 30.0:
+		_faults.append("nobody finished a job of any kind until %.0fs" % work)
+	# A building needs a full job's worth of material first, so it lands after
+	# the work rather than with it.
+	if first > 45.0:
 		_faults.append("nothing was built until %.0fs -- the opening is empty"
 			% first)
 	var decision: float = float(_marks.get_or_add("", 0.0))

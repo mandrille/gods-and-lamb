@@ -229,7 +229,7 @@ func income_per_s() -> float:
 	for f in host.folk:
 		if not is_instance_valid(f) or f.brain == null:
 			continue
-		var devotion: float = float(f.brain.stats["faith"])
+		var devotion: float = f.brain.devotion()
 		var mood: float = (f.brain.mood() + 1.0) * 0.5
 		var weight: float = 1.0 if f.brain.adult else CHILD_WEIGHT
 		# A HIGHER FLOOR ON BOTH, and the measurement that forced it:
@@ -334,7 +334,7 @@ func add_faith(amount: float) -> void:
 func on_work_done(who, act: String, spec: Dictionary) -> void:
 	if not (act in Brain.WORK):
 		return
-	var devotion: float = float(who.brain.stats["faith"])
+	var devotion: float = who.brain.devotion()
 	var gain: float = (WORK_BONUS
 		* (float(spec.get("seconds", 4.0)) / 4.0)
 		* (0.6 + devotion * 0.8))
@@ -603,53 +603,19 @@ func bless(who) -> bool:
 	return true
 
 
-func punish(who) -> bool:
-	if who == null or not is_instance_valid(who) or who.brain == null:
-		return false
-	if judge_cd > 0.0:
-		judge_refused.emit(who)
-		return false
-	judge_cd = JUDGE_COOLDOWN
-	bless_radius = boons.bless_radius()
-	var caught := _judge_area(who)
-	# JUSTICE, counted before the blow lands -- punish() clears the record.
-	var guilty := 0
-	var crime := ""
-	for f in caught:
-		if _is_guilty(f):
-			guilty += 1
-			if f == who or crime == "":
-				crime = String(Brain.ACTIONS[f.brain.last_sin].get("verb", ""))
-	for f in caught:
-		f.brain.punish(1.0 if f == who else 0.6)
-
-	# A DESERVED punishment pays, and keeps the chain.
-	#
-	# This used to read "punishment never pays", which was true and hollow:
-	# nothing in the game could make a follower do anything wrong, so the whole
-	# left half of judgement was a button that hurt somebody at random. Now
-	# that there are sins to catch, catching one is the exact mirror of a
-	# witnessed blessing -- you are watching for a moment either way, and the
-	# village only stays good if somebody is looking.
-	if guilty > 0:
-		_extend_combo(who)
-		var mult := 1.0 + boons.combo_step() * float(combo_chain - 1)
-		var gain: float = (boons.witness_faith()
-						   * pow(float(guilty), 0.75) * mult)
-		add_faith(gain)
-		earned.emit(gain, who.position + Vector3(0, 0.9, 0), "punish")
-		notice.emit("%s is struck down for %s.%s"
-			% [who.brain.name, crime,
-			   "" if combo_chain < 2 else "  x%.2f" % mult])
-	else:
-		# Striking the innocent is not a tactic. It still steers them -- the
-		# favour drop is real -- but it earns nothing and costs the rhythm.
-		if not boons.punish_keeps_chain():
-			_break_combo()
-		notice.emit("%s is struck down, and had done nothing wrong."
-			% who.brain.name)
-	judged.emit(who, false)
-	return true
+## THERE IS NO PUNISH ANY MORE.
+##
+## It was the second of the two verbs and it has been removed on purpose: this
+## is a game about being a good god, and a village you can strike is a village
+## you are managing rather than tending. What stays is everything that made
+## punishment interesting -- villagers still steal, shirk and brawl, the guilt
+## mark still pulses over a wrongdoer, and morality still drifts -- but the
+## answer to a sinner is now a blessing, which is a harder and better thing to
+## ask of a player than a bolt.
+##
+## `Brain.punish()` survives unused for the same reason `Boons` keeps its
+## table: reinstating it is a decision, not a rewrite. Wrath is untouched --
+## it levels trees, rocks and wolves, and never people.
 
 
 ## Has this one sinned recently enough to answer for it?
@@ -771,8 +737,11 @@ func smite(at: Vector3, radius := 2.5) -> bool:
 					else "Something was destroyed today.",
 				-0.8 if near else -0.4, "",
 				1.0 + f.brain.personality.devotion)
-			f.brain.stats["faith"] = maxf(0.0,
-				float(f.brain.stats["faith"]) - (0.35 if near else 0.15))
+			# Wrath no longer takes faith off anybody. Faith is a LEVEL now
+			# and levels do not fall: a god who flattens a wood should lose
+			# the village's goodwill, which is what the loss memory below is,
+			# not undo work the player did days ago.
+			pass
 			f.brain.think_aloud()
 	smote.emit(at, radius, destroyed)
 	# The grid changes when props do: a felled tree opens a tile, and a

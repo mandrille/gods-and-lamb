@@ -20,16 +20,23 @@ class_name Brain
 ## a full bar should last minutes, not seconds, or the village reads as frantic
 ## and the player never sees anyone finish anything.
 const DRAIN := {
-	"hunger": 0.0115, "energy": 0.0080, "social": 0.0100, "faith": 0.0050,
+	"hunger": 0.0115, "energy": 0.0080, "social": 0.0100,
 	"health": 0.0016, "hygiene": 0.0062, "fun": 0.0072,
 }
 
-const STAT_ORDER := ["hunger", "energy", "social", "faith", "health",
-					 "hygiene", "fun"]
+## FAITH IS NOT IN HERE ANY MORE. It was the seventh need, a tank that leaked
+## and had to be topped up; it is now a LEVEL that only climbs (see faith_xp).
+## Blessing is permanent progress rather than maintenance, which is the whole
+## difference between tending a village and watering it.
+## What one blessing is worth. Twelve to leave Atheist, so four blessings is a
+## first tier and the player sees the mechanic work inside a minute.
+const BLESS_FAITH := 3.0
+
+const STAT_ORDER := ["hunger", "energy", "social", "health", "hygiene", "fun"]
 
 const STAT_LABEL := {
 	"hunger": "Hunger", "energy": "Energy", "social": "Social",
-	"faith": "Faith", "health": "Health", "hygiene": "Hygiene", "fun": "Fun",
+	"health": "Health", "hygiene": "Hygiene", "fun": "Fun",
 }
 
 ## Below this a need is worth crossing the island for.
@@ -60,9 +67,13 @@ const ACTIONS := {
 				"anywhere": true,
 				"seconds": 3.0, "anim": "pickup", "refill": 0.85,
 				"morality": 0.0, "verb": "washing"},
-	"pray":    {"need": "faith", "sources": ["Buildings/shrine"],
-				"seconds": 4.0, "anim": "idle", "refill": 0.80,
-				"morality": 0.03, "verb": "praying"},
+	# Prayer answers no NEED any more -- faith stopped being a tank that leaks.
+	# It is chosen for its own sake at a shrine and pays the villager faith,
+	# which is the one thing in the village that can raise itself without the
+	# player. A shrine is therefore a slow, automatic congregation.
+	"pray":    {"need": "", "sources": ["Buildings/shrine"],
+				"seconds": 4.0, "anim": "idle", "refill": 0.0,
+				"faith": 3.0, "morality": 0.03, "verb": "praying"},
 	"play":    {"need": "fun", "sources": ["Buildings/market_stall"],
 				"anywhere": true,
 				"seconds": 3.5, "anim": "idle", "refill": 0.70,
@@ -294,6 +305,58 @@ var rng := RandomNumberGenerator.new()
 
 ## -1 devil .. +1 saint. The RECORD of what they have done, not what the god
 ## thinks of them -- a follower punished unfairly is still a saint.
+## --- faith, as a LEVEL ------------------------------------------------------
+##
+## Five names rather than a number, because "Devoted" is a thing to be and
+## "faith 0.82" is a readout. The bar between them is the only progress in the
+## game that cannot be lost: needs leak, stores are eaten, buildings burn, and
+## a villager who has been brought to Adept stays Adept.
+##
+## The curve is deliberately steep at the top. Reaching Believer should happen
+## in a first session and feel like the game rewarding attention; reaching
+## Devoted should take days, and be why the village is worth coming back to.
+const FAITH_TIERS := ["Atheist", "Agnostic", "Believer", "Adept", "Devoted"]
+const FAITH_NEEDED := [12.0, 40.0, 110.0, 260.0]   ## to leave each tier
+
+var faith_xp := 0.0
+var faith_level := 0                    ## index into FAITH_TIERS
+
+
+## Grant faith. Returns the number of tiers crossed, so the caller can make a
+## noise about it -- a level that passes in silence is a level nobody noticed.
+func gain_faith(amount: float) -> int:
+	if amount <= 0.0:
+		return 0
+	faith_xp += amount
+	var rose := 0
+	while faith_level < FAITH_NEEDED.size() 			and faith_xp >= float(FAITH_NEEDED[faith_level]):
+		faith_xp -= float(FAITH_NEEDED[faith_level])
+		faith_level += 1
+		rose += 1
+	if faith_level >= FAITH_NEEDED.size():
+		faith_xp = 0.0                  # Devoted is the top; nothing to fill
+	return rose
+
+
+func faith_tier() -> String:
+	return String(FAITH_TIERS[clampi(faith_level, 0, FAITH_TIERS.size() - 1)])
+
+
+## How full the bar to the next tier is, 0..1. Full and flat at the top.
+func faith_progress() -> float:
+	if faith_level >= FAITH_NEEDED.size():
+		return 1.0
+	return clampf(faith_xp / float(FAITH_NEEDED[faith_level]), 0.0, 1.0)
+
+
+## 0..1 across the whole ladder, which is what the economy multiplies by. An
+## Atheist is not worthless -- a god with only atheists still earns -- but a
+## village of the Devoted earns roughly three times as much.
+func devotion() -> float:
+	var span := float(FAITH_TIERS.size() - 1)
+	return clampf((float(faith_level) + faith_progress()) / span, 0.0, 1.0)
+
+
 var morality := 0.0
 ## When they last did something worth punishing, on the village clock. The
 ## mirror of `last_action_at`, and what makes a punishment land or miss.
@@ -420,7 +483,6 @@ func _drain(key: String) -> float:
 		"energy": return base / maxf(0.35, personality.vigour)
 		"social": return base * personality.sociability
 		"hygiene": return base * personality.tidiness
-		"faith": return base * (1.0 + personality.devotion * 0.5)
 	return base
 
 
@@ -1088,6 +1150,12 @@ func _finish_action() -> void:
 	var need := String(spec.get("need", ""))
 	if need != "":
 		stats[need] = minf(1.0, float(stats[need]) + float(spec["refill"]))
+	# An action can pay FAITH instead of, or as well as, filling a need. Only
+	# prayer does today, and it is the one way a village raises itself while
+	# nobody is watching.
+	var faith := float(spec.get("faith", 0.0))
+	if faith > 0.0:
+		gain_faith(faith)
 	# Any completed job is a small comfort, which is why a busy village drifts
 	# happier than an idle one even when nobody's bars are full.
 	stats["fun"] = minf(1.0, float(stats["fun"]) + 0.06)
@@ -1138,7 +1206,9 @@ func bless(strength := 1.0) -> void:
 		var f: float = float(favour[act])
 		favour[act] = clampf(f * (1.0 + 0.45 * strength * (1.0 - f / 8.0)),
 							 0.15, 8.0)
-	stats["faith"] = minf(1.0, float(stats["faith"]) + 0.45 * strength)
+	# THE BLESSING IS THE XP. This is the only source of faith a villager has,
+	# which is what makes the player's attention the thing that raises them.
+	gain_faith(BLESS_FAITH * strength)
 	stats["fun"] = minf(1.0, float(stats["fun"]) + 0.2 * strength)
 	memories.add(Memories.KIND_BLESSING,
 				 "I was blessed%s." % ("" if act == "" else " for " + act),
@@ -1152,7 +1222,6 @@ func punish(strength := 1.0) -> void:
 	if act != "" and favour.has(act):
 		favour[act] = clampf(float(favour[act]) * (1.0 - 0.40 * strength),
 							 0.15, 6.0)
-	stats["faith"] = maxf(0.0, float(stats["faith"]) - 0.25 * strength)
 	stats["health"] = maxf(0.05, float(stats["health"]) - 0.30 * strength)
 	stats["fun"] = maxf(0.0, float(stats["fun"]) - 0.3 * strength)
 	# Caught. The account is SETTLED -- they cannot be punished twice for the
