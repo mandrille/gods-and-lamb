@@ -196,6 +196,22 @@ const AGES := [
 const AGE_GAP := 60.0
 var _last_age_at := -999.0
 
+## --- the god's own level ----------------------------------------------------
+##
+## The villagers climb a ladder of faith; this is the player's. It is measured
+## in FAITH EARNED OVER ALL TIME, which is already counted, so it rewards every
+## channel at once -- blessing, touching the world, prayer, a shrine's trickle
+## -- rather than picking a favourite and turning the game into that.
+##
+## Every level is a boon. Nothing else: no lump, no unlock. The ages hand out
+## Faith and cards, the milestones hand out gifts for growing, and this hands
+## out one thing for the only number that counts everything.
+const LEVELS := [200.0, 600.0, 1400.0, 2800.0, 5000.0, 8500.0, 14000.0,
+				 22000.0, 34000.0, 52000.0]
+
+var god_level := 1
+signal level_up(level: int)
+
 var age := 0                                                  ## how many ages have PASSED
 ## The first witnessed blessing has already been paid for with a boon.
 var _tutorial_gift_given := false
@@ -287,6 +303,7 @@ func _process(delta: float) -> void:
 	if income > 0.0:
 		add_faith(income * delta)
 
+	_check_level()
 	judge_cd = maxf(0.0, judge_cd - delta)
 	if combo_left > 0.0:
 		combo_left -= delta
@@ -860,6 +877,28 @@ func _check_age() -> void:
 	if age == 1 and _tutorial_gift_given:
 		return
 	grant_draft("age")
+
+
+## Has the god earned enough, over everything, to be worth another gift?
+func _check_level() -> void:
+	while god_level - 1 < LEVELS.size():
+		if total_earned < float(LEVELS[god_level - 1]):
+			break
+		god_level += 1
+		level_up.emit(god_level)
+		notice.emit("You are stronger. Level %d." % god_level)
+		grant_draft("level")
+
+
+## How full the bar to the next level is, 0..1. Full and flat at the top.
+func level_progress() -> float:
+	if god_level - 1 >= LEVELS.size():
+		return 1.0
+	var floor_at: float = 0.0 if god_level < 2 else float(LEVELS[god_level - 2])
+	var next: float = float(LEVELS[god_level - 1])
+	if next <= floor_at:
+		return 1.0
+	return clampf((total_earned - floor_at) / (next - floor_at), 0.0, 1.0)
 
 
 ## --- boons ------------------------------------------------------------------

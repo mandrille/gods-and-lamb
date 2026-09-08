@@ -127,6 +127,10 @@ var n_build_fail := 0
 var _rng := RandomNumberGenerator.new()
 ## The save this launch opened, and how it went. Empty means a new vale.
 var _touched_at := -99.0            ## village clock of the last world touch
+## Fires, droughts and winds currently eating the world.
+var calamities: Array = []
+var _calamity_timer := 90.0
+var _bite_at := 0.0
 var _save_doc: Dictionary = {}
 var _save_how := ""
 ## Turned off by probes that must not read the player's village. The default
@@ -150,7 +154,49 @@ var night_screen := true
 var _walk_paths: Array = []          ## world-space paths, reused by the stress test
 
 
+## HOW BIG THE UI IS, IN THE HAND.
+##
+## The project draws its UI in a 720-unit-wide space, which is right for a
+## desktop window and wrong for a phone: a 375 pt handset maps 720 units onto
+## 375 points, so every control lands at HALF the size it was drawn. Measured on
+## the web build at 375x812: the ledger font came out at 7.8 pt and the two
+## standing buttons at 24 pt against a 44 pt minimum. Nothing was clipped and
+## nothing overlapped -- it was simply too small to use, which is the failure
+## mode a layout test does not catch.
+##
+## `content_scale_factor` is the fix rather than a smaller `content_scale_size`
+## because it scales the 2D layer ONLY: the village keeps rendering at the
+## window's full resolution while the UI is dealt out in fewer, larger units.
+##
+## The target is 400 units across, which is what leaves a 46-unit button at
+## about 46 pt on any handset. Capped at 1.0 below, so a desktop window is
+## untouched.
+const UI_UNITS_WANTED := 400.0
+
+
+func _apply_ui_scale() -> void:
+	var w: Window = get_window()
+	if w == null:
+		return
+	var across: float = float(w.content_scale_size.x)
+	if across <= 0.0:
+		across = 720.0
+	# PORTRAIT IS THE TEST, not pixel density. Density would be the honest
+	# measure and `screen_get_scale()` is the honest way to ask -- but it
+	# reports 1.0 headless and on several browsers, which would silently leave
+	# every phone at desktop scale, and that is the exact bug this is fixing.
+	# A window taller than it is wide is a handset or a tablet held upright;
+	# nothing else is shaped like that, and a desktop window narrowed until it
+	# is portrait wants the bigger UI too.
+	if float(w.size.y) <= float(w.size.x):
+		w.content_scale_factor = 1.0
+		return
+	w.content_scale_factor = clampf(across / UI_UNITS_WANTED, 1.0, 2.4)
+
+
 func _ready() -> void:
+	_apply_ui_scale()
+	get_window().size_changed.connect(_apply_ui_scale)
 	# THE SAVE IS READ FIRST, before a single thing is built, because the world
 	# seed and the unlocked plots decide what Islands even generates.
 	var opened: Dictionary = Persistence.probe_read(get_tree(), load_saves)
@@ -736,6 +782,203 @@ func _restore_followers(doc: Dictionary) -> void:
 	# Boons are state ON THE BODY for walk speed, so they are pushed once here
 	# rather than left to whatever set them last.
 	apply_boons()
+
+
+## --- calamities -------------------------------------------------------------
+
+## HOW OFTEN THE WORLD TAKES SOMETHING BACK.
+##
+## Gated on the second age for the same reason wolves are: a village that is
+## still three people and a woodpile has nothing to lose and no card to answer
+## with. After that it is one crisis every couple of minutes, never two at
+## once -- two simultaneous disasters is not twice the drama, it is a mess with
+## no right answer.
+const CALAMITY_EVERY := 130.0
+
+
+func _tick_calamities(delta: float) -> void:
+	if divinity == null or grid == null:
+		return
+	for c in calamities:
+		c.age += delta
+	_answer_calamities()
+	for c in calamities.duplicate():
+		if c.expired():
+			_end_calamity(c, false)
+	if not calamities.is_empty():
+		if float(village.now) - _bite_at >= Calamity.BITE:
+			_bite_at = float(village.now)
+			for c in calamities:
+				_bite(c)
+		return
+	if divinity.age < 2:
+		return
+	_calamity_timer -= delta
+	if _calamity_timer <= 0.0:
+		_calamity_timer = CALAMITY_EVERY
+		_start_calamity()
+
+
+func _start_calamity() -> void:
+	# ONLY A KIND THE WORLD CAN ACTUALLY HOST. A fire needs a tree and a drought
+	# needs grass, and picking blind meant a village with no trees rolled fire,
+	# found nothing to burn, and spent the whole two-minute cycle on nothing --
+	# so early on, when the plot is mostly desert, the world would go silent
+	# exactly where it was supposed to start pushing back.
+	var kinds: Array = Calamity.KINDS.duplicate()
+	kinds.shuffle()
+	var kind := ""
+	var where := Vector2i(-1, -1)
+	for k in kinds:
+		var at := _somewhere_alive(String(k))
+		if at.x >= 0:
+			kind = String(k)
+			where = at
+			break
+	if kind == "":
+		return
+	var winds: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
+								  Vector2i(0, 1), Vector2i(0, -1)]
+	var heading: Vector2i = winds[_rng.randi() % winds.size()]
+	var c := Calamity.new(kind, where, heading)
+	calamities.append(c)
+	var look: Dictionary = c.look()
+	divinity.notice.emit(String(look["notice"]))
+	if sfx != null:
+		sfx.play(String(look["sfx"]))
+	if fxe != null:
+		fxe.burst(String(look["fx"]), grid.world_of(where) + Vector3(0, 0.6, 0))
+
+
+## A cell worth losing: trees for a fire, grass for a drought, anything the
+## player has touched for a wind.
+func _somewhere_alive(kind: String) -> Vector2i:
+	var pool: Array[Vector2i] = []
+	if kind == "fire":
+		for e in builder.placed_props:
+			if String(e.get("id", "")).begins_with("Nature/tree"):
+				pool.append(Vector2i(int(e.get("col", 0)), int(e.get("row", 0))))
+	else:
+		for row in builder.lower.size():
+			var line: String = builder.lower[row]
+			for col in line.length():
+				if line[col] == "G":
+					pool.append(Vector2i(col, row))
+	if pool.is_empty():
+		return Vector2i(-1, -1)
+	return pool[_rng.randi() % pool.size()]
+
+
+## One bite. Small, and on a slow clock, so there is time to answer.
+func _bite(c) -> void:
+	c.bites += 1
+	var look: Dictionary = c.look()
+	match c.kind:
+		"fire":
+			# Spreads to a neighbouring tree and scorches what it leaves.
+			var burnt := _burn_at(c.cell)
+			var next := _nearest_tree(c.cell, 6)
+			if next.x >= 0:
+				c.cell = next
+			if burnt:
+				c.eaten += 1
+		"drought":
+			# Grass back to dirt, outward from where it started.
+			var dried := 0
+			for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0),
+					  Vector2i(0, 1), Vector2i(0, -1)]:
+				var at: Vector2i = c.cell + d * c.bites
+				if builder.code_at(builder.lower, at.x, at.y) != "G":
+					continue
+				if builder.set_tile(at.x, at.y, "D"):
+					grid.set_code(at, "D")
+					dried += 1
+			c.eaten += dried
+		"tornado":
+			# Walks, and flattens whatever it crosses.
+			c.cell += c.dir
+			for e in builder.placed_props.duplicate():
+				if not is_instance_valid(e.get("node")):
+					continue
+				if Vector2i(int(e.get("col", -1)), int(e.get("row", -1))) != c.cell:
+					continue
+				if String(e.get("id", "")).begins_with("Buildings/bridge"):
+					continue
+				builder.remove_prop(e)
+				c.eaten += 1
+			queue_grid_rebuild()
+	if fxe != null:
+		fxe.burst(String(look["fx"]),
+				  grid.world_of(c.cell) + Vector3(0, 0.5, 0))
+
+
+func _burn_at(cell: Vector2i) -> bool:
+	for e in builder.placed_props.duplicate():
+		if not is_instance_valid(e.get("node")):
+			continue
+		if Vector2i(int(e.get("col", -1)), int(e.get("row", -1))) != cell:
+			continue
+		if not String(e.get("id", "")).begins_with("Nature/"):
+			continue
+		builder.remove_prop(e)
+		queue_grid_rebuild()
+		if builder.code_at(builder.lower, cell.x, cell.y) == "G":
+			if builder.set_tile(cell.x, cell.y, "D"):
+				grid.set_code(cell, "D")
+		return true
+	return false
+
+
+func _nearest_tree(from: Vector2i, within: int) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := within + 1
+	for e in builder.placed_props:
+		if not String(e.get("id", "")).begins_with("Nature/tree"):
+			continue
+		var c := Vector2i(int(e.get("col", 0)), int(e.get("row", 0)))
+		var d: int = absi(c.x - from.x) + absi(c.y - from.y)
+		if d < best_d and d > 0:
+			best_d = d
+			best = c
+	return best
+
+
+## A HELD MIRACLE PUTS IT OUT, if it is the right one and it is close enough.
+##
+## Checked against where the effigy actually IS rather than where the card was
+## played: the whole shape of a miracle in this game is that you sweep it over
+## something, so answering a fire has to mean holding the rain over the fire.
+func _answer_calamities() -> void:
+	if cursor == null or not cursor.is_active() or calamities.is_empty():
+		return
+	var at: Vector3 = cursor.global_position
+	for c in calamities.duplicate():
+		if not c.answered_by(String(cursor.id)):
+			continue
+		if grid.world_of(c.cell).distance_to(at) > cursor.radius + 1.5:
+			continue
+		_end_calamity(c, true)
+
+
+## The end of one, either answered or burnt out. Answering pays FAITH FROM
+## EVERY VILLAGER -- the village thanks you, and a crisis leaves the place more
+## devout than it found it.
+func _end_calamity(c, solved: bool) -> void:
+	calamities.erase(c)
+	if not solved:
+		divinity.notice.emit("It burns itself out. %d lost." % c.eaten)
+		return
+	var per: float = c.thanks()
+	var n := 0
+	for f in folk:
+		if is_instance_valid(f) and f.brain != null:
+			f.brain.gain_faith(per)
+			n += 1
+	if fxe != null:
+		fxe.burst("bless", grid.world_of(c.cell) + Vector3(0, 0.6, 0))
+	if sfx != null:
+		sfx.play("bless")
+	divinity.notice.emit("You answered it. %d gave thanks." % n)
 
 
 ## Losing focus pauses the village.
@@ -1785,6 +2028,7 @@ func _process(delta: float) -> void:
 		_sky_for(daylight.dusk_amount())
 		if music != null:
 			music.set_dusk(daylight.dusk_amount(), delta)
+	_tick_calamities(delta)
 	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)

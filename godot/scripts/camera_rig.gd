@@ -124,7 +124,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventScreenTouch:
 		var st := event as InputEventScreenTouch
 		if st.pressed:
-			_touches[st.index] = st.position
 			if _touches.size() == 1:
 				_begin_drag(st.position)
 			elif _touches.size() == 2:
@@ -132,13 +131,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				_pinch_dist = _touch_spread()
 				_pinch_start = dist
 		else:
-			_touches.erase(st.index)
 			_dragging = false
 			if _touches.size() == 1:
 				_begin_drag(_touches.values()[0])
 	elif event is InputEventScreenDrag:
 		var sd := event as InputEventScreenDrag
-		_touches[sd.index] = sd.position
 		if _touches.size() == 1 and _dragging:
 			_drag_to(sd.position)
 		elif _touches.size() == 2:
@@ -146,6 +143,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _pinch_dist > 1.0 and now > 1.0:
 				dist = clamp(_pinch_start * (_pinch_dist / now), dist_min, dist_max)
 				_place()
+
+
+## HOW MANY FINGERS ARE DOWN IS NOT A GESTURE, so it is counted here in
+## `_input` -- which runs before anything can consume an event -- rather than
+## in `_unhandled_input`, which is where the gestures themselves are decided.
+##
+## Measured: tapping a villager consumes that press (Overhead selects them and
+## calls set_input_as_handled). With the bookkeeping down in _unhandled_input
+## the rig never learned about that finger, so putting a second one down looked
+## like a one-finger pan and PINCH SIMPLY DID NOT WORK if the first finger had
+## landed on a person -- which on a village-shaped screen is most of the time.
+## Splitting the two also guarantees the release is seen, so a consumed press
+## can no longer leave a phantom finger held down forever.
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			_touches[st.index] = st.position
+		else:
+			_touches.erase(st.index)
+	elif event is InputEventScreenDrag:
+		var sd := event as InputEventScreenDrag
+		_touches[sd.index] = sd.position
 
 
 func _touch_spread() -> float:

@@ -4,7 +4,13 @@
     {
       "name": "web",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8712", "--directory", "godot/builds/web"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8712",
+        "--directory",
+        "C:/Goliath/Gods and lamb/godot/builds/web"
+      ],
       "port": 8712
     }
   ]

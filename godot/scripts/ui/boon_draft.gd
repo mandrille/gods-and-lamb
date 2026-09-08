@@ -89,12 +89,39 @@ func is_open() -> bool:
 
 ## --- geometry, one source for drawing and hit testing -----------------------
 
+## THREE CARDS SIDE BY SIDE NEED 740 UNITS, and a phone has 400.
+##
+## Measured on the web build at 375x812: the middle card was readable and the
+## other two ran off both edges of the screen, one of them far enough that it
+## could not be tapped at all. A draft you cannot see two thirds of is a draft
+## with no choice in it.
+##
+## So on a narrow screen the three cards become three full-width ROWS instead:
+## icon on the left, name and text beside it. Same three cards, same reading
+## order, turned ninety degrees.
+const NARROW := 520.0
+const ROW_H := 134.0
+const ROW_GAP := 12.0
+
+
+func _is_narrow() -> bool:
+	return size.x < NARROW
+
+
 func _card_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
 	var n := _options.size()
 	if n == 0:
 		return out
 	var vp := size
+	if _is_narrow():
+		var w := vp.x - 24.0 * 2.0
+		var tall := float(n) * (ROW_H + ROW_GAP) - ROW_GAP
+		var top := (vp.y - tall) * 0.5
+		for i in n:
+			out.append(Rect2(24.0, top + float(i) * (ROW_H + ROW_GAP),
+							 w, ROW_H))
+		return out
 	var total := float(n) * (CARD_W + GAP) - GAP
 	var x := (vp.x - total) * 0.5
 	var y := (vp.y - CARD_H) * 0.5
@@ -103,9 +130,23 @@ func _card_rects() -> Array[Rect2]:
 	return out
 
 
+## The bottom of the card stack, whichever way it is laid out. Both the reroll
+## button and the heading are measured from this rather than from CARD_H, which
+## is only one of the two answers.
+func _stack() -> Rect2:
+	var rects := _card_rects()
+	if rects.is_empty():
+		var vp := size
+		return Rect2(vp.x * 0.5, (vp.y - CARD_H) * 0.5, 0.0, CARD_H)
+	var out: Rect2 = rects[0]
+	for r in rects:
+		out = out.merge(r)
+	return out
+
+
 func _reroll_rect() -> Rect2:
 	var vp := size
-	return Rect2(vp.x * 0.5 - 90.0, (vp.y + CARD_H) * 0.5 + 22.0, 180.0, 36.0)
+	return Rect2(vp.x * 0.5 - 90.0, _stack().end.y + 22.0, 180.0, 36.0)
 
 
 func reroll_cost() -> int:
@@ -192,7 +233,7 @@ func _draw() -> void:
 										  -1, 30).x)
 	var sw := float(_font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT,
 										  -1, 15).x)
-	var top := (vp.y - CARD_H) * 0.5
+	var top := _stack().position.y
 	draw_string(_font, Vector2((vp.x - tw) * 0.5, top - 56.0), title,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 30, GOLD)
 	draw_string(_font, Vector2((vp.x - sw) * 0.5, top - 30.0), sub,
@@ -223,6 +264,9 @@ func _card(r: Rect2, opt: Dictionary, hot: bool) -> void:
 			  true)
 	draw_rect(r, CARD_HOT if hot else CARD_BG, true)
 	draw_rect(r, EDGE_HOT if hot else EDGE, false, 2.0 if hot else 1.0)
+	if _is_narrow():
+		_card_row(r, opt)
+		return
 
 	Icons.draw_icon(self, String(opt["icon"]),
 					r.position + Vector2(r.size.x * 0.5, 78.0), 78.0)
@@ -249,6 +293,36 @@ func _card(r: Rect2, opt: Dictionary, hot: bool) -> void:
 	y += 8.0
 	for line in _wrap(String(opt["blurb"]), 28):
 		draw_string(_font, r.position + Vector2(16.0, y), line,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 14, GOLD)
+		y += 17.0
+
+
+## The same card turned on its side: icon left, name and rank beside it, the
+## flavour and the number underneath. Nothing is dropped -- a phone player is
+## making the same decision and needs the same words to make it with.
+func _card_row(r: Rect2, opt: Dictionary) -> void:
+	Icons.draw_icon(self, String(opt["icon"]),
+					r.position + Vector2(52.0, r.size.y * 0.5), 64.0)
+	var left := 100.0
+	var name := String(opt["name"])
+	draw_string(_font, r.position + Vector2(left, 32.0), name,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
+	var nw := float(_font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT,
+										  -1, 20).x)
+	draw_string(_font, r.position + Vector2(left + nw + 8.0, 32.0),
+				["I", "II", "III"][int(opt["rank"]) - 1],
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 15, GOLD)
+	# Wrapped to the room that is actually left beside the icon, not to a
+	# character count that was tuned against a 232-unit card.
+	var chars: int = maxi(18, int((r.size.x - left - 16.0) / 6.4))
+	var y := 56.0
+	for line in _wrap(String(opt["what"]), chars):
+		draw_string(_font, r.position + Vector2(left, y), line,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, SOFT)
+		y += 17.0
+	y += 6.0
+	for line in _wrap(String(opt["blurb"]), chars):
+		draw_string(_font, r.position + Vector2(left, y), line,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 14, GOLD)
 		y += 17.0
 

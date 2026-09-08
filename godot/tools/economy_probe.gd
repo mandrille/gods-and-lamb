@@ -126,18 +126,23 @@ func _process(delta: float) -> bool:
 		_per_minute.append(total - _last_total)
 		_pop.append(_root.folk.size())
 		_last_total = total
-		# MOOD AND DEVOTION, not just the money. Faith per head is
-		# (0.35 + devotion x 0.65) x (0.4 + mood x 0.6), so a village whose
-		# income is falling is telling you something about how its people are
-		# doing -- and without these two columns the only reading available was
-		# "the number went down", which invites tuning the wrong constant.
+		# MOOD AND DEVOTION, not just the money. Faith per head is scaled by
+		# both, so a village whose income is falling is telling you something
+		# about how its people are doing -- and without these two columns the
+		# only reading available was "the number went down", which invites
+		# tuning the wrong constant.
+		#
+		# Devotion comes from `brain.devotion()` now. It used to be read out of
+		# `stats["faith"]`, and when faith stopped being a need and became a
+		# per-villager LEVEL that key went away -- so this printed an error per
+		# minute and aborted the run rather than reporting a number.
 		var mood := 0.0
 		var devotion := 0.0
 		var n := 0
 		for f in _root.folk:
 			if is_instance_valid(f) and f.brain != null:
 				mood += f.brain.mood()
-				devotion += float(f.brain.stats["faith"])
+				devotion += f.brain.devotion()
 				n += 1
 		if n > 0:
 			mood /= float(n)

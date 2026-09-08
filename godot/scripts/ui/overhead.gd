@@ -128,13 +128,29 @@ static func _to_segment(p: Vector2, a: Vector2, b: Vector2) -> float:
 ## Input is taken from _unhandled_input rather than _gui_input so the camera
 ## still gets drags that start on empty ground. A click on a villager is
 ## consumed; a click anywhere else is left alone.
+## A FINGER COUNTS TOO. This handled InputEventMouseButton only, which meant
+## that on a phone -- the shipping target, in the orientation the project is
+## already configured for -- a villager could not be selected or blessed at all.
+## The project turns on emulate_mouse_from_touch, and that is what hid it: the
+## emulation drives the HUD and the camera, so everything else responded to a
+## tap and this one thing quietly did not.
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton):
+	var at := Vector2(-9999, -9999)
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+			return
+		at = make_input_local(mb).position
+	elif event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		# The FIRST finger only: the second one is a pinch, and a pinch that
+		# also selected whoever was under the far thumb would be maddening.
+		if not st.pressed or st.index != 0:
+			return
+		at = make_input_local(st).position
+	else:
 		return
-	var mb := event as InputEventMouseButton
-	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
-		return
-	var hit = under(make_input_local(mb).position)
+	var hit = under(at)
 	if hit == null:
 		return
 	selected = hit

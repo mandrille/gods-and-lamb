@@ -165,6 +165,7 @@ static func _capture_divinity(d) -> Dictionary:
 		# float and needs to know nothing about Brain, mood or personality.
 		"income_per_s": float(d.income_per_s()),
 		"age": int(d.age),
+		"god_level": int(d.god_level),
 		"last_age_at": float(d._last_age_at),
 		"tutorial_gift": bool(d._tutorial_gift_given),
 		"unlocked_cards": d.unlocked_cards.duplicate(),
@@ -258,6 +259,7 @@ static func apply_divinity(d, doc: Dictionary) -> void:
 	d.faith = float(doc.get("faith", d.faith))
 	d.total_earned = float(doc.get("total_earned", 0.0))
 	d.age = int(doc.get("age", 0))
+	d.god_level = maxi(1, int(doc.get("god_level", 1)))
 	d._last_age_at = float(doc.get("last_age_at", -999.0))
 	d._tutorial_gift_given = bool(doc.get("tutorial_gift", false))
 	d.drafts_taken = int(doc.get("drafts_taken", 0))

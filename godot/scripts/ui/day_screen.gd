@@ -24,7 +24,15 @@ signal aura_chosen(id: String)
 signal rested()                    ## "that will do for today"
 signal resumed()                   ## straight into the next day
 
+## The panel is 460 units wide, and a phone lays its UI out in 400. Every rect
+## in here was measured off that constant, so the whole nightfall screen -- the
+## summary, the aura buttons, the two ways to continue -- ran off both edges on
+## a handset. `_pw()` is the width that actually fits; PANEL_W is what it wants.
 const PANEL_W := 460.0
+
+
+func _pw() -> float:
+	return minf(PANEL_W, size.x - 24.0)
 const DIM := Color(0.03, 0.04, 0.07, 0.78)
 const PANEL := Color(0.13, 0.15, 0.21, 0.98)
 const EDGE := Color(0.44, 0.54, 0.74, 0.85)
@@ -121,7 +129,8 @@ func _panel_rect() -> Rect2:
 		h = 176.0 + float(lines) * 20.0
 		if int(_doc.get("streak", 0)) >= 2:
 			h += 22.0
-	return Rect2((size.x - PANEL_W) * 0.5, (size.y - h) * 0.5, PANEL_W, h)
+	var w := _pw()
+	return Rect2((size.x - w) * 0.5, (size.y - h) * 0.5, w, h)
 
 
 func _aura_rects() -> Array[Rect2]:
@@ -129,7 +138,7 @@ func _aura_rects() -> Array[Rect2]:
 	if _mode != "night":
 		return out
 	var p := _panel_rect()
-	var w := (PANEL_W - 24.0 * 2.0 - 3.0 * 8.0) / 4.0
+	var w := (_pw() - 24.0 * 2.0 - 3.0 * 8.0) / 4.0
 	var y := p.position.y + p.size.y - 132.0
 	for i in AURAS.size():
 		out.append(Rect2(p.position.x + 24.0 + float(i) * (w + 8.0), y, w, 74.0))
@@ -140,8 +149,8 @@ func _button_rects() -> Array[Rect2]:
 	var p := _panel_rect()
 	var y := p.position.y + p.size.y - 46.0
 	if _mode != "night":
-		return [Rect2(p.position.x + 24.0, y, PANEL_W - 48.0, 34.0)]
-	var w := (PANEL_W - 48.0 - 10.0) * 0.5
+		return [Rect2(p.position.x + 24.0, y, _pw() - 48.0, 34.0)]
+	var w := (_pw() - 48.0 - 10.0) * 0.5
 	return [Rect2(p.position.x + 24.0, y, w, 34.0),
 			Rect2(p.position.x + 34.0 + w, y, w, 34.0)]
 
@@ -227,7 +236,7 @@ func _draw_night(p: Rect2) -> void:
 		["wood", "%d gathered" % int(_doc.get("gathered", 0))],
 	]
 	for i in stats.size():
-		var col: float = x + float(i % 2) * (PANEL_W * 0.5 - 18.0)
+		var col: float = x + float(i % 2) * (_pw() * 0.5 - 18.0)
 		var row: float = y + float(i / 2) * 28.0
 		Icons.draw_icon(self, String(stats[i][0]), Vector2(col + 9.0, row + 6.0), 17.0)
 		draw_string(_font, Vector2(col + 24.0, row + 11.0), String(stats[i][1]),

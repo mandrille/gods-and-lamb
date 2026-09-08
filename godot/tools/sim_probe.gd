@@ -244,12 +244,12 @@ func _check_favour() -> void:
 	b.last_action_at = float(_root.village.now)
 	_root.divinity.judge_cd = 0.0
 	var before := float(b.favour["chop"])
-	var faith_before := float(b.stats["faith"])
+	var faith_before := b.faith_xp
 	var mem_before: int = b.memories.entries.size()
 	b.bless(1.0)
 	var after := float(b.favour["chop"])
 	print("[SIM] bless: favour[chop] %.3f -> %.3f, faith %.2f -> %.2f, "
-		% [before, after, faith_before, float(b.stats["faith"])]
+		% [before, after, faith_before, b.faith_xp]
 		+ "memories %d -> %d" % [mem_before, b.memories.entries.size()])
 	if after <= before:
 		_faults.append("blessing did not raise favour for the blessed action")

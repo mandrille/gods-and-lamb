@@ -52,6 +52,7 @@ var _notices: Array = []                ## [{text, left, warn}], newest first
 var _combo_chain := 0
 var _combo_mult := 1.0
 var _combo_flash := 0.0            ## counts down after a chain BREAKS
+var _level_flash := 0.0            ## counts down after the god levels up
 var _aiming := -1                  ## hand index awaiting a target, or -1
 var _smiting := false
 var _hot := -1                     ## hovered card, or -1
@@ -84,6 +85,7 @@ func _ready() -> void:
 			_combo_flash = 0.6
 		_combo_chain = chain
 		_combo_mult = mult)
+	divinity.level_up.connect(func(_lv: int): _level_flash = 1.0)
 
 
 ## --- geometry ---------------------------------------------------------------
@@ -106,14 +108,40 @@ func _hand_rects() -> Array[Rect2]:
 	return out
 
 
+## The two standing buttons on the right. 46 px tall, not the 40 they were:
+## measured against a phone, a 40 px control is under both Apple's 44 pt and
+## Google's 48 dp minimum, and these are the two buttons a player presses most.
+const BUTTON_H := 46.0
+
+
+## NARROW MEANS A PHONE HELD UPRIGHT, and it changes where things go rather
+## than only how big they are. Once the UI is dealt out in 400 units (see
+## `vale_root._apply_ui_scale`) there is no longer room for a card hand across
+## the middle AND a column of buttons beside it -- measured, the wrath button
+## started 100 units inside the third card. So on a narrow screen the two
+## standing buttons become a row ABOVE the hand instead of a column beside it.
+const NARROW := 520.0
+
+
+func _is_narrow() -> bool:
+	return get_viewport_rect().size.x < NARROW
+
+
 func _wrath_rect() -> Rect2:
 	var vp := get_viewport_rect().size
-	return Rect2(vp.x - 132.0 - PAD, vp.y - CARD_H - PAD, 132.0, 40.0)
+	if _is_narrow():
+		var w := (vp.x - PAD * 2.0 - 8.0) * 0.5
+		return Rect2(PAD + w + 8.0, vp.y - CARD_H - PAD - BUTTON_H - 8.0,
+					 w, BUTTON_H)
+	return Rect2(vp.x - 132.0 - PAD, vp.y - CARD_H - PAD, 132.0, BUTTON_H)
 
 
 func _commune_rect() -> Rect2:
 	var r := _wrath_rect()
-	return Rect2(r.position.x, r.position.y - 46.0, r.size.x, 40.0)
+	if _is_narrow():
+		return Rect2(PAD, r.position.y, r.size.x, r.size.y)
+	return Rect2(r.position.x, r.position.y - BUTTON_H - 6.0, r.size.x,
+				 BUTTON_H)
 
 
 ## --- input ------------------------------------------------------------------
@@ -121,6 +149,8 @@ func _commune_rect() -> Rect2:
 func _process(delta: float) -> void:
 	if _combo_flash > 0.0:
 		_combo_flash -= delta
+	if _level_flash > 0.0:
+		_level_flash -= delta
 	for n in _notices:
 		n["left"] = float(n["left"]) - delta
 	while not _notices.is_empty() and float(_notices[-1]["left"]) <= 0.0:
@@ -336,6 +366,7 @@ func _draw() -> void:
 	if divinity == null or host == null:
 		return
 	_ledger()
+	_godbar()
 	_daybar()
 	_goal()
 	_combo()
@@ -346,6 +377,49 @@ func _draw() -> void:
 	_reticle()
 
 
+## --- the top-left stack -----------------------------------------------------
+##
+## Four things pile up in the top-left corner -- the ledger, the god's level,
+## the goal line and the combo pips -- and each used to carry its own literal
+## y offset. That is how the level bar landed exactly on top of the goal line
+## the day it was added: two constants, written months apart, that happened to
+## describe the same 20 pixels.
+##
+## One ladder now. Each rung is the one below the last, and on a narrow screen
+## the whole ladder starts under the day bar instead of beside it.
+
+const LEDGER_H := 34.0
+const GOD_H := 28.0
+const DAYBAR_H := 52.0
+
+
+## Where the ledger's own top edge is. On a phone the day clock takes the full
+## width of the first row, because a 268-unit panel centred in 400 units of
+## screen sits directly on top of the ledger.
+func _stack_top() -> float:
+	return PAD + (DAYBAR_H + 6.0 if _is_narrow() else 0.0)
+
+
+func _god_y() -> float:
+	return _stack_top() + LEDGER_H + 6.0
+
+
+func _goal_y() -> float:
+	return _god_y() + GOD_H + 8.0
+
+
+func _combo_y() -> float:
+	return _goal_y() + 20.0
+
+
+## The ledger's own box, so the drawing and the layout test read one number.
+func _ledger_rect() -> Rect2:
+	var total := 0.0
+	for e in _ledger_rows():
+		total += _row_width(String(e[1]))
+	return Rect2(PAD, _stack_top(), total + 20.0, LEDGER_H)
+
+
 ## Where a ledger counter sits on screen, so a resource token can fly to it.
 ## Computed from the same row table `_ledger` draws from -- a second copy of
 ## the layout is how a token ends up landing next to the counter it means.
@@ -353,9 +427,9 @@ func ledger_icon_pos(key: String) -> Vector2:
 	var x := PAD + 12.0
 	for e in _ledger_rows():
 		if String(e[0]) == key:
-			return Vector2(x + 8.0, PAD + 17.0)
+			return Vector2(x + 8.0, _stack_top() + 17.0)
 		x += _row_width(String(e[1]))
-	return Vector2(PAD + 20.0, PAD + 17.0)
+	return Vector2(PAD + 20.0, _stack_top() + 17.0)
 
 
 ## Where the village has got to. Roman numerals because "Age 2" reads as a
@@ -370,9 +444,11 @@ func _age_label() -> String:
 	return String(NUMERALS[mini(n, NUMERALS.size()) - 1])
 
 
+## The gap after each counter. 16 is comfortable; 8 is what makes six counters
+## fit inside 400 units, which is what a phone has.
 func _row_width(text: String) -> float:
 	return 22.0 + float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
-											  -1, 15).x) + 16.0
+											  -1, 15).x) 		+ (8.0 if _is_narrow() else 16.0)
 
 
 func _ledger_rows() -> Array:
@@ -391,22 +467,53 @@ func _ledger_rows() -> Array:
 ## of "Food 8 / 24" and read as a debug printout.
 func _ledger() -> void:
 	var row := _ledger_rows()
-	var h := 34.0
+	var box := _ledger_rect()
 	var x := PAD + 12.0
 	var widths: Array[float] = []
 	for e in row:
 		widths.append(_row_width(String(e[1])))
-	var total := 0.0
-	for w in widths:
-		total += w
-	_panel(Rect2(PAD, PAD, total + 20.0, h))
-	var cy := PAD + h * 0.5
+	_panel(box)
+	var cy := box.position.y + box.size.y * 0.5
 	for i in row.size():
 		var e: Array = row[i]
 		Icons.draw_icon(self, String(e[0]), Vector2(x + 8.0, cy), 19.0)
 		draw_string(_font, Vector2(x + 22.0, cy + 5.0), String(e[1]),
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 15, e[2])
 		x += widths[i]
+
+
+## WHAT THE PLAYER IS, under what the village has.
+##
+## The village ledger says how the village is doing. This says how the PLAYER is
+## doing, and it is the only line on screen that is about them -- everything
+## else is about wheat. It sits directly under the ledger because the two are
+## read together: "they have twelve wood and I am nearly Level 4."
+##
+## Drawn as a bar rather than a number because a number that goes up on its own
+## is a score, and a bar that is three-quarters full is a reason to keep playing
+## for another minute.
+func _godbar() -> void:
+	var lv: int = int(divinity.god_level)
+	var label := "Level %d" % lv
+	var w := 34.0 + float(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT,
+												-1, 15).x) + 96.0
+	var r := Rect2(PAD, _god_y(), w, GOD_H)
+	_panel(r)
+	if _level_flash > 0.0:
+		draw_rect(r.grow(1.0),
+				  Color(GOLD.r, GOLD.g, GOLD.b, 0.85 * _level_flash), false, 2.0)
+	var cy := r.position.y + r.size.y * 0.5
+	Icons.draw_icon(self, "saint", Vector2(r.position.x + 20.0, cy), 18.0)
+	draw_string(_font, Vector2(r.position.x + 34.0, cy + 5.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 15, GOLD)
+	# The bar to the next one. At the last level there is nothing left to fill,
+	# so it reads full rather than empty -- an empty bar at the top of the game
+	# looks like a bug.
+	var track := Rect2(r.position.x + w - 88.0, cy - 3.0, 76.0, 6.0)
+	draw_rect(track, Color(1, 1, 1, 0.12), true)
+	var lit := track
+	lit.size.x = track.size.x * clampf(divinity.level_progress(), 0.0, 1.0)
+	draw_rect(lit, GOLD, true)
 
 
 func _hand() -> void:
@@ -585,8 +692,13 @@ func _daybar() -> void:
 		return
 	var d = host.daylight
 	var vp := get_viewport_rect().size
+	# Full width on a phone. Centred, a 268-unit panel in 400 units of screen
+	# lands squarely on the ledger; there is no third place for it to go.
 	var w := 268.0
-	var r := Rect2((vp.x - w) * 0.5, PAD - 2.0, w, 52.0)
+	var r := Rect2((vp.x - w) * 0.5, PAD - 2.0, w, DAYBAR_H)
+	if _is_narrow():
+		w = vp.x - PAD * 2.0
+		r = Rect2(PAD, PAD - 2.0, w, DAYBAR_H)
 	var dusk: float = d.dusk_amount()
 
 	draw_rect(r, PANEL, true)
@@ -681,7 +793,7 @@ func _goal() -> void:
 	var text: String = host.next_goal()
 	if text == "":
 		return
-	var at := Vector2(PAD + 12.0, PAD + 46.0)
+	var at := Vector2(PAD + 12.0, _goal_y() + 14.0)
 	# A chevron rather than a bullet: it points forward, which is the whole
 	# message.
 	var c := at + Vector2(4.0, -4.0)
@@ -703,7 +815,7 @@ func _combo() -> void:
 	var chain: int = divinity.combo_chain
 	if chain < 2 and _combo_flash <= 0.0:
 		return
-	var at := Vector2(PAD + 12.0, PAD + 66.0)
+	var at := Vector2(PAD + 12.0, _combo_y() + 14.0)
 	if _combo_flash > 0.0 and chain == 0:
 		# The break, in the red the punish button uses, fading out.
 		var a := clampf(_combo_flash / 0.6, 0.0, 1.0)
