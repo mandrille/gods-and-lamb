@@ -51,7 +51,7 @@ func _process(_d: float) -> bool:
 	if _f < 36:
 		return false
 	if _f == 36:
-		get_root().get_texture().get_image().save_png(
+		ShotWindow.shoot(
 			"res://shots/hand_hover.png")
 		var d = _root.divinity
 		_reroll_spends_and_replaces(d)

@@ -186,7 +186,7 @@ func _shoot(name: String) -> void:
 		_skipped_shots = true
 		_stage += 1
 		return
-	get_root().get_texture().get_image().save_png("res://shots/%s.png" % name)
+	ShotWindow.shoot("res://shots/%s.png" % name)
 	print("[NIGHT] wrote res://shots/%s.png" % name)
 	_shots += 1
 	_stage += 1

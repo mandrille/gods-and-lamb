@@ -52,8 +52,7 @@ func _process(_d: float) -> bool:
 	# works until you look.
 	_peak_floaters = maxi(_peak_floaters, _root.floaters.live_count())
 	if _f == 900 or _f == 1500:
-		var img := get_root().get_texture().get_image()
-		img.save_png("res://shots/idle_%d.png" % _shots)
+		ShotWindow.shoot("res://shots/idle_%d.png" % _shots)
 		print("[IDLE] shot %d, %d floaters live, %d fx emitters"
 			% [_shots, _root.floaters.live_count(), _root.fxe.active_count()])
 		_shots += 1

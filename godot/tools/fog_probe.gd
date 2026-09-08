@@ -33,6 +33,12 @@ func _walk(n: Node) -> Array:
 	return out
 
 func _luma() -> float:
+	# -1 means "nobody looked", which the caller reports rather than asserts on.
+	# Reading the backbuffer headless returns null and the throw would abort
+	# _process before the quit() that ends this probe -- it hangs instead of
+	# failing, which is the worst of the three outcomes.
+	if not ShotWindow.can_shoot():
+		return -1.0
 	var img := get_root().get_texture().get_image()
 	var s := 0.0
 	var n := 0

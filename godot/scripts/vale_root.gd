@@ -411,6 +411,10 @@ func _on_picked(entry: Dictionary) -> void:
 	var act := WorldTouch.prop_action(id)
 	if act.is_empty():
 		return
+	# The cooldown is spent only once the touch is going to DO something. A
+	# scenery prop with no entry in the table used to eat it silently, and the
+	# player's next tap -- on a tree, on purpose -- was the one that failed.
+	_touch_take()
 	var at: Vector3 = entry.get("pos", Vector3.ZERO)
 	if bool(act.get("consumes", false)):
 		builder.remove_prop(entry)
@@ -443,10 +447,24 @@ func _on_ground(at: Vector3) -> void:
 		# down is not a decision, and a tree on top of a hut is a bug.
 		if not grid.is_plain(cell) or _prop_on(cell):
 			return
-		if not builder.add_prop(WorldTouch.seed_for(cell), cell.x, cell.y,
+		# AND THE ROOM IS BIGGER THAN THE TILE. A tree's footprint covers its
+		# neighbours, so a square that is empty by cell can still be full by
+		# geometry -- measured, about half of all grass was, and every one of
+		# those taps did nothing, said nothing, and spent the cooldown anyway.
+		# It reads as the game ignoring you.
+		var seed_id := WorldTouch.seed_for(cell)
+		if builder.would_overlap(seed_id, cell.x, cell.y):
+			_touch_take()
+			if divinity != null:
+				divinity.notice.emit("No room to grow there.")
+			if sfx != null:
+				sfx.play("deny")
+			return
+		if not builder.add_prop(seed_id, cell.x, cell.y,
 								_rng.randf_range(0.0, 360.0)):
 			return
 		queue_grid_rebuild()
+	_touch_take()
 	_touch_paid(act, grid.world_of(cell))
 
 
@@ -466,10 +484,20 @@ func _prop_on(cell: Vector2i) -> bool:
 
 
 ## One shared cooldown for every kind of touch.
+## ASKING is not TAKING. These were one function, and it stamped the cooldown
+## as a side effect of being asked -- so any caller that checked before acting
+## consumed the touch it was checking for, and the action that followed was
+## silently refused. Measured: economy_probe pre-checked, every one of its
+## twelve thousand touches was swallowed, wood stayed at 3 for a full ten
+## minutes, and the probe reported it as an economy failure.
 func _touch_ready() -> bool:
 	if village == null:
 		return false
-	if float(village.now) - _touched_at < WorldTouch.COOLDOWN:
+	return float(village.now) - _touched_at >= WorldTouch.COOLDOWN
+
+
+func _touch_take() -> bool:
+	if not _touch_ready():
 		return false
 	_touched_at = float(village.now)
 	return true

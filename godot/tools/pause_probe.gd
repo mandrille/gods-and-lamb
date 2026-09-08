@@ -176,7 +176,7 @@ func _shoot() -> void:
 		_skipped_shots = true
 		_stage += 1
 		return
-	get_root().get_texture().get_image().save_png("res://shots/pause_menu.png")
+	ShotWindow.shoot("res://shots/pause_menu.png")
 	print("[PAUSE] wrote res://shots/pause_menu.png")
 	_shot = true
 	_stage += 1

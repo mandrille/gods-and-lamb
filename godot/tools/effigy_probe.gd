@@ -82,7 +82,7 @@ func _process(_d: float) -> bool:
 	if not ShotWindowRef.can_shoot():
 		print("[EFFIGY] no display: %s not photographed" % IDS[_i])
 	else:
-		get_root().get_texture().get_image().save_png(path)
+		ShotWindow.shoot(path)
 		print("[EFFIGY] %s -> %s" % [IDS[_i], path])
 	c.release()
 	_i += 1

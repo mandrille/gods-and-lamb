@@ -57,7 +57,7 @@ func _process(delta: float) -> bool:
 			return false
 		if _shot and not _saved:
 			_saved = true
-			get_root().get_texture().get_image().save_png(
+			ShotWindow.shoot(
 				"res://shots/wolf_hunt.png")
 			print("[WOLF] wrote res://shots/wolf_hunt.png")
 		if _removed.has("Animals/sheep"):

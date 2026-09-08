@@ -172,14 +172,21 @@ func _check_cooldown() -> void:
 	var cell := _find("D")
 	if cell.x < 0:
 		return
+	# `_touch_take` is the one that stamps; `_touch_ready` only answers. Both
+	# are checked, because a predicate that quietly consumed what it was asked
+	# about is exactly the bug this pair was split to prevent.
 	_root._touched_at = -99.0
 	if not _root._touch_ready():
 		_faults.append("the first touch was refused")
-	if _root._touch_ready():
+	if not _root._touch_ready():
+		_faults.append("merely asking whether a touch is ready used it up")
+	if not _root._touch_take():
+		_faults.append("the first touch was refused")
+	if _root._touch_take():
 		_faults.append("two touches landed in the same instant -- the game is "
 			+ "a mouse-speed contest")
 	_root.village.now = float(_root.village.now) + WorldTouch.COOLDOWN + 0.01
-	if not _root._touch_ready():
+	if not _root._touch_take():
 		_faults.append("the cooldown never lifts")
 	print("[TOUCH] cooldown holds and lifts after %.2fs" % WorldTouch.COOLDOWN)
 

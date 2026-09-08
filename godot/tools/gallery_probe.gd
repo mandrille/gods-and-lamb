@@ -58,7 +58,7 @@ func _process(_d: float) -> bool:
 	if _f > 30 and _f < 60:
 		_hold_row()
 	if _f == 60:
-		get_root().get_texture().get_image().save_png("res://shots/gallery_folk.png")
+		ShotWindow.shoot("res://shots/gallery_folk.png")
 		print("[GALLERY] wrote res://shots/gallery_folk.png")
 		# The same row with the job badges lit, which is how a player tells a
 		# miner from a bard without clicking on one.
@@ -76,7 +76,7 @@ func _process(_d: float) -> bool:
 			_root.overhead.highlight_all = true
 		return false
 	if _f == 68:
-		get_root().get_texture().get_image().save_png("res://shots/gallery_jobs.png")
+		ShotWindow.shoot("res://shots/gallery_jobs.png")
 		print("[GALLERY] wrote res://shots/gallery_jobs.png")
 		if _root.overhead != null:
 			_root.overhead.highlight_all = false
@@ -85,7 +85,7 @@ func _process(_d: float) -> bool:
 		_stage_buildings()
 		return false
 	if _f == 78:
-		get_root().get_texture().get_image().save_png(
+		ShotWindow.shoot(
 			"res://shots/gallery_buildings.png")
 		print("[GALLERY] wrote res://shots/gallery_buildings.png")
 		quit(0)

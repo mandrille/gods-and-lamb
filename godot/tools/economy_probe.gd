@@ -87,6 +87,8 @@ var _cast := 0
 var _boons := 0
 var _lands := 0
 var _ages: Array[String] = []
+var _greened := 0
+var _grew := 0
 var _mode := "engaged"
 
 
@@ -204,6 +206,18 @@ func _play_a_bit() -> void:
 		if not slots.is_empty() and d.buy_island(slots[0]):
 			_lands += 1
 
+	# AND TOUCH THE WORLD, which is the verb this probe was written before.
+	#
+	# The plot arrives as bare desert now: no trees, therefore no wood, and a
+	# village with no wood builds nothing and reaches no age. Measured before
+	# this was added -- wood sat at 3 for the whole ten minutes, no age was
+	# ever reached, and the probe reported it as an economy failure. It was not
+	# one. An engaged player greens ground and grows trees on it, so the
+	# engaged arm has to as well or it is modelling a player who has not
+	# learned the first thing the game teaches.
+	if engaged:
+		_touch_something()
+
 	if engaged and d.hand.size() >= 3:
 		# Cast at the middle of the village, which is roughly what a player
 		# aiming for a crowd would do.
@@ -214,6 +228,44 @@ func _play_a_bit() -> void:
 			at /= float(_root.folk.size())
 		if d.play(0, at, _root.folk[0] if not _root.folk.is_empty() else null):
 			_cast += 1
+
+
+## One touch, on the most useful thing in reach: bare ground becomes grass,
+## grass grows a tree. Rate-limited by the game's own shared cooldown, so this
+## cannot touch faster than a player could.
+func _touch_something() -> void:
+	if not _root._touch_ready():
+		return
+	var dirt := Vector2i(-1, -1)
+	var grass := Vector2i(-1, -1)
+	for row in _root.builder.lower.size():
+		var line: String = _root.builder.lower[row]
+		for col in line.length():
+			var c := Vector2i(col, row)
+			if not _root.grid.is_walkable(c):
+				continue
+			if line[col] == "G":
+				# Room for the thing this square would actually grow, footprint
+				# and all -- a tree covers its neighbours, so about half of all
+				# grass has no room on it.
+				if grass.x < 0 and not _root._prop_on(c) 						and not _root.builder.would_overlap(
+							WorldTouch.seed_for(c), c.x, c.y):
+					grass = c
+			elif line[col] == "D" and dirt.x < 0:
+				dirt = c
+		if grass.x >= 0 and dirt.x >= 0:
+			break
+	# Grass first: a tree is what the village is actually short of, and greening
+	# every tile before planting anything is not how a person plays either.
+	var at: Vector2i = grass if grass.x >= 0 else dirt
+	if at.x < 0:
+		return
+	var props: int = _root.builder.placed_props.size()
+	_root._on_ground(_root.grid.world_of(at))
+	if _root.builder.placed_props.size() > props:
+		_grew += 1
+	elif _root.builder.code_at(_root.builder.lower, at.x, at.y) == "G":
+		_greened += 1
 
 
 func _report() -> void:
@@ -232,6 +284,16 @@ func _report() -> void:
 		print(line)
 
 	var total: float = _root.divinity.total_earned
+	# What the god actually DID to the ground. Without these two counters a run
+	# where every touch was silently refused looks identical to a run where the
+	# economy is simply weak -- which is exactly how a shared-cooldown bug got
+	# read as an income problem for two full sweeps.
+	var built := 0
+	for aid in _root.village.structures:
+		if String(aid).begins_with("Buildings/"):
+			built += 1
+	print("[ECON] the god greened %d tiles, grew %d things; %d building kinds "
+		% [_greened, _grew, built] + "stand")
 	print("[ECON] total earned %.0f, ending Faith %.0f, pop %d, ages n/a"
 		% [total, _root.divinity.faith, _root.folk.size()])
 	print("[ECON] ages: %s" % (", ".join(_ages) if not _ages.is_empty()

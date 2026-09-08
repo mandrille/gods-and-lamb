@@ -65,7 +65,7 @@ func _process(_d: float) -> bool:
 		_root.rig.call("_place")
 		return false
 	if _f == 326:
-		get_root().get_texture().get_image().save_png("res://shots/livestock.png")
+		ShotWindow.shoot("res://shots/livestock.png")
 		return false
 
 	if _f < RUN:

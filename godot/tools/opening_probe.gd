@@ -154,12 +154,12 @@ func _process(delta: float) -> bool:
 	if _shots == 0 and _t >= 30.0:
 		_shots = 1
 		if ShotWindowRef.can_shoot():
-			get_root().get_texture().get_image().save_png(
+			ShotWindow.shoot(
 				"res://shots/opening_30s.png")
 	if _shots == 1 and _t >= 300.0:
 		_shots = 2
 		if ShotWindowRef.can_shoot():
-			get_root().get_texture().get_image().save_png(
+			ShotWindow.shoot(
 				"res://shots/opening_5min.png")
 
 	if _t >= float(_next_min) * 60.0:

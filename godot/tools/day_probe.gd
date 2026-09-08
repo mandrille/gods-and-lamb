@@ -152,7 +152,7 @@ func _shoot(name: String) -> void:
 	if not ShotWindowRef.can_shoot():
 		_skipped_shots = true
 		return
-	get_root().get_texture().get_image().save_png("res://shots/%s.png" % name)
+	ShotWindow.shoot("res://shots/%s.png" % name)
 	print("[DAY] wrote res://shots/%s.png at %s left, dusk %.2f"
 		% [name, _root.daylight.clock(), _root.daylight.dusk_amount()])
 	_shots += 1

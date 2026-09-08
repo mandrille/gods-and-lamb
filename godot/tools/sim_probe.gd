@@ -244,7 +244,7 @@ func _check_favour() -> void:
 	b.last_action_at = float(_root.village.now)
 	_root.divinity.judge_cd = 0.0
 	var before := float(b.favour["chop"])
-	var faith_before := b.faith_xp
+	var faith_before: float = b.faith_xp
 	var mem_before: int = b.memories.entries.size()
 	b.bless(1.0)
 	var after := float(b.favour["chop"])

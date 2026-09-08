@@ -43,7 +43,7 @@ func _process(_d: float) -> bool:
 		_root.draft.close()
 		_root.divinity.pending_draft = []
 		if _f == 46:
-			get_root().get_texture().get_image().save_png(
+			ShotWindow.shoot(
 				"res://shots/miracle.png")
 			_root.cursor.release()
 			_run()

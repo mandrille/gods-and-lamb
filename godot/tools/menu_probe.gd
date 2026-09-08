@@ -337,6 +337,8 @@ func _phase_effects() -> bool:
 
 
 func _grab() -> PackedByteArray:
+	if not ShotWindow.can_shoot():
+		return PackedByteArray()
 	return get_root().get_texture().get_image().get_data()
 
 
@@ -423,6 +425,10 @@ func _phase_menu() -> bool:
 
 
 func _capture_tab() -> void:
+	if not ShotWindow.can_shoot():
+		print("[PROBE] no display: tab %d not photographed" % _shot)
+		_shot += 1
+		return
 	var img := get_root().get_texture().get_image()
 	var data := img.get_data()
 	# The stale-frame guard, same reason as tools/shots.gd: four screenshots of

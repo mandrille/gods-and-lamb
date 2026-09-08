@@ -267,6 +267,11 @@ func _process(delta: float) -> bool:
 
 
 func _grab(label: String) -> void:
+	# No screen, no picture -- and saying so rather than throwing, because a
+	# throw in here aborts _process before the quit() that ends the probe.
+	if not ShotWindow.can_shoot():
+		print("[FXP] no display: %s not photographed" % label)
+		return
 	var img := get_root().get_texture().get_image()
 	var data := img.get_data()
 	if data == _prev:

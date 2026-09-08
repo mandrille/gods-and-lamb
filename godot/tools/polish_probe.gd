@@ -70,7 +70,7 @@ func _process(delta: float) -> bool:
 		_report()
 		quit(0 if _faults.is_empty() else 1)
 		return true
-	get_root().get_texture().get_image().save_png("res://shots/polish_hud.png")
+	ShotWindow.shoot("res://shots/polish_hud.png")
 	print("[POLISH] wrote res://shots/polish_hud.png")
 	_report()
 	quit(0 if _faults.is_empty() else 1)

@@ -76,7 +76,7 @@ func _process(_d: float) -> bool:
 	# machine has no display -- the assertions above are the probe, and a
 	# locked session should not fail a build.
 	if ShotWindowRef.can_shoot():
-		get_root().get_texture().get_image().save_png(
+		ShotWindow.shoot(
 			"res://shots/build_full.png")
 	_report()
 	quit(0 if _faults.is_empty() else 1)
