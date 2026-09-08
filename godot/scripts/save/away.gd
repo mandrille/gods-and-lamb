@@ -150,6 +150,12 @@ static func _story(save: Dictionary, t: float) -> Array:
 			chosen = pool.size() - 1
 		var e: Dictionary = pool[chosen]["e"]
 		pool.remove_at(chosen)
+		# "Nothing much happened" is a whole log, not a line in one. Drawn
+		# alongside five other events it contradicts every one of them -- the
+		# first run of return_probe came back with a stranger arriving, a feast,
+		# a quarrel AND nothing much happening.
+		if String(e["id"]) == "quiet" and not out.is_empty():
+			continue
 		if bool(e.get("bad", false)):
 			if bad_left <= 0:
 				continue
@@ -205,9 +211,16 @@ static func _fill(line: String, save: Dictionary, rng: RandomNumberGenerator) ->
 		pool.append(NAMES[int(f.get("seed", 0)) % NAMES.size()])
 	if pool.is_empty():
 		pool = ["Someone"]
+	# DISTINCT names when the line needs two. "Mira and Mira are not speaking"
+	# is funnier than it is good, and it is the kind of thing a player screenshots.
 	var picked: Array = []
 	for i in n:
-		picked.append(pool[rng.randi() % pool.size()])
+		var name := String(pool[rng.randi() % pool.size()])
+		for _try in 8:
+			if not picked.has(name):
+				break
+			name = String(pool[rng.randi() % pool.size()])
+		picked.append(name)
 	if n == 1:
 		return line % picked[0]
 	return line % picked
