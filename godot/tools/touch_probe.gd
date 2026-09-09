@@ -16,6 +16,7 @@ const ShotWindowRef := preload("res://tools/shot_window.gd")
 var _f := 0
 var _root: Node = null
 var _faults: Array[String] = []
+var _water_at_start := 0
 
 
 func _initialize() -> void:
@@ -36,10 +37,13 @@ func _process(_d: float) -> bool:
 		quit(1)
 		return true
 
+	_water_at_start = _count("W")
 	_check_desert()
 	_check_greening()
 	_check_bloom()
+	_check_aim()
 	_check_fruit()
+	_check_broken_rock()
 	_check_growing()
 	_check_rock()
 	_check_faith()
@@ -100,41 +104,117 @@ func _check_greening() -> void:
 			+ "ever go on it")
 
 
-## GREENING SPREADS. One tile per touch was twelve minutes of tapping to green
-## a starting plot, which is arithmetic rather than a verb.
+## GREENING IS A TIDE. One touch lays 4x4 down at once and the patch keeps
+## spreading on its own out to 16x16.
 func _check_bloom() -> void:
 	var cell := _find("D")
 	if cell.x < 0:
-		_faults.append("no dirt left to test the bloom on")
+		_faults.append("no dirt left to test the spread on")
 		return
-	# Count what the touch actually changed in the document, rather than what
-	# the shape says it should have: an edge tile, a cliff or a pond next door
-	# refuses, and that is correct.
 	var before := _count("G")
 	_root._touched_at = -99.0
 	_root._on_ground(_root.grid.world_of(cell))
-	var made := _count("G") - before
-	print("[TOUCH] one touch on dirt greened %d tiles" % made)
-	if made < 2:
-		_faults.append("a touch greened %d tile(s) -- the bloom did not "
-			% made + "spread at all")
-	if made > 9:
-		_faults.append("a touch greened %d tiles, which is more than the "
-			% made + "nine the bloom shape can produce")
-	# The WALK GRID agrees about every one of them, or the ground and the
-	# pathfinder disagree about most of a patch and only the middle is real.
+	var seeded := _count("G") - before
+	print("[TOUCH] the touch itself greened %d tiles" % seeded)
+	if seeded < 4:
+		_faults.append("a touch greened %d tile(s) -- the 4x4 seed did not land"
+			% seeded)
+	if seeded > WorldTouch.SEED_SIZE * WorldTouch.SEED_SIZE:
+		_faults.append("a touch greened %d tiles, more than the %d a seed can"
+			% [seeded, WorldTouch.SEED_SIZE * WorldTouch.SEED_SIZE])
+	if _root._tides.is_empty():
+		_faults.append("the touch started no spread, so the patch will never "
+			+ "grow past its first 4x4")
+		return
+
+	# IT KEEPS GOING WITHOUT BEING TOUCHED AGAIN, and it stops.
+	var steps := 0
+	while not _root._tides.is_empty() and steps < 40:
+		steps += 1
+		_root.village.now = float(_root.village.now) + WorldTouch.TIDE_STEP
+		_root._tick_tides()
+	var grown := _count("G") - before
+	print("[TOUCH] it spread on its own to %d tiles over %d steps"
+		% [grown, steps])
+	if steps >= 40:
+		_faults.append("the spread never finished -- it runs forever")
+	if grown <= seeded:
+		_faults.append("the spread stopped at its seed: %d tiles" % grown)
+	var cap: int = WorldTouch.TIDE_MAX * WorldTouch.TIDE_MAX
+	if grown > cap:
+		_faults.append("the spread reached %d tiles, past the %dx%d maximum"
+			% [grown, WorldTouch.TIDE_MAX, WorldTouch.TIDE_MAX])
+
+	# THE WALK GRID AGREES about every one of them, or the ground and the
+	# pathfinder disagree about most of a lawn and only the middle is real.
 	var wrong := 0
-	for c in WorldTouch.bloom(cell):
+	for c in WorldTouch.block(cell, WorldTouch.TIDE_MAX):
 		if _root.builder.code_at(_root.builder.lower, c.x, c.y) != "G":
 			continue
 		if _root.grid.code_of(c) != "G":
 			wrong += 1
 	if wrong > 0:
 		_faults.append("%d greened tile(s) never reached the walk grid" % wrong)
-	# And the shape is a function of the CELL, so tidying an edge gives the
-	# same edge back rather than a different one.
-	if WorldTouch.bloom(cell) != WorldTouch.bloom(cell):
-		_faults.append("the same cell blooms a different shape each time")
+
+	# AND IT DOES NOT EAT THE POND. `set_tiles` converts whatever tile it is
+	# handed, so without a filter a spread that reached the shore would turn the
+	# water into a lawn. Only what the touch table says becomes grass may go.
+	print("[TOUCH] water tiles left on the map: %d" % _count("W"))
+	if _count("W") <= 0 and _water_at_start > 0:
+		_faults.append("the spread turned every pond on the map into grass")
+
+	# The shape is a function of the cell and the step, so an interrupted
+	# spread resumes identically rather than rerolling itself.
+	if WorldTouch.takes(cell, 3, 0.62) != WorldTouch.takes(cell, 3, 0.62):
+		_faults.append("the same square takes at a different moment each time")
+
+
+## A CLICK LANDS ON THE TILE IT WAS AIMED AT.
+##
+## `CameraRig.ground_at` intersects a horizontal plane, and that plane was at
+## y = 0 while the walkable surface is at `lift` -- 0.5 m, the top of a ground
+## tile. At this camera's fixed 35.5 degree pitch a half-metre height error
+## projects to 0.5 / tan(35.5) = 0.70 m along the ground, and tiles are 0.5 m
+## across: every click landed about a tile and a half from where the player was
+## pointing, always in the same direction.
+##
+## It read as two separate complaints -- "clicking is inaccurate" and "trees
+## spawn underground", the latter because the tree grew on a tile the player
+## never chose, often at an island edge or against a cliff.
+func _check_aim() -> void:
+	var cam: Camera3D = _root.rig.cam
+	var worst := 0.0
+	var missed := 0
+	var tried := 0
+	for row in range(4, _root.builder.lower.size(), 7):
+		for col in range(4, String(_root.builder.lower[row]).length(), 7):
+			var c := Vector2i(col, row)
+			if not _root.grid.is_walkable(c):
+				continue
+			var world: Vector3 = _root.grid.world_of(c)
+			if cam.is_position_behind(world):
+				continue
+			var screen: Vector2 = cam.unproject_position(world)
+			var back = _root.rig.ground_at(screen)
+			if back == null:
+				continue
+			tried += 1
+			worst = maxf(worst, Vector2(world.x - (back as Vector3).x,
+										world.z - (back as Vector3).z).length())
+			if _root.grid.cell_of(back as Vector3) != c:
+				missed += 1
+	print("[TOUCH] aimed at %d tiles: %d landed elsewhere, worst miss %.2f m"
+		% [tried, missed, worst])
+	if tried < 4:
+		_faults.append("could not see enough tiles to test aim")
+		return
+	if missed > 0:
+		_faults.append("%d of %d clicks landed on a different tile than the "
+			% [missed, tried] + "one they were aimed at")
+	# Half a tile is the most a rounding error may cost.
+	if worst > _root.builder.tile * 0.5:
+		_faults.append("a click missed its point by %.2f m, which is more than "
+			% worst + "half a tile")
 
 
 ## A TREE FRUITS: several heaps under the canopy, and they are food a villager
@@ -185,6 +265,54 @@ func _check_fruit() -> void:
 	if not Brain.ACTIONS["forage"]["sources"].has("Nature/apples"):
 		_faults.append("nothing eats apple heaps, so a tree drops food that "
 			+ "sits there forever")
+
+
+## A BROKEN ROCK IS GONE, and stays gone.
+##
+## Driven through the PICKER rather than by calling the handler, because the
+## bug was in the seam between them: `hover` built its own dictionaries with
+## the same fields, GDScript compares dictionaries by reference, and so
+## `placed_props.erase(entry)` erased nothing. The rock vanished from the
+## screen and stayed in the builder's list -- paying stone on every click
+## forever, blocking its tile, and coming back on the next grid rebuild.
+func _check_broken_rock() -> void:
+	var rock := {}
+	for e in _root.builder.placed_props:
+		if String(e.get("id", "")) == "Nature/rock":
+			rock = e
+			break
+	if rock.is_empty():
+		print("[TOUCH] no rock left to break twice")
+		return
+	var cam: Camera3D = _root.rig.cam
+	var at: Vector3 = rock["node"].global_position + Vector3(0, 0.2, 0)
+	# Look at it, or it may be off screen or behind the camera.
+	_root.rig.focus = at
+	_root.rig.dist = 12.0
+	_root.rig._place()
+	_root.pick.setup(_root.rig, _root.builder, _root.builder.placed_props)
+	var screen: Vector2 = cam.unproject_position(at)
+
+	var stone: int = _root.village.amount("stone")
+	_root._touched_at = -99.0
+	_root.pick._claim(screen)
+	var after_first: int = _root.village.amount("stone")
+	# And again, on the very same spot.
+	_root._touched_at = -99.0
+	_root.pick._claim(screen)
+	var after_second: int = _root.village.amount("stone")
+	print("[TOUCH] breaking the same rock twice: stone %d -> %d -> %d"
+		% [stone, after_first, after_second])
+	if after_first <= stone:
+		_faults.append("clicking a rock through the picker paid nothing")
+	if after_second > after_first:
+		_faults.append("a broken rock paid out again -- it is still in the "
+			+ "world and will keep paying forever")
+	for e in _root.builder.placed_props:
+		if e.get("node") == rock.get("node"):
+			_faults.append("the broken rock is still in the builder's list, so "
+				+ "it still blocks its tile and returns on the next rebuild")
+			break
 
 
 func _count(ch: String) -> int:

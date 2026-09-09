@@ -39,6 +39,23 @@ var bounds_min := Vector3(-24, 0, -18)
 var bounds_max := Vector3(24, 0, 18)
 
 var cam: Camera3D
+## THE HEIGHT OF THE GROUND THE PLAYER IS LOOKING AT.
+##
+## This was 0.0 while the walkable surface has always been at `lift` -- 0.5 m,
+## the top of a ground tile -- so every ray cast against it landed half a metre
+## BELOW the surface, and at this camera's fixed 35.5 degree pitch that
+## projects to 0.5 / tan(35.5) = 0.70 m of horizontal error. Tiles are 0.5 m.
+## Every ground click was therefore about one and a half tiles short of where
+## the player was pointing, consistently, in the same direction.
+##
+## It reads as two different bugs at once: clicking feels inaccurate, and a
+## tree "grows in the wrong place" -- often on a tile at the island's edge or
+## under a cliff, where it looks like it spawned underground. Dragging the map
+## drifted for the same reason.
+var ground_y := 0.0:
+	set(value):
+		ground_y = value
+		_plane = Plane(Vector3.UP, value)
 var _plane := Plane(Vector3.UP, 0.0)
 var _dragging := false
 var _grab := Vector3.ZERO                 ## the world point held under the cursor

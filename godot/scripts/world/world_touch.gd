@@ -75,30 +75,53 @@ const TILES = {
 		  "fx": "chips", "sfx": "chop"},
 }
 
-## HOW FAR A GREENING SPREADS.
+## GREENING IS A TIDE, not a tile.
 ##
-## One tile per touch was arithmetic, not a verb: a starting plot is roughly
-## 1600 flat tiles and the shared cooldown is 0.45s, so greening it by hand was
-## twelve minutes of tapping the same square of desert. A patch instead --
-## always the tile you touched and its four neighbours, plus the diagonals about
-## half the time -- makes one touch read as a god doing something to a place
-## rather than filling in a cell.
+## One tile per touch was arithmetic rather than a verb: a starting plot is
+## roughly 1600 flat tiles and the shared cooldown is 0.45s, so greening it by
+## hand was twelve minutes of tapping the same square of desert.
 ##
-## The diagonals are chosen from a hash of the CELL, not a die roll, so the same
-## square always blooms the same shape. A player who touches, sees a ragged edge
-## and touches again to tidy it gets the tidying they asked for rather than a
-## different ragged edge.
-static func bloom(cell: Vector2i) -> Array[Vector2i]:
-	var out: Array[Vector2i] = [cell]
-	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		out.append(cell + d)
-	var i := 0
-	for d in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
-		i += 1
-		var h: int = absi((cell.x * 73856093) ^ (cell.y * 19349663) ^ (i * 83492791))
-		if h % 100 < 55:
-			out.append(cell + d)
+## So a touch lays down a 4x4 block AT ONCE, and that block then keeps
+## spreading on its own -- a couple of rows at a time, ragged, taking a random
+## part of each new edge -- out to 16x16. The player does not fill in a grid;
+## they start something and watch it run, which is the only version of this
+## that is a god doing something to a place.
+##
+## The randomness is a hash of the CELL AND THE STEP, never a die roll: the same
+## square always takes at the same moment, so a spread that is interrupted and
+## resumed looks the same as one that was not, and nothing about the shape can
+## be rerolled by clicking again.
+const SEED_SIZE := 4
+const TIDE_MAX := 16
+## Seconds between one step of the spread and the next. Slow enough to watch.
+const TIDE_STEP := 0.85
+## How much of what is newly in reach takes on each step. Under 1.0 is what
+## makes the edge ragged instead of a growing rectangle.
+const TIDE_TAKE := 0.62
+## How many spreads may run at once. Past this the oldest is finished off in one
+## go rather than abandoned -- a click that quietly did nothing is worse than a
+## click that resolves early.
+const TIDE_MAX_LIVE := 10
+
+
+## The square of `size` tiles centred on `cell`. Even sizes cannot be centred
+## exactly, so they lean up and left, which is where the click was.
+static func block(cell: Vector2i, size: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var lo := -(size / 2)
+	for dy in range(lo, lo + size):
+		for dx in range(lo, lo + size):
+			out.append(cell + Vector2i(dx, dy))
 	return out
+
+
+## Whether this square takes on this step. Deterministic in both.
+static func takes(cell: Vector2i, step: int, chance: float) -> bool:
+	if chance >= 1.0:
+		return true
+	var h: int = absi((cell.x * 73856093) ^ (cell.y * 19349663)
+					  ^ ((step + 1) * 83492791))
+	return float(h % 1000) < chance * 1000.0
 
 
 ## HOW MANY APPLES A TREE GIVES, and how far they land from the trunk.

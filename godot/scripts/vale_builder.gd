@@ -562,6 +562,7 @@ func would_overlap(aid: String, col: int, row: int) -> bool:
 ## other way round would leave a felled tree still blocking the tile it fell
 ## off.
 func fell_prop(entry: Dictionary, from: Vector3) -> void:
+	entry["gone"] = true
 	placed_props.erase(entry)
 	var node = entry.get("node")
 	if not is_instance_valid(node):
@@ -599,7 +600,15 @@ func _process(delta: float) -> void:
 	_falling = kept
 
 
+## MARKED GONE, not merely erased.
+##
+## `queue_free` is deferred, so for the rest of the frame the node is still
+## valid and anything holding a cached box -- the picker does -- will happily
+## hit it again. Two clicks on a rock in the same frame paid twice. The flag
+## lives on the entry itself, which is the object the picker holds a reference
+## to, so "is this still in the world" is one lookup rather than a search.
 func remove_prop(entry: Dictionary) -> void:
+	entry["gone"] = true
 	placed_props.erase(entry)
 	var node = entry.get("node")
 	if is_instance_valid(node):

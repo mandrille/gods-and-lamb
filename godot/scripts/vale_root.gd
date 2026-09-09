@@ -234,6 +234,10 @@ func _ready() -> void:
 						+ (Islands.GRID / 2) * Islands.PITCH
 						+ Islands.SPAN / 2)
 	rig.focus = builder.world_of(home_mid, home_mid)
+	# The surface the player is actually pointing at, not y = 0. See
+	# CameraRig.ground_y -- getting this wrong put every click a tile and a half
+	# from where it was aimed.
+	rig.ground_y = builder.lift
 	# Framed on ONE plot, not on the whole archipelago. The plot is 10.5 m
 	# across and the default 30 m pull-back was set for a 48 m landscape, which
 	# left the village a postage stamp in a field of blue.
@@ -476,17 +480,12 @@ func _on_ground(at: Vector3) -> void:
 		return
 	var becomes := String(act.get("becomes", ""))
 	if becomes != "":
-		# A PATCH, not a cell. One tile per touch made greening a plot twelve
-		# minutes of tapping the same square of desert; see WorldTouch.bloom for
-		# the shape and why it is a hash of the cell rather than a die roll.
-		# Batched through set_tiles so nine tiles cost two multimesh uploads
-		# instead of eighteen.
-		var made: Array[Vector2i] = builder.set_tiles(
-			WorldTouch.bloom(cell), becomes)
-		if made.is_empty():
+		# A TIDE, not a tile: 4x4 now and it keeps spreading on its own out to
+		# 16x16. See WorldTouch for the shape and why the raggedness is a hash
+		# rather than a die roll.
+		if _green(WorldTouch.block(cell, WorldTouch.SEED_SIZE), becomes) == 0:
 			return
-		for c in made:
-			grid.set_code(c, becomes)
+		_start_tide(cell, becomes)
 	elif bool(act.get("grows", false)):
 		# Only where there is ROOM. A meadow you can fill by holding the mouse
 		# down is not a decision, and a tree on top of a hut is a bug.
@@ -511,6 +510,81 @@ func _on_ground(at: Vector3) -> void:
 		queue_grid_rebuild()
 	_touch_take()
 	_touch_paid(act, grid.world_of(cell))
+
+
+## GREEN A SET OF SQUARES, and only the ones that are actually ground the
+## player could green.
+##
+## The filter matters: `set_tiles` will happily convert whatever tile it is
+## handed, and a spread that reached the shore would turn the pond into a lawn.
+## What may become grass is exactly what the touch table says becomes grass.
+func _green(cells: Array, becomes: String) -> int:
+	var want: Array[Vector2i] = []
+	for c in cells:
+		var cell: Vector2i = c
+		var here := builder.code_at(builder.lower, cell.x, cell.y)
+		if here == becomes:
+			continue
+		if String(WorldTouch.tile_action(here).get("becomes", "")) != becomes:
+			continue
+		want.append(cell)
+	if want.is_empty():
+		return 0
+	var made: Array[Vector2i] = builder.set_tiles(want, becomes)
+	for c in made:
+		grid.set_code(c, becomes)
+	if not made.is_empty():
+		queue_grid_rebuild()
+	return made.size()
+
+
+## --- the spreading green ----------------------------------------------------
+##
+## Each entry is one touch still running: {at, becomes, size, step, left, next}.
+##
+## NOT SAVED, deliberately. A tide is a few seconds of spectacle and the GROUND
+## it has already made is what persists -- reloading into a half-finished lawn
+## that then kept growing would be a village changing shape while the player
+## reads their away log.
+var _tides: Array = []
+
+
+func _start_tide(cell: Vector2i, becomes: String) -> void:
+	# At the cap the OLDEST is finished in one go rather than dropped. A click
+	# that quietly did nothing is worse than one that resolves early.
+	while _tides.size() >= WorldTouch.TIDE_MAX_LIVE:
+		var old: Dictionary = _tides.pop_front()
+		_green(WorldTouch.block(old["at"], WorldTouch.TIDE_MAX),
+			   String(old["becomes"]))
+	_tides.append({"at": cell, "becomes": becomes,
+				   "size": WorldTouch.SEED_SIZE, "step": 0, "fills": 0,
+				   "next": float(village.now) + WorldTouch.TIDE_STEP})
+
+
+func _tick_tides() -> void:
+	if _tides.is_empty():
+		return
+	var now := float(village.now)
+	for t in _tides.duplicate():
+		if now < float(t["next"]):
+			continue
+		t["next"] = now + WorldTouch.TIDE_STEP
+		t["step"] = int(t["step"]) + 1
+		t["size"] = mini(int(t["size"]) + 2, WorldTouch.TIDE_MAX)
+		# Once the square has stopped growing, the last two passes take
+		# everything -- otherwise a spread stops at whatever the dice left and
+		# the player is handed a lawn with holes in it to tidy by hand.
+		var full: bool = int(t["size"]) >= WorldTouch.TIDE_MAX
+		if full:
+			t["fills"] = int(t["fills"]) + 1
+		var chance: float = 1.0 if int(t["fills"]) >= 2 else WorldTouch.TIDE_TAKE
+		var want: Array[Vector2i] = []
+		for c in WorldTouch.block(t["at"], int(t["size"])):
+			if WorldTouch.takes(c, int(t["step"]), chance):
+				want.append(c)
+		_green(want, String(t["becomes"]))
+		if int(t["fills"]) >= 2:
+			_tides.erase(t)
 
 
 ## Is anything already standing here?
@@ -2102,6 +2176,7 @@ func _process(delta: float) -> void:
 		if music != null:
 			music.set_dusk(daylight.dusk_amount(), delta)
 	_tick_calamities(delta)
+	_tick_tides()
 	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)

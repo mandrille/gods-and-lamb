@@ -59,8 +59,17 @@ func setup(camera_rig: CameraRig, vale_builder: Node, prop_nodes: Array) -> void
 		var aabb := _world_aabb(node)
 		if aabb.size == Vector3.ZERO:
 			continue
+		# `src` IS THE BUILDER'S OWN ENTRY, not a copy of it.
+		#
+		# This list used to hold fresh dictionaries with the same fields, and
+		# GDScript compares dictionaries by reference -- so
+		# `placed_props.erase(entry)` handed one of these erased nothing. A rock
+		# broken by the player was freed on screen and stayed in the builder's
+		# list forever: it kept paying stone every time it was clicked, kept
+		# blocking its tile for building and pathing, and came back on the next
+		# grid rebuild.
 		props.append({"id": p["id"], "node": node, "aabb": aabb,
-					  "pos": node.global_position})
+					  "pos": node.global_position, "src": p})
 
 
 ## The union of every MeshInstance3D AABB under a node, in world space.
@@ -145,17 +154,47 @@ func _claim(screen: Vector2) -> void:
 		ground_picked.emit(at)
 
 
+## What the ray hits first, if it is a prop.
+##
+## TWO RULES, and both are about clicking where you meant to.
+##
+## A prop only wins if its box is hit BEFORE the ground is. A prop's AABB is a
+## crate around it -- a tree's is 1.7 m tall and 1.4 m wide -- and from a fixed
+## 35 degree camera that crate covers a lot of the ground BEHIND the tree. Every
+## click on that ground used to select the tree, because a prop hit beat a
+## ground hit unconditionally. The tolerance is generous enough that clicking
+## the tree itself still works from any angle.
+##
+## And a prop whose node has been freed is not clickable. `remove_prop` calls
+## `queue_free`, which is deferred, so for the rest of the frame a broken rock
+## is still a valid target with a valid cached box.
+const GROUND_SLACK := 0.9          ## metres a prop may sit behind the ground
+
+
 func _pick_at(screen: Vector2) -> Dictionary:
 	var from := rig.cam.project_ray_origin(screen)
 	var dir := rig.cam.project_ray_normal(screen)
+	var limit := INF
+	var ground: Variant = rig.ground_at(screen)
+	if ground != null:
+		limit = from.distance_to(ground as Vector3) + GROUND_SLACK
 	var best: Dictionary = {}
 	var best_t := INF
 	for p in props:
+		if not is_instance_valid(p.get("node")):
+			continue
+		# Taken out of the world already. `queue_free` is deferred, so the node
+		# stays valid for the rest of the frame and a second click on a rock
+		# that has just been broken would break it again.
+		if bool((p.get("src", {}) as Dictionary).get("gone", false)):
+			continue
 		var box: AABB = p["aabb"]
 		var hit: Variant = box.intersects_ray(from, dir)
 		if hit == null:
 			continue
 		var t := from.distance_to(hit as Vector3)
+		if t > limit:
+			continue
 		if t < best_t:
 			best_t = t
 			best = p
@@ -176,7 +215,11 @@ func _set_picked(entry: Dictionary) -> void:
 	_apply(_picked, null)
 	_picked = entry
 	_apply(_picked, _pick_mat)
-	picked.emit(_picked)
+	# THE BUILDER'S ENTRY goes out, not this one. Everything downstream removes,
+	# fells or looks up the prop by identity, and this dictionary is a copy with
+	# a cached box in it. The highlight keeps the copy; the world gets the real
+	# thing.
+	picked.emit(_picked.get("src", _picked))
 
 
 func _apply(entry: Dictionary, mat: Material) -> void:
