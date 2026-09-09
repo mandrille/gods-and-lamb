@@ -903,6 +903,10 @@ func _restore_followers(doc: Dictionary) -> void:
 		b.age = float(row.get("age", 0.0))
 		b.adult = bool(row.get("adult", true))
 		b.morality = float(row.get("morality", 0.0))
+		# The faith ladder. Absent on a pre-fix save, which restores an Atheist
+		# -- exactly what every load did before these two keys existed.
+		b.faith_xp = float(row.get("fxp", 0.0))
+		b.faith_level = int(row.get("ftr", 0))
 		for k in (row.get("stats", {}) as Dictionary):
 			b.stats[String(k)] = float(row["stats"][k])
 		for k in (row.get("favour", {}) as Dictionary):

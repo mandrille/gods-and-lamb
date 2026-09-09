@@ -118,6 +118,18 @@ func _stir() -> void:
 		d.grant_draft("probe")
 		if not d.pending_draft.is_empty():
 			d.take_boon(String(d.pending_draft[0]["id"]))
+	# RAISE SOMEBODY'S FAITH. The ladder was not saved at all, and this probe
+	# passed the whole time -- it fingerprinted the god's faith and never once
+	# looked at the villagers'. A village that comes back Atheist also comes
+	# back with its `devotion()` and therefore its passive income erased.
+	var lifted := 0
+	for f in _root.folk:
+		if not is_instance_valid(f) or f.brain == null:
+			continue
+		f.brain.gain_faith(18.0 + float(lifted) * 9.0)
+		lifted += 1
+		if lifted >= 3:
+			break
 	# Fell something, so the save has to remember an ABSENCE as well as a
 	# presence. A tree that comes back is the delta's whole risk.
 	for e in _root.builder.placed_props:
@@ -153,6 +165,11 @@ func _fingerprint() -> Dictionary:
 			"tag": String(f.brain.personality.describe()),
 			"morality": float(f.brain.morality),
 			"hunger": float(f.brain.stats["hunger"]),
+			# The ladder, as one number: a tier is worth more than any amount
+			# of progress inside it, so they cannot cancel out.
+			"faith": float(f.brain.faith_xp)
+				+ float(f.brain.faith_level) * 1000.0,
+			"tier": String(f.brain.faith_tier()),
 			"wired": f.finished.get_connections().size(),
 		})
 	folk.sort_custom(func(a, b): return int(a["seed"]) < int(b["seed"]))
@@ -241,6 +258,16 @@ func _compare(a: Dictionary, b: Dictionary) -> void:
 		if not is_equal_approx(float(fa[i]["morality"]), float(fb[i]["morality"])):
 			_faults.append("follower %s morality %.3f -> %.3f"
 				% [fa[i]["name"], fa[i]["morality"], fb[i]["morality"]])
+		# THE FAITH LADDER. It was not saved at all and this probe passed the
+		# whole time, because the comparison walks a fixed list of keys and
+		# faith was not on it -- adding a field to the fingerprint proves
+		# nothing unless something compares it.
+		if not is_equal_approx(float(fa[i]["faith"]), float(fb[i]["faith"])):
+			_faults.append("follower %s came back %s with %.0f faith, not %s "
+				% [fa[i]["name"], fb[i]["tier"], float(fb[i]["faith"]),
+				   fa[i]["tier"]] + "with %.0f -- the ladder was not saved, "
+				% float(fa[i]["faith"]) + "and devotion() and the passive "
+				+ "income that reads it went with it")
 		# Wired the same way a founded villager is: a restore path that forgets
 		# _wire_follower produces a villager whose every job is silent.
 		if int(fb[i]["wired"]) < 1:

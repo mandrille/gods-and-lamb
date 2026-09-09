@@ -195,6 +195,22 @@ static func _capture_folk(root) -> Array:
 			# is the classic idle-game save bug.
 			"walk": float(f._base_walk),
 			"morality": float(b.morality),
+			# THE FAITH LADDER, which was not saved at all.
+			#
+			# Every reload reset the whole village to Atheist, and because
+			# `devotion()` is (faith_level + progress) / 4 and feeds
+			# `income_per_s`, a save/load silently deleted the player's entire
+			# accumulated passive economy along with it.
+			#
+			# Optional keys, and NO version bump: every field in
+			# `_restore_followers` is read with a default, so an old save
+			# loaded by this build yields 0/0 -- Atheist -- which is precisely
+			# what the build did yesterday. It is never worse on an old file,
+			# and a bump would be worse on a new one: a portal serving a stale
+			# cached build would hit REFUSED and leave the player looking at a
+			# village they cannot open.
+			"fxp": float(b.faith_xp),
+			"ftr": int(b.faith_level),
 			"stats": b.stats.duplicate(),
 			"favour": _deviations(b.favour),
 			"mem": _capture_memories(b),
