@@ -587,6 +587,22 @@ func _tick_tides() -> void:
 			_tides.erase(t)
 
 
+## Is a BUILDING standing here? Dressing and trees do not count -- they are
+## things the ground carries, not things that depend on it.
+func _building_on(cell: Vector2i) -> bool:
+	for e in builder.placed_props:
+		if not is_instance_valid(e.get("node")):
+			continue
+		if not String(e.get("id", "")).begins_with("Buildings/"):
+			continue
+		var fp: Array = e.get("fp", [0.5, 0.5])
+		var hc := int(ceil(float(fp[0]) / builder.tile / 2.0))
+		var hr := int(ceil(float(fp[1]) / builder.tile / 2.0))
+		if absi(cell.x - int(e.get("col", -999))) <= hc 				and absi(cell.y - int(e.get("row", -999))) <= hr:
+			return true
+	return false
+
+
 ## Is anything already standing here?
 ##
 ## Asked of the BUILDER rather than the walk grid, because the grid is rebuilt
@@ -633,16 +649,16 @@ func _touch_paid(act: Dictionary, at: Vector3) -> void:
 			if floaters != null:
 				floaters.spawn(String(RESOURCE_ROW.get(key, "food")), key,
 							   int(gives[key]), at)
+	# WHO SAW IT is the processor's business now. This function used to do its
+	# own scan and throw the answer away; it keeps only what is genuinely local
+	# to a touch -- the goods, the tokens, the little bump of fun, its own
+	# click sound.
 	var fun := float(act.get("fun", 0.0))
-	var seen := 0
-	for f in folk:
-		if not is_instance_valid(f) or f.brain == null:
-			continue
-		if f.position.distance_to(at) > WorldTouch.WITNESS_RANGE:
-			continue
-		seen += 1
-		f.brain.gain_faith(WorldTouch.FAITH_PER_TOUCH)
-		if fun > 0.0:
+	var r: Dictionary = divinity.perform(DivineAction.touch(act, at))
+	var seen: int = int(r["seen"])
+	if fun > 0.0:
+		for h in (r["hits"] as Array):
+			var f = h[0]
 			f.brain.stats["fun"] = minf(1.0, float(f.brain.stats["fun"]) + fun)
 	if fxe != null:
 		fxe.burst(String(act.get("fx", "grove")), at + Vector3(0, 0.4, 0))
@@ -1041,6 +1057,14 @@ func _bite(c) -> void:
 				var at: Vector2i = c.cell + d * c.bites
 				if builder.code_at(builder.lower, at.x, at.y) != "G":
 					continue
+				# NOT UNDER A BUILDING. A drought reverting the tile a well
+				# stands on leaves a well in the middle of a desert patch --
+				# and, worse, leaves the world saying a building stands on
+				# ground nothing may be built on, which every buildability test
+				# then disagrees with. Grass under a tree is fair game; grass
+				# under a roof is not.
+				if _building_on(at):
+					continue
 				if builder.set_tile(at.x, at.y, "D"):
 					grid.set_code(at, "D")
 					dried += 1
@@ -1119,12 +1143,15 @@ func _end_calamity(c, solved: bool) -> void:
 	if not solved:
 		divinity.notice.emit("It burns itself out. %d lost." % c.eaten)
 		return
-	var per: float = c.thanks()
-	var n := 0
-	for f in folk:
-		if is_instance_valid(f) and f.brain != null:
-			f.brain.gain_faith(per)
-			n += 1
+	# EVERY VILLAGER, UNBANDED, and that is a decision rather than an oversight.
+	# Thinning relief by distance from the fire would pay the people who were
+	# furthest from danger the least, which is backwards -- and calamity.gd's
+	# own header says a crisis should leave the place more devout. Note that
+	# calamity_probe cannot catch a regression here: it checks one villager and
+	# never looks at where they were standing.
+	var a := DivineAction.relief(c.thanks())
+	a.verb = "You answered it."
+	var n: int = int(divinity.perform(a)["seen"])
 	if fxe != null:
 		fxe.burst("bless", grid.world_of(c.cell) + Vector3(0, 0.6, 0))
 	if sfx != null:

@@ -156,6 +156,7 @@ var total_earned := 0.0
 const COMMUNE_BASE := 55.0
 const COMMUNE_GROWTH := 1.5
 var boons: Boons
+var witness: Witness
 var drafts_taken := 0
 var pending_draft: Array = []
 
@@ -211,6 +212,9 @@ const LEVELS := [200.0, 600.0, 1400.0, 2800.0, 5000.0, 8500.0, 14000.0,
 
 var god_level := 1
 signal level_up(level: int)
+## One divine act, resolved: who saw it, what it paid, what it was.
+## The only thing the feedback layer needs to subscribe to.
+signal witnessed(result: Dictionary)
 
 var age := 0                                                  ## how many ages have PASSED
 ## The first witnessed blessing has already been paid for with a boon.
@@ -231,6 +235,7 @@ var grid = null
 func _init() -> void:
 	rng.seed = 20260901
 	boons = Boons.new(20260901)
+	witness = Witness.new()
 
 
 ## Faith per second, right now, from everyone alive plus the buildings.
@@ -331,6 +336,53 @@ func _process(delta: float) -> void:
 			_draw_timer = draw_seconds
 			_said_full = false
 			draw_card()
+
+
+## --- divine acts ------------------------------------------------------------
+##
+## ONE PLACE THAT PAYS FOR WHAT THE GOD DID.
+##
+## Five sites each had their own copy of "scan folk, test a distance, pay
+## whoever is near", and every one of them threw the witness list away the
+## moment it was done with it. So the game could tell the player that something
+## had happened and could never tell them that anyone had noticed -- which is
+## the difference between a simulation and a god game.
+##
+## `perform` credits and reports. `report` only reports, for the sites whose
+## economics are their own business and must not move: blessing has its own
+## combo and its own cooldown, and the miracle cursor pays continuously as it
+## sweeps. Those call `report` at the end so they join the feedback and the
+## reaction path without their arithmetic being touched.
+func perform(a: DivineAction) -> Dictionary:
+	if host == null:
+		return report(a, [], 0.0, 0)
+	var hits: Array = Witness.find(host.folk, a)
+	var paid := 0.0
+	var tiers := 0
+	for h in hits:
+		var f = h[0]
+		var amount: float = a.weight * float(h[1])
+		if amount <= 0.0:
+			continue
+		# The RETURN VALUE, which every caller in the game has discarded until
+		# now: a villager crossing into Believer is rare, permanent, and has
+		# had no feedback of any kind.
+		tiers += int(f.brain.gain_faith(amount))
+		paid += amount
+	if a.global > 0.0:
+		add_faith(a.global)
+		earned.emit(a.global, a.at, a.why)
+	return report(a, hits, paid, tiers)
+
+
+func report(a: DivineAction, hits: Array, faith: float, tiers: int) -> Dictionary:
+	var r := {
+		"kind": a.kind, "at": a.at, "tags": a.tags, "verb": a.verb,
+		"hits": hits, "seen": hits.size(), "faith": faith, "tiers": tiers,
+		"subject": a.subject,
+	}
+	witnessed.emit(r)
+	return r
 
 
 func add_faith(amount: float) -> void:

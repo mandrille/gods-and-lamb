@@ -342,14 +342,20 @@ func _report() -> void:
 	# And nothing may sit on a road, in the river or on a field -- a hut in the
 	# middle of the highway is walkable ground and still the wrong place.
 	var offside := 0
+	var offside_what := ""
 	for e in built:
 		var code: String = _root.grid.code_of(
 			Vector2i(int(e["col"]), int(e["row"])))
 		if code != "G":
 			offside += 1
-	print("[BUILD] buildings on non-grass: %d" % offside)
+			if offside_what == "":
+				offside_what = "%s at (%d,%d) on '%s'" % [
+					e["id"], int(e["col"]), int(e["row"]), code]
+	print("[BUILD] buildings on non-grass: %d%s"
+		% [offside, "" if offside_what == "" else "  -- " + offside_what])
 	if offside > 0:
-		_faults.append("%d buildings stand on road, field or water" % offside)
+		_faults.append("%d building(s) stand on road, field or water: %s"
+			% [offside, offside_what])
 
 	# Buildings square to the grid.
 	var skew := 0

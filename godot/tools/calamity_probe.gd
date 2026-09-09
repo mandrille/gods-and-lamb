@@ -45,6 +45,7 @@ func _process(_d: float) -> bool:
 	_check_table()
 	_check_fire()
 	_check_drought()
+	_check_drought_spares_buildings()
 	_check_tornado()
 	_check_answer()
 	_check_thanks()
@@ -111,6 +112,37 @@ func _check_drought() -> void:
 	if seen != "D":
 		_faults.append("the walk grid still says %s, so the ground and the "
 			% seen + "pathfinder disagree about a dried tile")
+
+
+## A DROUGHT DOES NOT DRY THE GROUND OUT FROM UNDER A BUILDING.
+##
+## It did. Grass reverted to dirt wherever the drought reached, buildings
+## included, which left a well standing on ground that every buildability test
+## in the game says nothing may be built on. It surfaced as build_probe failing
+## intermittently -- "buildings on non-grass" -- and looked like flakiness,
+## because whether a drought fired near the village at all varied run to run.
+func _check_drought_spares_buildings() -> void:
+	var cell := _find("G")
+	if cell.x < 0:
+		return
+	if not _root.builder.add_prop("Buildings/well", cell.x, cell.y):
+		print("[CALAMITY] nowhere to stand a well; skipped")
+		return
+	var well: Dictionary = _root.builder.placed_props[-1]
+	var c := Calamity.new("drought", cell)
+	for i in 3:
+		_root._bite(c)
+	var under: String = _root.builder.code_at(_root.builder.lower,
+											  cell.x, cell.y)
+	# TAKE THE WELL BACK DOWN. These checks share one living world in order,
+	# and a building left standing blocks the tree the tornado check needs --
+	# which reads as "a tornado left a tree standing" three functions later.
+	_root.builder.remove_prop(well)
+	_root.queue_grid_rebuild()
+	print("[CALAMITY] after three drought bites the well stands on '%s'" % under)
+	if under != "G":
+		_faults.append("a drought dried the ground out from under a building, "
+			+ "leaving it on '%s' -- which nothing may be built on" % under)
 
 
 ## A tornado walks, and flattens what it walks over.
