@@ -48,6 +48,7 @@ func _process(_d: float) -> bool:
 		4:
 			_check_music()
 			_check_sounds()
+			_check_wipe()
 			paused = false
 			_report()
 			quit(0 if _faults.is_empty() else 1)
@@ -205,6 +206,50 @@ func _sample(w: AudioStreamWAV, index: int) -> float:
 
 func _db_of(p: AudioStreamPlayer) -> float:
 	return p.volume_db
+
+
+## A RESET ACTUALLY RESETS.
+##
+## The failure this guards is specific and would be invisible: reloading the
+## scene frees the root, the save layer writes on the way out, and the village
+## you just deleted lands straight back on top of the hole. `wipe_save` disarms
+## the save layer before it erases for exactly that reason, and nothing else in
+## the suite would notice if that line went away.
+##
+## The reload itself is not exercised -- this probe owns the tree and a
+## `reload_current_scene` mid-run would pull the floor out -- so the two halves
+## that CAN go wrong silently are checked directly: the file is gone, and the
+## save layer will not write another one.
+func _check_wipe() -> void:
+	if _root.saving == null:
+		print("[PAUSE] no save layer; skipped the wipe check")
+		return
+	# ARM IT DELIBERATELY. Probes run disarmed on purpose -- a probe scene that
+	# saved would overwrite a real village -- so there is nothing on disk to
+	# delete until this asks for it. Erased again at the end regardless.
+	_root.saving.armed = true
+	_root.saving.save_now("probe")
+	var before := FileAccess.file_exists(SaveGame.PATH)
+	SaveGame.erase()
+	if _root.saving != null:
+		_root.saving.armed = false
+	var after := FileAccess.file_exists(SaveGame.PATH)
+	print("[PAUSE] wipe: save on disk %s -> %s, save layer armed %s"
+		% [before, after, _root.saving.armed if _root.saving != null else "n/a"])
+	if not before:
+		_faults.append("could not write a save to test the wipe against")
+	if after:
+		_faults.append("the save file survived a wipe")
+	if _root.saving != null and _root.saving.armed:
+		_faults.append("the save layer is still armed after a wipe -- the "
+			+ "village will be written back over the hole on the way out")
+	# And the two doors are the same door.
+	if not _root.has_method("wipe_save"):
+		_faults.append("there is no wipe_save() for the pause menu and the "
+			+ "debug key to share")
+	# Leave the disk as it was found.
+	SaveGame.erase()
+	_root.saving.armed = false
 
 
 ## Every action that begins in silence now has something to say.

@@ -1173,6 +1173,41 @@ func _end_calamity(c, solved: bool) -> void:
 ## have. Guarded on the same real-game check the disk layer uses, because every
 ## probe parks its window unfocused and a probe that paused itself at startup
 ## would hang forever.
+## WIPE THE SAVE AND START CLEAN. F8.
+##
+## "Start over" in the pause menu does the same thing and is the one a player
+## uses; this is the one you want while testing, because it skips the
+## are-you-sure and it can be hit without taking a hand off the mouse.
+##
+## Note it is NOT gated behind the debug panel. A reset you can only reach by
+## opening a panel is a reset you cannot use to test what happens on a fresh
+## boot, which is the thing it exists for.
+const WIPE_KEY := KEY_F8
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo or k.keycode != WIPE_KEY:
+		return
+	get_viewport().set_input_as_handled()
+	wipe_save()
+
+
+## Erase the save and rebuild the world from nothing.
+##
+## `armed = false` FIRST, and it is the load-bearing line: reloading the scene
+## frees this node, the save layer writes on the way out, and without it the
+## village you just deleted is written straight back over the hole.
+func wipe_save() -> void:
+	SaveGame.erase()
+	if saving != null:
+		saving.armed = false
+	if divinity != null:
+		divinity.notice.emit("Save wiped. Starting over.")
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
 func _notification(what: int) -> void:
 	if what != NOTIFICATION_APPLICATION_FOCUS_OUT:
 		return
@@ -1868,14 +1903,9 @@ func _add_ui() -> void:
 			sfx.set_muted(on)
 		if music != null:
 			music.set_muted(on))
-	pause_menu.restarted.connect(func():
-		# Wipe the village AND its save: "start over" that leaves yesterday's
-		# save on disk starts nothing over.
-		SaveGame.erase()
-		if saving != null:
-			saving.armed = false
-		get_tree().paused = false
-		get_tree().reload_current_scene())
+	# ONE DOOR. "Start over" and the F8 debug key are the same operation, and
+	# a second copy of it is how one of them quietly stops erasing the save.
+	pause_menu.restarted.connect(wipe_save)
 
 	# ABOVE the draft: a day that ends while a gift is pending must still end,
 	# and the gift is waiting on the other side of the morning.
