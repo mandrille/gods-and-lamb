@@ -556,7 +556,11 @@ func _touch_folk(f, delta: float) -> void:
 	var gain: float = divinity.boons.card_kick() * 0.55
 	_gain += gain
 	divinity.add_faith(gain)
-	divinity.earned.emit(gain, f.position + Vector3(0, 0.9, 0), "miracle")
+	# NO PER-VILLAGER `earned` HERE. A wide miracle sweeping eight people fired
+	# eight of these, and every one spawned its own faith token flying to the
+	# counter -- the exact pile-up the aggregation layer exists to prevent. The
+	# credit stays; only the announcement moves. `_end` already carries both
+	# totals and reports once, at the cloud's last position.
 
 
 ## Drop something on open ground under the effigy, at most once per cell.

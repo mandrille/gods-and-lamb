@@ -529,6 +529,42 @@ def idle_action(arm, mesh, name="idle", length=48):
     return _finish(arm, act, length)
 
 
+def awe_action(arm, mesh, name="awe", length=36):
+    """Look up at the sky and lift the hands. What witnessing a god looks like.
+
+    A CYCLE that returns to rest, not a one-shot, and that is the whole reason
+    it is affordable: `Follower._play` forces every clip to LOOP_LINEAR and
+    early-returns when asked for the clip already playing, so a one-shot would
+    need the animation contract changed and a restore path added to the state
+    machine. A cycle that starts and ends in rest can be handed to the existing
+    player untouched -- held for a beat it reads as one gesture, and if it ever
+    loops it reads as somebody still marvelling rather than a broken pose.
+
+    Bigger than `idle` by design, because this one has to be legible at the
+    forty pixels a villager occupies at the play camera. The head goes back far
+    enough to change the silhouette; the arms do most of the work.
+
+    Signs: Head takes NEGATIVE rotation to tilt BACK (its tail is above the
+    pivot, so positive leans it forward -- see `assert_leans_forward`), and the
+    arms take POSITIVE to swing up and out from hanging.
+    """
+    act = _begin(arm, name)
+    pb = arm.pose.bones
+    #    frame        head   arms  torso
+    keys = ((1, 0.0, 0.0, 0.0),
+            (1 + length // 4, -18.0, 34.0, -4.0),
+            (1 + length // 2, -22.0, 40.0, -5.0),
+            (1 + (length * 3) // 4, -16.0, 30.0, -3.0),
+            (1 + length, 0.0, 0.0, 0.0))
+    for f, head, arms, torso in keys:
+        _key_rot(pb["Head"], f, head)
+        _key_rot(pb["ArmL"], f, arms)
+        _key_rot(pb["ArmR"], f, arms)
+        _key_rot(pb["Torso"], f, torso)
+    _plant(arm, mesh, act, range(1, length + 2))
+    return _finish(arm, act, length)
+
+
 def pickup_action(arm, mesh, name="pickup", length=30):
     """Bend, take something off the ground, straighten up.
 
@@ -603,6 +639,7 @@ def all_actions(arm, mesh):
     idle_action(arm, mesh)
     pickup_action(arm, mesh)
     chop_action(arm, mesh)
+    awe_action(arm, mesh)
     act = walk_action(arm, mesh)
     track = arm.animation_data.nla_tracks.new()
     track.name = act.name

@@ -61,6 +61,7 @@ var ui: CanvasLayer
 var overhead: Overhead
 var panel: VillagerPanel
 var hud: HUD
+var chorus: Chorus = null
 var floaters: Floaters
 var draft: BoonDraft
 var cursor: MiracleCursor
@@ -587,6 +588,58 @@ func _tick_tides() -> void:
 			_tides.erase(t)
 
 
+## THEY LOOK UP.
+##
+## The spec's acceptance test is that a first-time player can SEE that the
+## village noticed, without a tutorial and without reading a number. This is
+## that: whoever was nearest turns toward the act, an exclamation appears over
+## their head, and a tier crossing gets its name said out loud.
+##
+## CAPPED AT FOUR, nearest first. Twenty people snapping round in unison does
+## not read as twenty people noticing, it reads as a bug -- and the turn costs a
+## replan when they resume, which is the budget Follower guards at six a frame.
+const REACT_MAX := 4
+
+
+func _villagers_react(r: Dictionary) -> void:
+	var hits: Array = r.get("hits", [])
+	if hits.is_empty():
+		return
+	var at: Vector3 = r.get("at", Vector3.ZERO)
+	var sorted := hits.duplicate()
+	sorted.sort_custom(func(a, b):
+		return (a[0] as Node3D).position.distance_squared_to(at) 			< (b[0] as Node3D).position.distance_squared_to(at))
+	var turned := 0
+	for h in sorted:
+		if turned >= REACT_MAX:
+			break
+		var f = h[0]
+		if not is_instance_valid(f) or f.brain == null:
+			continue
+		# THE DEVOUT LOOK UP FIRST. Free characterisation from a roll that
+		# already exists, and it keeps a crowd from moving as one body.
+		var chance: float = 0.35 + 0.55 * float(f.brain.personality.devotion)
+		if _rng.randf() > chance:
+			continue
+		f.notice_at(at)
+		if overhead != null:
+			overhead.mark(f)
+		turned += 1
+
+	# A TIER CROSSING SAYS ITS OWN NAME. `gain_faith` has always returned the
+	# number of tiers crossed and nothing ever used it, so a villager reaching
+	# Believer -- the one piece of progress in this game that cannot be lost --
+	# happened in total silence.
+	if int(r.get("tiers", 0)) <= 0 or floaters == null:
+		return
+	for h in hits:
+		var f = h[0]
+		if is_instance_valid(f) and f.brain != null:
+			floaters.puff("bless", f.brain.faith_tier(),
+						  f.position + Vector3(0, 1.35, 0))
+			break
+
+
 ## Is a BUILDING standing here? Dressing and trees do not count -- they are
 ## things the ground carries, not things that depend on it.
 func _building_on(cell: Vector2i) -> bool:
@@ -670,10 +723,13 @@ func _touch_paid(act: Dictionary, at: Vector3, novelty_key := "") -> void:
 		fxe.burst(String(act.get("fx", "grove")), at + Vector3(0, 0.4, 0))
 	if sfx != null:
 		sfx.play(String(act.get("sfx", "pick")))
-	if seen > 0 and divinity != null:
-		divinity.notice.emit("%s %d saw it."
-			% [String(act.get("verb", "")), seen])
-	elif divinity != null:
+	# THE MESSAGE IS CHORUS'S JOB NOW. This counted its own witnesses and wrote
+	# its own line, and a second line saying the same thing is exactly what the
+	# aggregation layer exists to stop. What stays here is the click's own
+	# feedback -- the burst and the sound above -- which belongs to the touch
+	# rather than to what anyone thought of it.
+	if seen <= 0 and divinity != null:
+		# Nobody saw it, so Chorus stays quiet: say what happened, at least.
 		divinity.notice.emit(String(act.get("verb", "")))
 
 
@@ -1864,6 +1920,20 @@ func _add_ui() -> void:
 	floaters.hud = hud
 	ui.add_child(floaters)
 
+	# THE ONLY THING ALLOWED TO TURN A DIVINE ACT INTO A MESSAGE. Every witness
+	# result goes through here and comes out as one line rather than one per
+	# villager -- see chorus.gd for why that is the whole point of it.
+	chorus = Chorus.new()
+	chorus.name = "Chorus"
+	chorus.floaters = floaters
+	chorus.fxe = fxe
+	chorus.sfx = sfx
+	chorus.hud = hud
+	chorus.village = village
+	ui.add_child(chorus)
+	chorus.listen(divinity)
+	divinity.witnessed.connect(_villagers_react)
+
 	# The held miracle lives in the WORLD, not the UI: it is a cloud with a
 	# position, and it has to be occluded by the terrain like anything else.
 	cursor = MiracleCursor.new()
@@ -1884,9 +1954,15 @@ func _add_ui() -> void:
 		if touched == 0:
 			divinity.notice.emit(
 				"The %s passed over nothing at all." % id)
-		else:
-			divinity.notice.emit("The %s touched %d, and you gained %d Faith."
-				% [id, touched, int(gain)]))
+			return
+		divinity.notice.emit("The %s touched %d, and you gained %d Faith."
+			% [id, touched, int(gain)])
+		# ONE token for the whole sweep. The cursor used to emit `earned` per
+		# villager, so eight people meant eight tokens racing the counter; the
+		# credit was always right and the picture of it was a pile-up.
+		if floaters != null and gain >= 1.0:
+			floaters.spawn("faith", "faith", int(round(gain)),
+						   cursor.global_position - Vector3(0, 1.6, 0)))
 
 	# The draft sits ABOVE everything and takes every click while it is open.
 	draft = BoonDraft.new()

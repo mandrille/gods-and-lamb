@@ -289,6 +289,36 @@ func resume() -> void:
 		_wait()
 
 
+## LOOK AT IT. The whole visible reaction, and it costs one field.
+##
+## A villager who stops, pivots toward the place the god just acted, stands a
+## beat and walks on is unmistakably somebody who NOTICED -- and it reads at the
+## forty pixels a villager occupies at the play camera precisely because it
+## changes the SILHOUETTE. A gesture at that size does not read; a turn does. It
+## is the same trick the social layer already uses to make two people look like
+## they are talking.
+##
+## Borrowing State.TALK rather than adding a state: it already means "stopped,
+## facing something, not working", which is exactly this. The countdown lives in
+## `_process`'s TALK branch, which was a bare `pass`.
+var _notice_left := 0.0
+
+
+func notice_at(at: Vector3, secs := 1.2) -> void:
+	# NOT MID-JOB. `_begin_work` restarts a job when the state changes under it,
+	# so pulling a builder off a wall to gawp costs them the wall. And not
+	# mid-chat -- the social layer owns those, and stealing one leaves
+	# `chatting_with` set with nobody facing back.
+	if state == State.WORK or state == State.TALK:
+		return
+	stop_and_face(at)
+	# stop_and_face plays "idle"; the reaction wants its own clip. Falls back to
+	# idle on its own if the GLB predates the clip, so an old asset is a
+	# villager who turns without gesturing rather than an error.
+	_play("awe")
+	_notice_left = secs
+
+
 ## --- animation --------------------------------------------------------------
 ##
 ## Clips are matched by SUBSTRING against whatever the GLB actually contains,
@@ -303,7 +333,10 @@ func _index_clips() -> void:
 		push_warning("Follower: no AnimationPlayer in the GLB -- it will slide")
 		return
 	var have := _anim.get_animation_list()
-	for want in ["walk", "idle", "pickup", "chop"]:
+	# "awe" is the reaction clip. It is a CYCLE back to rest rather than a
+	# one-shot, which is what lets it go through `_play` untouched -- see
+	# folkrig.awe_action for why that mattered.
+	for want in ["walk", "idle", "pickup", "chop", "awe"]:
 		for n in have:
 			if want in String(n).to_lower():
 				_clips[want] = String(n)
@@ -374,8 +407,16 @@ func _process(delta: float) -> void:
 					_replan()
 				else:
 					_idle = 0.001      # somebody else is thinking; next frame
-		State.WORK, State.TALK:
+		State.WORK:
 			pass
+		State.TALK:
+			# Only a REACTION counts itself down. A real conversation is ended
+			# by the social layer calling resume(), and a timer here would cut
+			# people off mid-sentence.
+			if _notice_left > 0.0:
+				_notice_left -= delta
+				if _notice_left <= 0.0:
+					resume()
 
 
 ## Move to the next leg. Returns true if the route ENDED and the caller must

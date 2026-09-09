@@ -54,6 +54,8 @@ func _process(_d: float) -> bool:
 	_check_novelty()
 	_check_novelty_spares_people()
 	_check_tiers()
+	_check_aggregation()
+	_check_they_notice()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
@@ -245,6 +247,88 @@ func _check_signal() -> void:
 	elif not (seen[0] as Dictionary).has("hits"):
 		_faults.append("the result carries no witness list, so nothing "
 			+ "downstream can know who saw it")
+
+
+## FIVE WITNESSES ARE ONE MESSAGE.
+##
+## The naive use of a witness list is a floating number over each head, and that
+## tells the player less than one line while covering the village up. This is
+## the assertion that the aggregation layer is actually doing its job -- and it
+## has to count LINES, because a version that batches the faith and still pushes
+## five notices has fixed nothing.
+func _check_aggregation() -> void:
+	var c = _root.chorus
+	if c == null:
+		_faults.append("there is no aggregation layer at all")
+		return
+	var lines := 0
+	_root.divinity.notice.connect(func(_t): lines += 1)
+	var said: Array = []
+	# Count what reaches the notice stack rather than the signal, because that
+	# is what the player actually sees.
+	var before: int = _root.hud._notices.size()
+	var at: Vector3 = _somewhere()
+	for i in 5:
+		var a := DivineAction.make("touch", at, 0.4, 8.0)
+		a.verb = "Green spreads."
+		_root.divinity.perform(a)
+	# Nothing has flushed yet: the window is still open.
+	var mid: int = _root.hud._notices.size() - before
+	_root.village.now = float(_root.village.now) + WorldTouch.COOLDOWN * 2.0
+	c._flush()
+	var after: int = _root.hud._notices.size() - before
+	print("[DIVINE] five acts in one window: %d notice line(s) mid-window, "
+		% mid + "%d after the flush" % after)
+	if after > 1:
+		_faults.append("five acts in one window produced %d notice lines -- "
+			% after + "the batch is not batching")
+	if mid > 1:
+		_faults.append("the batch emitted %d lines before its window closed"
+			% mid)
+
+
+## THEY VISIBLY NOTICE. The spec's acceptance test is that a first-time player
+## can SEE the village react without reading a number, and a turn is the only
+## thing that reads at the size a villager occupies on screen.
+func _check_they_notice() -> void:
+	var who = _anyone()
+	if who == null:
+		return
+	# Somewhere they are not standing, or "turned to face it" is meaningless.
+	var at: Vector3 = who.position + Vector3(3.0, 0.0, 0.0)
+	who.state = who.State.IDLE
+	who._notice_left = 0.0
+	var facing_before: float = who.rotation.y
+	var a := DivineAction.make("touch", at, 0.4, 8.0)
+	# Certain, so the devotion roll cannot make this flaky.
+	who.brain.personality.devotion = 1.0
+	_root._villagers_react(_root.divinity.perform(a))
+	var turned: bool = not is_equal_approx(who.rotation.y, facing_before)
+	var marked: bool = _root.overhead._looking.has(who.get_instance_id())
+	print("[DIVINE] after an act 3 m away: turned %s, marked %s, state %d"
+		% [turned, marked, who.state])
+	if not turned:
+		_faults.append("nobody turned toward the act -- the village noticing "
+			+ "is the whole acceptance test and it is invisible")
+	if not marked:
+		_faults.append("no marker went up over the villager who noticed")
+	# AND THEY GESTURE. The clip is a cycle back to rest so it can go through
+	# the normal player, but it still has to be the clip that is actually
+	# playing -- `_play` falls back to idle for a name it does not have, so a
+	# GLB exported before the clip existed would silently look like nothing.
+	var clip: String = who._anim.current_animation
+	print("[DIVINE] the villager who noticed is playing '%s'" % clip)
+	if not who._clips.has("awe"):
+		_faults.append("the folk GLB has no 'awe' clip -- the library was not "
+			+ "rebuilt after the rig gained one")
+	elif clip != String(who._clips["awe"]):
+		_faults.append("expected the awe clip and got '%s'" % clip)
+	# AND THEY GO BACK TO WORK. A reaction that never ends is a statue.
+	who._notice_left = 0.01
+	who._process(0.05)
+	if who.state == who.State.TALK:
+		_faults.append("the villager never resumed -- a reaction that does not "
+			+ "end leaves them standing there forever")
 
 
 func _anyone():

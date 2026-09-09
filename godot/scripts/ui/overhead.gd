@@ -46,6 +46,16 @@ const JOB_ICON := {
 var host = null                         ## ValeRoot
 var rig = null                          ## CameraRig
 
+## WHO IS LOOKING UP, and until when. `instance id -> {glyph, until}`, keyed on
+## the village clock so it survives a time-scale change.
+##
+## No registration system for one caller: `_draw` is a hard-coded priority chain
+## and its order is load-bearing, so a marker kind is a branch in that chain
+## plus a draw helper. This one goes ABOVE guilt -- a reaction lasts a second
+## and guilt lasts many, so briefly outranking it costs nothing, while losing to
+## it would make the reaction invisible on exactly the most interesting people.
+var _looking: Dictionary = {}
+
 var hovered = null
 var selected = null
 
@@ -84,6 +94,13 @@ func _process(_delta: float) -> void:
 ## ray the player misses. A generous screen-space radius is what makes clicking
 ## a villager feel like clicking a villager. Nearest-to-cursor wins so a crowd
 ## does not become a lottery.
+## Mark somebody as having noticed something, for `secs` of village time.
+func mark(f, secs := 1.2) -> void:
+	if f == null or host == null or host.village == null:
+		return
+	_looking[f.get_instance_id()] = float(host.village.now) + secs
+
+
 func under(at: Vector2):
 	var best = null
 	var best_score := 1.0
@@ -158,6 +175,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
+## A struck exclamation on the same dark disc the job badge uses. Drawn from
+## polygons rather than typed as a character -- the default font has no emoji
+## and renders one as a hollow box, which is the note at the top of this file.
+func _wonder(at: Vector2) -> void:
+	var beat: float = 1.0 + 0.10 * sin(float(Time.get_ticks_msec()) * 0.010)
+	var c := at + Vector2(0, -20)
+	draw_circle(c, 12.0 * beat, Color(0.08, 0.09, 0.12, 0.72))
+	draw_arc(c, 12.0 * beat, 0.0, TAU, 20, Color(0.99, 0.84, 0.40, 0.55),
+			 1.5, true)
+	var g := Color(0.99, 0.90, 0.55)
+	draw_colored_polygon(PackedVector2Array([
+		c + Vector2(-1.6, -6.5), c + Vector2(1.6, -6.5),
+		c + Vector2(1.0, 1.5), c + Vector2(-1.0, 1.5)]), g)
+	draw_circle(c + Vector2(0, 4.6), 1.7, g)
+
+
 func _draw() -> void:
 	if host == null or rig == null or rig.cam == null:
 		return
@@ -188,6 +221,13 @@ func _draw() -> void:
 		# player's cue to act and it expires in a few seconds -- a mark you
 		# only see by hovering is a mark you never see. It sits above the chat
 		# bubble in priority for the same reason.
+		# LOOKING UP, above everything: it is the shortest-lived mark there is.
+		if _looking.has(f.get_instance_id()):
+			if float(_looking[f.get_instance_id()]) > float(host.village.now):
+				_wonder(p)
+				continue
+			_looking.erase(f.get_instance_id())
+
 		if host.divinity != null and host.divinity._is_guilty(f):
 			_guilt(p)
 			continue

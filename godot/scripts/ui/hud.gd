@@ -347,6 +347,18 @@ func _cancel(msg: String) -> void:
 	_say(msg, 2.0)
 
 
+## REWRITE THE TOP LINE. `_say` de-dupes on the exact string, which is enough
+## for "Not enough Faith" and useless for an aggregated line: it carries a
+## count, so "3 saw it" and "4 saw it" are different strings and three touches
+## would fill the whole stack with near-identical lines.
+func amend(text: String, secs: float) -> void:
+	if _notices.is_empty():
+		_say(text, secs)
+		return
+	_notices[0]["text"] = text
+	_notices[0]["left"] = secs
+
+
 func _say(text: String, secs: float) -> void:
 	# A repeat refreshes the line it is already on rather than stacking three
 	# copies of "Not enough Faith to strike."
