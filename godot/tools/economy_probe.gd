@@ -33,6 +33,36 @@ extends SceneTree
 ##     lazy       110, 156, 267     median  156
 ##     idle        36,  38,  47     median   38
 ##
+## RE-MEASURED after the greening tide and after witness bands + novelty
+## (three runs each, minute ten):
+##
+##     engaged   1377, 1448, 1568   median 1448
+##     lazy       177,  178,  180   median  178
+##     idle        42,   43,   43   median   43
+##
+## AND THE ENGAGED ARM CAN NO LONGER MEASURE ANYTHING. Two runs of the build
+## immediately before bands and novelty gave 478 and 1311 -- a 2.7x spread from
+## one build, wider than any change either of us would make on purpose. The
+## cause is the tide: greening now reaches a plot in a few taps, so The First
+## Roof lands at 1.1 min instead of 6.1, and whether the later ages fall inside
+## ten minutes swings the total by the 1230 Faith their lumps are worth. The
+## number is dominated by a coin flip about age timing.
+##
+## So: the lazy arm is the control and it is the one to trust -- it never
+## touches the world, so nothing about terrain payouts can reach it, and it did
+## not move (171 before, 178 after). Do not read the engaged median as a tuning
+## signal at n=3. If it has to become one again, the fix is to report Faith per
+## minute EXCLUDING age lumps, which is the term that actually varies.
+##
+## THE LAZY AND IDLE ARMS FAIL, and have since the desert start went in --
+## verified on the build before bands and novelty, which also reached no age.
+## A village whose player never touches the ground never greens, so it has no
+## wood, so it builds nothing, so it passes no age gate. That is a real design
+## problem rather than a probe bug (the design says villagers should usually
+## solve their own problems), and it is left failing on purpose: the sweep only
+## runs the engaged arm, so nothing is hidden by it, and weakening the bar to
+## make it green would delete the only thing pointing at it.
+##
 ## A single sample of the lazy arm has landed anywhere from 110 to 768 across
 ## the day. The village's fate is emergent -- whether a farm goes up early,
 ## whether wolves come, whether mood spirals -- so ONE number is not a band and

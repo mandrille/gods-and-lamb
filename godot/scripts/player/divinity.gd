@@ -357,11 +357,14 @@ func perform(a: DivineAction) -> Dictionary:
 	if host == null:
 		return report(a, [], 0.0, 0)
 	var hits: Array = Witness.find(host.folk, a)
+	# How tired they are of this particular act. An empty key never decays --
+	# blessing and answering a disaster are not things anyone gets bored of.
+	var fresh: float = witness.novelty(a.key, village.now)
 	var paid := 0.0
 	var tiers := 0
 	for h in hits:
 		var f = h[0]
-		var amount: float = a.weight * float(h[1])
+		var amount: float = a.weight * float(h[1]) * fresh
 		if amount <= 0.0:
 			continue
 		# The RETURN VALUE, which every caller in the game has discarded until
@@ -370,8 +373,9 @@ func perform(a: DivineAction) -> Dictionary:
 		tiers += int(f.brain.gain_faith(amount))
 		paid += amount
 	if a.global > 0.0:
-		add_faith(a.global)
-		earned.emit(a.global, a.at, a.why)
+		add_faith(a.global * fresh)
+		earned.emit(a.global * fresh, a.at, a.why)
+	witness.spend(a.key, village.now)
 	return report(a, hits, paid, tiers)
 
 
@@ -379,6 +383,7 @@ func report(a: DivineAction, hits: Array, faith: float, tiers: int) -> Dictionar
 	var r := {
 		"kind": a.kind, "at": a.at, "tags": a.tags, "verb": a.verb,
 		"hits": hits, "seen": hits.size(), "faith": faith, "tiers": tiers,
+		"novelty": witness.novelty(a.key, village.now if village != null else 0.0),
 		"subject": a.subject,
 	}
 	witnessed.emit(r)

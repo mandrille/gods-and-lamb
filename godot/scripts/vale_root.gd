@@ -431,7 +431,7 @@ func _on_picked(entry: Dictionary) -> void:
 			var cell: Vector2i = grid.beside(grid.cell_of(at), _rng)
 			if builder.add_prop(spawns, cell.x, cell.y, 0.0):
 				queue_grid_rebuild()
-	_touch_paid(act, at)
+	_touch_paid(act, at, "touch:" + id)
 
 
 ## A TREE FRUITS. Several heaps under the canopy, not one item beside the trunk.
@@ -509,7 +509,7 @@ func _on_ground(at: Vector3) -> void:
 			return
 		queue_grid_rebuild()
 	_touch_take()
-	_touch_paid(act, grid.world_of(cell))
+	_touch_paid(act, grid.world_of(cell), "touch:" + ch)
 
 
 ## GREEN A SET OF SQUARES, and only the ones that are actually ground the
@@ -640,7 +640,12 @@ func _touch_take() -> bool:
 
 ## What a touch is worth: the goods, the sight of it, and the faith of whoever
 ## was near enough to see a god do something.
-func _touch_paid(act: Dictionary, at: Vector3) -> void:
+## `novelty_key` names the SPECIFIC table row, not the kind of act: greening is
+## "touch:G", breaking a rock is "touch:Nature/rock". Sharing a key across rows
+## would mean greening a hillside made fruiting a tree less impressive, and
+## those are different verbs. Per-row keying is also self-limiting -- greening
+## is spammable and fruiting is capped by how many trees exist.
+func _touch_paid(act: Dictionary, at: Vector3, novelty_key := "") -> void:
 	var gives: Dictionary = act.get("gives", {})
 	if not gives.is_empty():
 		village.give(gives)
@@ -654,7 +659,8 @@ func _touch_paid(act: Dictionary, at: Vector3) -> void:
 	# to a touch -- the goods, the tokens, the little bump of fun, its own
 	# click sound.
 	var fun := float(act.get("fun", 0.0))
-	var r: Dictionary = divinity.perform(DivineAction.touch(act, at))
+	var r: Dictionary = divinity.perform(
+		DivineAction.touch(act, at, novelty_key))
 	var seen: int = int(r["seen"])
 	if fun > 0.0:
 		for h in (r["hits"] as Array):

@@ -50,6 +50,9 @@ func _process(_d: float) -> bool:
 	_check_matches_the_old_loop()
 	_check_relief_reaches_everyone()
 	_check_signal()
+	_check_bands()
+	_check_novelty()
+	_check_novelty_spares_people()
 	_check_tiers()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
@@ -85,12 +88,20 @@ func _check_range() -> void:
 			_faults.append("a villager outside the radius is in the list")
 
 
-## THE FUNNEL IS TRANSPARENT. A touch pays what the hand-rolled loop paid.
+## NOTHING IS LOST OR PAID TWICE between the act and the villagers.
+##
+## This began life as a transparency check against the hand-rolled loop the
+## funnel replaced, and it stopped meaning that the day bands came on: the
+## villager it measures is standing on the spot, so it now asserts the narrower
+## thing that a witness at band 1.0 on a fresh act collects the full rate, and
+## that the amount the act REPORTS is the amount the village actually gained.
+## Both are still worth having -- a funnel that reports one number and pays
+## another is the worst kind of wrong -- but the comment should not claim more
+## than the assertion does.
 func _check_matches_the_old_loop() -> void:
 	var at: Vector3 = _somewhere()
+	_root.divinity.witness.forget()
 	var before := _faith_of_all()
-	# What the old code did, verbatim: flat FAITH_PER_TOUCH to everyone inside
-	# WITNESS_RANGE, no bands, no falloff.
 	var want := 0.0
 	for f in _root.folk:
 		if is_instance_valid(f) and f.brain != null \
@@ -99,11 +110,11 @@ func _check_matches_the_old_loop() -> void:
 	var r: Dictionary = _root.divinity.perform(
 		DivineAction.touch({"verb": "Green spreads."}, at))
 	var paid := _faith_of_all() - before
-	print("[DIVINE] the old loop would pay %.2f; the funnel paid %.2f "
-		% [want, paid] + "(reported %.2f)" % float(r["faith"]))
+	print("[DIVINE] a witness standing in it collects %.2f of a possible %.2f "
+		% [paid, want] + "(the act reported %.2f)" % float(r["faith"]))
 	if absf(paid - want) > 0.01:
-		_faults.append("the funnel paid %.2f where the loop it replaced paid "
-			% paid + "%.2f -- it is not transparent" % want)
+		_faults.append("a witness at full band collected %.2f where the rate "
+			% paid + "is %.2f" % want)
 	if absf(float(r["faith"]) - paid) > 0.01:
 		_faults.append("the act reported %.2f paid but the village gained %.2f"
 			% [float(r["faith"]), paid])
@@ -145,6 +156,80 @@ func _check_relief_reaches_everyone() -> void:
 	if absf(paid - 4.0 * float(living)) > 0.01:
 		_faults.append("relief paid %.2f, not %.2f -- it was thinned by "
 			% [paid, 4.0 * float(living)] + "distance, which is backwards")
+
+
+## STANDING IN IT IS WORTH MORE THAN WATCHING FROM THE TREELINE.
+func _check_bands() -> void:
+	var a := DivineAction.make("touch", Vector3.ZERO, 1.0, 10.0)
+	a.bands = true
+	var near := Witness._band(0.1)
+	var mid := Witness._band(0.4)
+	var far := Witness._band(0.9)
+	print("[DIVINE] bands: near %.2f, middle %.2f, far %.2f" % [near, mid, far])
+	if not (near > mid and mid > far):
+		_faults.append("the bands do not fall off with distance: %.2f/%.2f/%.2f"
+			% [near, mid, far])
+	if far <= 0.0:
+		_faults.append("the far band pays nothing, so a witness who saw it "
+			+ "from across the meadow is not a witness at all")
+
+
+## THE TWENTIETH APPLE IS NOT A MIRACLE -- and the fortieth is not worthless.
+func _check_novelty() -> void:
+	var w: Witness = _root.divinity.witness
+	w.forget()
+	var now := float(_root.village.now)
+	var first := w.novelty("touch:G", now)
+	var seq: Array = []
+	for i in 12:
+		w.spend("touch:G", now)
+		seq.append(w.novelty("touch:G", now))
+	print("[DIVINE] novelty over twelve touches: %.2f -> %s"
+		% [first, ", ".join(seq.slice(0, 6).map(func(x): return "%.2f" % x))])
+	if not is_equal_approx(first, 1.0):
+		_faults.append("an untouched act did not start fresh: %.2f" % first)
+	for i in range(1, seq.size()):
+		if float(seq[i]) > float(seq[i - 1]) + 0.0001:
+			_faults.append("novelty went UP on use %d" % i)
+			break
+	var floor_v: float = float(seq[-1])
+	if absf(floor_v - Witness.NOVELTY_FLOOR) > 0.01:
+		_faults.append("repeated use settled at %.2f, not the %.2f floor -- "
+			% [floor_v, Witness.NOVELTY_FLOOR] + "either it decays to nothing "
+			+ "or it never stops paying")
+
+	# AND IT COMES BACK. A decay with no recovery is a permanent tax on a verb
+	# the player is meant to keep using.
+	var later := w.novelty("touch:G", now + Witness.NOVELTY_HALF)
+	var much_later := w.novelty("touch:G", now + Witness.NOVELTY_HALF * 4.0)
+	print("[DIVINE] recovery: %.2f now, %.2f after %.0fs, %.2f after %.0fs"
+		% [floor_v, later, Witness.NOVELTY_HALF, much_later,
+		   Witness.NOVELTY_HALF * 4.0])
+	if later <= floor_v:
+		_faults.append("novelty never recovers, so the ground is spent forever")
+	if much_later < 0.85:
+		_faults.append("after four half-lives novelty is still %.2f -- it "
+			% much_later + "recovers too slowly to feel fresh again")
+
+
+## IT DOES NOT TOUCH PEOPLE. Blessing and answering a disaster carry no key, so
+## they never get stale: `WITNESS_FAITH` was measured down deliberately and a
+## player blessing on every cooldown is the INTENDED loop, not spam.
+func _check_novelty_spares_people() -> void:
+	var w: Witness = _root.divinity.witness
+	for i in 20:
+		w.spend("touch:G", float(_root.village.now))
+	var bless_fresh := w.novelty("", float(_root.village.now))
+	print("[DIVINE] after twenty greenings, a keyless act is still %.2f"
+		% bless_fresh)
+	if not is_equal_approx(bless_fresh, 1.0):
+		_faults.append("hammering the ground made blessing less impressive")
+	# And one row does not drag another down with it.
+	var other := w.novelty("touch:Nature/tree", float(_root.village.now))
+	if not is_equal_approx(other, 1.0):
+		_faults.append("greening a hillside made fruiting a tree stale -- the "
+			+ "novelty key is not specific enough")
+	w.forget()
 
 
 ## THE RESULT GOES OUT. Everything the feedback layer will do hangs off this

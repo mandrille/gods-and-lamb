@@ -26,7 +26,15 @@ const COOLDOWN := 0.45
 
 ## How far a touch is felt. Villagers inside this see it and gain faith.
 const WITNESS_RANGE := 7.0
-const FAITH_PER_TOUCH := 1.5
+## Raised from 1.5 the day witness BANDS came in, and the two belong in one
+## breath. Banding thins the payout by distance, and the three annuli are
+## 6.25%, 29.75% and 64% of a disc -- so a crowd spread evenly through the
+## radius collects 0.583 of the flat rate. Holding the old expectation exactly
+## would want 2.57; 2.4 because players click near people rather than uniformly,
+## and the honest correction is to the crowd they actually have.
+##
+## Changing one of these without the other reads as a nerf nobody chose.
+const FAITH_PER_TOUCH := 2.4
 
 ## PROPS. `gives` goes to the village store, `spawns` is left on the ground for
 ## somebody to walk over and pick up, `consumes` removes what was touched.

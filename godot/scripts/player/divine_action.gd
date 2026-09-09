@@ -67,6 +67,9 @@ static func touch(act: Dictionary, where: Vector3, novelty_key := "") -> DivineA
 				  WorldTouch.WITNESS_RANGE)
 	a.verb = String(act.get("verb", ""))
 	a.key = novelty_key
+	# BANDED, unlike relief: standing in the miracle is worth more than
+	# watching it from the treeline.
+	a.bands = true
 	a.why = "touch"
 	var gives: Dictionary = act.get("gives", {})
 	if gives.has("food") or String(act.get("spawns", "")) != "":
