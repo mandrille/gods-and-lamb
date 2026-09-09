@@ -421,10 +421,47 @@ func _on_picked(entry: Dictionary) -> void:
 		queue_grid_rebuild()
 	var spawns := String(act.get("spawns", ""))
 	if spawns != "":
-		var cell: Vector2i = grid.beside(grid.cell_of(at), _rng)
-		if builder.add_prop(spawns, cell.x, cell.y, 0.0):
-			queue_grid_rebuild()
+		if bool(act.get("fruit", false)):
+			_fruit(act, spawns, at)
+		else:
+			var cell: Vector2i = grid.beside(grid.cell_of(at), _rng)
+			if builder.add_prop(spawns, cell.x, cell.y, 0.0):
+				queue_grid_rebuild()
 	_touch_paid(act, at)
+
+
+## A TREE FRUITS. Several heaps under the canopy, not one item beside the trunk.
+##
+## The heaps are the mechanic and they exist the instant this returns: `forage`
+## already lists `Nature/apples` as a source and already consumes it, so a
+## hungry villager is walking toward one before the player has let go of the
+## mouse. FruitFall is the picture of it -- apples in the leaves that hang and
+## then drop onto exactly the squares the heaps went to.
+func _fruit(act: Dictionary, aid: String, at: Vector3) -> void:
+	var home: Vector2i = grid.cell_of(at)
+	var reach: int = int(act.get("reach", WorldTouch.FRUIT_REACH))
+	var want: int = int(act.get("count", WorldTouch.FRUIT))
+	# Every square under the canopy, nearest first, so a tree in a corner still
+	# drops what it can rather than failing on twenty random misses.
+	var near: Array[Vector2i] = []
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var c := home + Vector2i(dx, dy)
+			if grid.is_walkable(c) and not _prop_on(c) 					and not builder.would_overlap(aid, c.x, c.y):
+				near.append(c)
+	near.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (absi(a.x - home.x) + absi(a.y - home.y)) 			< (absi(b.x - home.x) + absi(b.y - home.y)))
+
+	var landed: Array = []
+	for c in near:
+		if landed.size() >= want:
+			break
+		if builder.add_prop(aid, c.x, c.y, _rng.randf_range(0.0, 360.0)):
+			landed.append(grid.world_of(c))
+	if landed.is_empty():
+		return
+	queue_grid_rebuild()
+	FruitFall.drop(builder, at, landed, _rng)
 
 
 ## THE GROUND WAS TOUCHED, which is the verb the whole desert opening is made
@@ -439,9 +476,17 @@ func _on_ground(at: Vector3) -> void:
 		return
 	var becomes := String(act.get("becomes", ""))
 	if becomes != "":
-		if not builder.set_tile(cell.x, cell.y, becomes):
+		# A PATCH, not a cell. One tile per touch made greening a plot twelve
+		# minutes of tapping the same square of desert; see WorldTouch.bloom for
+		# the shape and why it is a hash of the cell rather than a die roll.
+		# Batched through set_tiles so nine tiles cost two multimesh uploads
+		# instead of eighteen.
+		var made: Array[Vector2i] = builder.set_tiles(
+			WorldTouch.bloom(cell), becomes)
+		if made.is_empty():
 			return
-		grid.set_code(cell, becomes)
+		for c in made:
+			grid.set_code(c, becomes)
 	elif bool(act.get("grows", false)):
 		# Only where there is ROOM. A meadow you can fill by holding the mouse
 		# down is not a decision, and a tree on top of a hut is a bug.

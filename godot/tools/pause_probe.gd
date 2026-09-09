@@ -98,42 +98,100 @@ func _close() -> void:
 	_stage += 1
 
 
-## The bed exists, loops seamlessly, and follows the day.
+## THE TRACK. It is a sampler now rather than two rendered pads, so what is
+## worth asserting changed with it: that the bank is real audio, that the
+## arrangement is as long as it claims, that the sequencer actually fires, and
+## that night still takes something away.
 func _check_music() -> void:
 	var m = _root.music
 	if m == null:
 		_faults.append("there is no music layer at all")
 		return
-	var players: Array = []
-	for c in m.get_children():
-		if c is AudioStreamPlayer:
-			players.append(c)
-	if players.size() < 2:
-		_faults.append("expected a day pad and a night pad, found %d"
-			% players.size())
-		return
-	for p in players:
-		var w := p.stream as AudioStreamWAV
-		if w == null or w.data.size() < 1000:
-			_faults.append("a music stream is empty -- a silent buffer passes "
-				+ "every test that only asks whether it loaded")
+
+	# EVERY SAMPLE IS REAL AUDIO. A buffer of zeroes loads, plays, and passes
+	# any test that only asks whether it exists -- and is silence.
+	for name in ["key", "bass", "kick", "snare", "hat", "open", "vinyl"]:
+		var w: AudioStreamWAV = m.samples.get(name)
+		if w == null or w.data.size() < 200:
+			_faults.append("the '%s' sample is missing or empty" % name)
 			continue
-		if w.loop_mode != AudioStreamWAV.LOOP_FORWARD:
-			_faults.append("a music stream does not loop, so the bed stops "
-				+ "fourteen seconds in")
-		# SEAMLESS: the last sample must meet the first, or it clicks once a
-		# pass, and a click every fourteen seconds is worse than silence.
-		var first := _sample(w, 0)
-		var last := _sample(w, w.data.size() / 2 - 1)
-		if absf(first - last) > 0.06:
-			_faults.append("the loop seam jumps by %.3f, which is an audible "
-				% absf(first - last) + "click every pass")
-	# Day and night cross-fade rather than switching.
+		# The bed has its own bounds, in both directions. It plays for the whole
+		# session with nothing masking it, so it has to be quiet -- but "quiet"
+		# and "zeroes" look identical to a floor written for the instruments.
+		var lo := 0.008 if name == "vinyl" else 0.05
+		var hi := 0.12 if name == "vinyl" else 1.01
+		var peak: float = _peak(w)
+		if peak < lo:
+			_faults.append("the '%s' sample never rises above %.3f -- it is "
+				% [name, peak] + "a silent buffer")
+		elif peak > hi:
+			_faults.append("the vinyl bed peaks at %.3f, which is loud enough "
+				% peak + "to be heard over the music instead of under it")
+
+	# THE BED LOOPS, SEAMLESSLY. It is the only thing playing during a
+	# breakdown, and a click every four seconds is worse than no music.
+	var bed: AudioStreamWAV = m.samples["vinyl"]
+	if bed.loop_mode != AudioStreamWAV.LOOP_FORWARD:
+		_faults.append("the vinyl bed does not loop, so the record stops "
+			+ "four seconds in")
+	var seam: float = absf(_sample(bed, 0)
+						   - _sample(bed, bed.data.size() / 2 - 1))
+	if seam > 0.06:
+		_faults.append("the bed's loop seam jumps by %.3f, which is an "
+			% seam + "audible click every pass")
+
+	# LONG ENOUGH TO BE A TRACK. Three minutes was the ask; anything under two
+	# and the player is hearing the same eight bars for a whole session.
+	var secs: float = m.total_seconds()
+	if secs < 180.0 or secs > 300.0:
+		_faults.append("the arrangement is %.0fs, which is outside the three "
+			% secs + "to four minutes it is meant to run")
+
+	# THE SEQUENCER FIRES, and keeps firing all the way through -- including
+	# after it wraps, which is where an off-by-one leaves a silent second pass.
+	m.running = false
+	var before: int = m.fired
+	m._clock = 0.0
+	m._step = -1
+	m.advance()
+	var first: int = m.fired - before
+	m._clock = secs * 0.5
+	m.advance()
+	var middle: int = m.fired - before - first
+	m._clock = secs * 1.5              # wrapped, second time around
+	m.advance()
+	var wrapped: int = m.fired - before - first - middle
+	print("[PAUSE] music: %.0fs arrangement, %d notes to the middle, "
+		% [secs, middle] + "%d after it wraps" % wrapped)
+	if middle < 200:
+		_faults.append("only %d notes in half an arrangement -- the sequencer "
+			% middle + "is barely playing anything")
+	if wrapped < 200:
+		_faults.append("the second pass fired %d notes against %d in the first "
+			% [wrapped, middle] + "-- the track goes quiet after one loop")
+
+	# NIGHT TAKES THE KIT AWAY, and leaves the record spinning.
 	m.set_dusk(0.0, 100.0)
+	var day_kit: float = m._kit_gain()
 	m.set_dusk(1.0, 100.0)
-	if _db_of(players[1]) <= _db_of(players[0]):
-		_faults.append("at full dusk the night pad is not the louder one")
-	print("[PAUSE] music: %d pads, seamless, dusk moves the mix" % players.size())
+	print("[PAUSE] kit gain: day %.2f, night %.2f; bed %.1f dB at night"
+		% [day_kit, m._kit_gain(), m._bed.volume_db])
+	if m._kit_gain() >= day_kit:
+		_faults.append("the drums are as loud at night as by day")
+	if m._bed.volume_db <= -60.0:
+		_faults.append("the bed is silent at night, so nightfall sounds like "
+			+ "the audio died")
+	m.set_dusk(0.0, 100.0)
+	m.running = true
+
+
+## The loudest sample in a buffer, 0..1.
+func _peak(w: AudioStreamWAV) -> float:
+	var n: int = w.data.size() / 2
+	var hi := 0.0
+	for i in range(0, n, 7):
+		hi = maxf(hi, absf(_sample(w, i)))
+	return hi
 
 
 func _sample(w: AudioStreamWAV, index: int) -> float:

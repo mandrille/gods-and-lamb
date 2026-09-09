@@ -26,6 +26,7 @@ var _stage := 0
 var _left := {}                    ## the village as it was closed
 
 
+
 func _initialize() -> void:
 	ShotWindowRef.park()
 	SaveGame.erase()
@@ -157,13 +158,31 @@ func _check_return(seconds: int, label: String) -> void:
 		_faults.append("the day number moved while nobody was playing: %d -> %d"
 			% [_left["day"], _root.daylight.day])
 
-	# The payout is CREDITED, not merely computed. This is the line that would
-	# catch a log that reads beautifully and pays nothing into the bank.
-	var want: float = float(_left["faith"]) + faith
-	if absf(float(d.faith) - want) > 2.0:
-		_faults.append("the log promised %d Faith but the balance went %.0f "
-			% [int(faith), float(_left["faith"])] + "-> %.0f, wanted %.0f"
-			% [float(d.faith), want])
+	# THE PAYOUT IS CREDITED, not merely computed -- the line that would catch a
+	# log which reads beautifully and pays nothing into the bank.
+	#
+	# Stated as a floor rather than an equality, because the village KEEPS
+	# PLAYING once it is back: a returning village that comes back further along
+	# than it left can cross an age gate in the frames right after loading and
+	# be paid its lump, which has nothing to do with the away log. That is
+	# correct behaviour, and asserting equality made this fail by exactly 40 --
+	# the First Roof lump -- the moment greening spread in patches and the saved
+	# village got that far inside the probe's play window.
+	var gained: float = float(d.faith) - float(_left["faith"])
+	if gained < faith - 2.0:
+		_faults.append("the log promised %d Faith but the balance only rose "
+			% int(faith) + "by %.0f (%.0f -> %.0f)"
+			% [gained, float(_left["faith"]), float(d.faith)])
+
+	# AND NOTHING APPEARED FROM NOWHERE. Every credit in the game goes through
+	# `add_faith`, which raises the lifetime counter by the same amount -- so
+	# the two must move together, and a payout applied straight to the balance
+	# (or applied twice) breaks this identity without breaking the floor above.
+	var earned: float = float(d.total_earned) - float(_left["earned"])
+	print("[RETURN] balance +%.0f, lifetime earned +%.0f" % [gained, earned])
+	if absf(gained - earned) > 2.0:
+		_faults.append("the balance rose %.0f but lifetime earnings rose %.0f "
+			% [gained, earned] + "-- Faith was credited outside the ledger")
 
 	# The aura set at nightfall survived the absence and steered the roll.
 	if String(_root.saving.aura) != "harvest":

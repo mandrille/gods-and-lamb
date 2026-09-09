@@ -32,10 +32,11 @@ const FAITH_PER_TOUCH := 1.5
 ## somebody to walk over and pick up, `consumes` removes what was touched.
 const PROPS := {
 	"Nature/tree": {"verb": "Apples fall.", "spawns": "Nature/apples",
-					"fx": "bounty", "sfx": "pick"},
+					"fruit": true, "fx": "bounty", "sfx": "pick"},
 	"Nature/pine": {"verb": "Cones and needles.", "gives": {"wood": 1},
 					"fx": "grove", "sfx": "pick"},
 	"Nature/bush": {"verb": "Berries.", "spawns": "Nature/apples",
+					"fruit": true, "count": 2, "reach": 1,
 					"fx": "bounty", "sfx": "pick"},
 	"Nature/rock": {"verb": "The stone splits.", "gives": {"stone": 2},
 					"consumes": true, "fx": "chips", "sfx": "chop"},
@@ -73,6 +74,42 @@ const TILES = {
 	"S": {"verb": "The stone splits.", "gives": {"stone": 1},
 		  "fx": "chips", "sfx": "chop"},
 }
+
+## HOW FAR A GREENING SPREADS.
+##
+## One tile per touch was arithmetic, not a verb: a starting plot is roughly
+## 1600 flat tiles and the shared cooldown is 0.45s, so greening it by hand was
+## twelve minutes of tapping the same square of desert. A patch instead --
+## always the tile you touched and its four neighbours, plus the diagonals about
+## half the time -- makes one touch read as a god doing something to a place
+## rather than filling in a cell.
+##
+## The diagonals are chosen from a hash of the CELL, not a die roll, so the same
+## square always blooms the same shape. A player who touches, sees a ragged edge
+## and touches again to tidy it gets the tidying they asked for rather than a
+## different ragged edge.
+static func bloom(cell: Vector2i) -> Array[Vector2i]:
+	var out: Array[Vector2i] = [cell]
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		out.append(cell + d)
+	var i := 0
+	for d in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+		i += 1
+		var h: int = absi((cell.x * 73856093) ^ (cell.y * 19349663) ^ (i * 83492791))
+		if h % 100 < 55:
+			out.append(cell + d)
+	return out
+
+
+## HOW MANY APPLES A TREE GIVES, and how far they land from the trunk.
+##
+## A tree used to drop one heap on one neighbouring tile, which is a tree
+## producing an item rather than a tree fruiting. Several, scattered under the
+## canopy, is the difference -- and every one of them is food a villager will
+## walk over and eat, so the number is a real quantity and not decoration.
+const FRUIT := 5
+const FRUIT_REACH := 2
+
 
 ## What grass grows, and how often. Trees first because wood is what the
 ## village is always short of, and because a treeless plot cannot be built on.

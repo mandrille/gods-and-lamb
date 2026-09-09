@@ -38,6 +38,8 @@ func _process(_d: float) -> bool:
 
 	_check_desert()
 	_check_greening()
+	_check_bloom()
+	_check_fruit()
 	_check_growing()
 	_check_rock()
 	_check_faith()
@@ -96,6 +98,108 @@ func _check_greening() -> void:
 	if not _root.grid.is_plain(cell):
 		_faults.append("greened ground is not plain, so no building will "
 			+ "ever go on it")
+
+
+## GREENING SPREADS. One tile per touch was twelve minutes of tapping to green
+## a starting plot, which is arithmetic rather than a verb.
+func _check_bloom() -> void:
+	var cell := _find("D")
+	if cell.x < 0:
+		_faults.append("no dirt left to test the bloom on")
+		return
+	# Count what the touch actually changed in the document, rather than what
+	# the shape says it should have: an edge tile, a cliff or a pond next door
+	# refuses, and that is correct.
+	var before := _count("G")
+	_root._touched_at = -99.0
+	_root._on_ground(_root.grid.world_of(cell))
+	var made := _count("G") - before
+	print("[TOUCH] one touch on dirt greened %d tiles" % made)
+	if made < 2:
+		_faults.append("a touch greened %d tile(s) -- the bloom did not "
+			% made + "spread at all")
+	if made > 9:
+		_faults.append("a touch greened %d tiles, which is more than the "
+			% made + "nine the bloom shape can produce")
+	# The WALK GRID agrees about every one of them, or the ground and the
+	# pathfinder disagree about most of a patch and only the middle is real.
+	var wrong := 0
+	for c in WorldTouch.bloom(cell):
+		if _root.builder.code_at(_root.builder.lower, c.x, c.y) != "G":
+			continue
+		if _root.grid.code_of(c) != "G":
+			wrong += 1
+	if wrong > 0:
+		_faults.append("%d greened tile(s) never reached the walk grid" % wrong)
+	# And the shape is a function of the CELL, so tidying an edge gives the
+	# same edge back rather than a different one.
+	if WorldTouch.bloom(cell) != WorldTouch.bloom(cell):
+		_faults.append("the same cell blooms a different shape each time")
+
+
+## A TREE FRUITS: several heaps under the canopy, and they are food a villager
+## will actually walk to. `forage` lists Nature/apples as a source and consumes
+## it, so this is a closed loop and not a decoration.
+func _check_fruit() -> void:
+	var tree := {}
+	for e in _root.builder.placed_props:
+		if String(e.get("id", "")) == "Nature/tree":
+			tree = e
+			break
+	if tree.is_empty():
+		# Grow one: a bare plot has no trees, which is the whole point of it.
+		var cell := _find("G")
+		if cell.x < 0 or not _root.builder.add_prop("Nature/tree",
+													cell.x, cell.y):
+			print("[TOUCH] nowhere to put a tree; skipped the fruit check")
+			return
+		tree = _root.builder.placed_props[-1]
+	var before := _heaps()
+	_root._touched_at = -99.0
+	_root._on_picked(tree)
+	var made := _heaps() - before
+	print("[TOUCH] touching a tree left %d apple heaps under it" % made)
+	if made < 2:
+		_faults.append("a tree gave %d heap(s) -- it is producing an item, "
+			% made + "not fruiting")
+	# The tree is still standing. A tree consumed by being touched is a
+	# resource node, and the player would learn not to touch them.
+	if not is_instance_valid(tree.get("node")):
+		_faults.append("touching a tree destroyed it")
+	# And the heaps are somewhere a villager can reach.
+	var here: Vector2i = Vector2i(int(tree.get("col", 0)),
+								  int(tree.get("row", 0)))
+	var reachable := 0
+	for e in _root.builder.placed_props:
+		if String(e.get("id", "")) != "Nature/apples":
+			continue
+		var c := Vector2i(int(e.get("col", 0)), int(e.get("row", 0)))
+		if absi(c.x - here.x) > WorldTouch.FRUIT_REACH 				or absi(c.y - here.y) > WorldTouch.FRUIT_REACH:
+			continue
+		if _root.grid.is_walkable(c):
+			reachable += 1
+	print("[TOUCH] %d of them are on ground a villager can stand on" % reachable)
+	if reachable < 2:
+		_faults.append("only %d heap(s) landed where anyone can get at them"
+			% reachable)
+	if not Brain.ACTIONS["forage"]["sources"].has("Nature/apples"):
+		_faults.append("nothing eats apple heaps, so a tree drops food that "
+			+ "sits there forever")
+
+
+func _count(ch: String) -> int:
+	var n := 0
+	for row in _root.builder.lower.size():
+		n += String(_root.builder.lower[row]).count(ch)
+	return n
+
+
+func _heaps() -> int:
+	var n := 0
+	for e in _root.builder.placed_props:
+		if String(e.get("id", "")) == "Nature/apples":
+			n += 1
+	return n
 
 
 ## Grass grows, and only where there is room.
@@ -238,6 +342,12 @@ func _check_survives_land() -> void:
 			% fresh_dirt)
 
 
+## A cell of this code with NOTHING STANDING ON IT.
+##
+## The prop test is not fussiness: the checks below run in order against one
+## living world, and once one of them plants a tree the next one asking for
+## "some grass" was handed the square with the tree on it and reported that
+## growing does not work.
 func _find(ch: String) -> Vector2i:
 	for row in _root.builder.lower.size():
 		var line: String = _root.builder.lower[row]
@@ -245,7 +355,7 @@ func _find(ch: String) -> Vector2i:
 			if line[col] != ch:
 				continue
 			var c := Vector2i(col, row)
-			if _root.grid.is_walkable(c):
+			if _root.grid.is_walkable(c) and not _root._prop_on(c):
 				return c
 	return Vector2i(-1, -1)
 

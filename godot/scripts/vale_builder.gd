@@ -146,6 +146,17 @@ func world_of(col: int, row: int) -> Vector3:
 ## Only flat tiles -- a cliff top is two stacked blocks and is not something
 ## the player is turning into a meadow.
 func set_tile(col: int, row: int, ch: String) -> bool:
+	var had := String(_tile_aid.get(Vector2i(col, row), ""))
+	if not _move_tile(col, row, ch):
+		return false
+	_upload(had)
+	_upload(String(_tile_aid[Vector2i(col, row)]))
+	return true
+
+
+## The move itself, WITHOUT the upload. Both `set_tile` and `set_tiles` go
+## through here so there is one description of what changing a tile means.
+func _move_tile(col: int, row: int, ch: String) -> bool:
 	var cell := Vector2i(col, row)
 	if not _tile_aid.has(cell):
 		return false
@@ -171,8 +182,6 @@ func set_tile(col: int, row: int, ch: String) -> bool:
 		_ground_xforms[want] = []
 	(_ground_xforms[want] as Array).append(Transform3D(Basis(), base))
 	_tile_aid[cell] = want
-	_upload(had)
-	_upload(want)
 
 	# The DOCUMENT too, or the change is a lick of paint: the walk grid, the
 	# save and every buildability test read this, not the multimesh.
@@ -181,6 +190,35 @@ func set_tile(col: int, row: int, ch: String) -> bool:
 		if col >= 0 and col < line.length():
 			lower[row] = line.substr(0, col) + ch + line.substr(col + 1)
 	return true
+
+
+## MANY TILES, TWO UPLOADS.
+##
+## `set_tile` re-uploads both affected multimesh batches every time it is
+## called, and a batch is every ground tile of that asset in the world -- a few
+## thousand transforms. That is the right trade for one tile and the wrong one
+## for nine: a greening bloom through the single-tile path re-uploaded the
+## ground eighteen times for one touch.
+##
+## Returns the cells that actually changed, which is what the caller has to hand
+## on to the walk grid -- a cell that refused (a cliff, water, already green)
+## must not be reported as greened.
+func set_tiles(cells: Array, ch: String) -> Array[Vector2i]:
+	var done: Array[Vector2i] = []
+	var touched: Dictionary = {}
+	for c in cells:
+		var cell: Vector2i = c
+		if not _tile_aid.has(cell):
+			continue
+		var had := String(_tile_aid[cell])
+		if not _move_tile(cell.x, cell.y, ch):
+			continue
+		touched[had] = true
+		touched[String(_tile_aid[cell])] = true
+		done.append(cell)
+	for aid in touched:
+		_upload(String(aid))
+	return done
 
 
 func _upload(aid: String) -> void:
@@ -478,6 +516,18 @@ func would_overlap(aid: String, col: int, row: int) -> bool:
 	# Anything else -- a miracle-grown tree, a scattered rock -- avoids
 	# everything solid, because nothing clears the ground for it.
 	var mine_is_building := aid.begins_with("Buildings/")
+	# AND DRESSING IS BUILT OVER IN BOTH DIRECTIONS.
+	#
+	# SOFT props were exempted as obstacles and never as placements, so a tuft
+	# of grass could not veto a cottage but a tree could veto a tuft of grass --
+	# and, measured, could veto every apple heap in the 5x5 its own footprint
+	# covers. Touching a tree for fruit produced nothing at all, silently,
+	# because the only squares fruit can fall on are the ones under the tree.
+	#
+	# Dressing collides with what is standing on ITS OWN cell and nothing else.
+	# That is what stops two heaps stacking; footprints are for things that
+	# occupy space, and a handful of apples in the grass does not.
+	var mine_is_soft := aid in SOFT
 	for e in placed_props:
 		if not is_instance_valid(e.get("node")):
 			continue
@@ -489,6 +539,10 @@ func would_overlap(aid: String, col: int, row: int) -> bool:
 		var oc := int(e.get("col", -999))
 		var orow := int(e.get("row", -999))
 		if oc < -900:
+			continue
+		if mine_is_soft:
+			if oc == col and orow == row:
+				return true
 			continue
 		var theirs: Array = e.get("fp", [0.5, 0.5])
 		var ohc := int(ceil(float(theirs[0]) / tile / 2.0))
