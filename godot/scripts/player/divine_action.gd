@@ -31,6 +31,33 @@ const STONE := 16
 const PROTECTION := 32
 const WRATH := 64
 const FIRE := 128
+const JOY := 256
+
+## WHAT EACH MIRACLE IS ABOUT. The deck knows its own name and its own art; this
+## is the one place that says what KIND of thing it is, which is what lets a
+## prayer be answered by any act of the right sort rather than by a named card.
+const MIRACLE_TAGS := {
+	"rain": WATER | NATURE,
+	"grove": NATURE,
+	"bounty": FOOD | NATURE,
+	"feast": FOOD,
+	"revel": JOY,
+	"mend": LIFE | PROTECTION,
+	"calm": PROTECTION,
+	"upheaval": STONE,
+}
+
+
+## A miracle that has finished sweeping. Credits nothing -- the cursor already
+## paid as it went -- but says what happened so prayers, reputation and the
+## feedback layer can all see one act instead of nothing at all.
+static func miracle(id: String, where: Vector3) -> DivineAction:
+	var a := make("miracle", where, 0.0, 0.0)
+	a.tags = int(MIRACLE_TAGS.get(id, 0))
+	a.key = "miracle:" + id
+	a.why = "miracle"
+	a.verb = "The %s passes." % id
+	return a
 
 var kind := ""                  ## "touch" | "miracle" | "relief" | "bless"
 var at := Vector3.ZERO

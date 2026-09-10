@@ -29,7 +29,38 @@ const KINDS := {
 		"says": "%s is hungry.",
 		"desperate": "%s is starving.",
 	},
+	"healing": {
+		"need": "health",
+		"tag": DivineAction.LIFE,
+		"icon": "heart",
+		"says": "%s is ailing.",
+		"desperate": "%s is dying.",
+	},
+	"cheer": {
+		"need": "fun",
+		"tag": DivineAction.JOY,
+		"icon": "confetti",
+		"says": "%s is low.",
+		"desperate": "%s has lost heart.",
+	},
+	# SAFETY IS NOT A STAT, and that is what makes it the interesting one. It
+	# is asked when something is burning or blowing through the village near
+	# enough to matter, and it is answered when that stops -- however it stops.
+	# It is the seam that finally puts disasters inside the loop instead of
+	# beside it: a fire now makes people ASK, and answering pays like any other
+	# prayer rather than only through the calamity's own thanks.
+	"safety": {
+		"need": "",
+		"danger": true,
+		"tag": DivineAction.PROTECTION,
+		"icon": "cross",
+		"says": "%s is afraid.",
+		"desperate": "%s is in the fire's path.",
+	},
 }
+
+## How close a calamity has to be before somebody starts asking about it.
+const DANGER_NEAR := 9.0
 
 ## Above this the need is met and the prayer is over. Deliberately well clear of
 ## `Brain.URGENT` (0.45): resolving the instant they cross back over the line
@@ -85,8 +116,28 @@ func alive(now: float) -> bool:
 		and now - born < LIFETIME
 
 
+## Is this one about a danger rather than a need?
+func danger() -> bool:
+	return bool(spec().get("danger", false))
+
+
 ## Has the thing they were asking about sorted itself out?
-func met() -> bool:
+##
+## `host` is only needed for the danger kinds, which have to look at the world
+## rather than at a stat -- the stat kinds ignore it.
+func met(host = null) -> bool:
 	if not is_instance_valid(who) or who.brain == null:
 		return true
+	if danger():
+		return not near_danger(who, host)
 	return float(who.brain.stats.get(need(), 1.0)) >= SAFE
+
+
+## Is anything burning, drying or blowing near this villager right now?
+static func near_danger(f, host) -> bool:
+	if host == null or f == null or not is_instance_valid(f):
+		return false
+	for c in (host.calamities as Array):
+		if host.grid.world_of(c.cell).distance_to(f.position) <= DANGER_NEAR:
+			return true
+	return false

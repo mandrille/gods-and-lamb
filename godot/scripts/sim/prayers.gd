@@ -98,7 +98,7 @@ func _close(now: float) -> void:
 			active.erase(p)
 			closed.emit(p, false)
 			continue
-		if not p.met():
+		if not p.met(host):
 			continue
 		active.erase(p)
 		if p.touched_by_god:
@@ -168,11 +168,21 @@ func _open(now: float) -> void:
 ## Would this villager say something? Returns a Prayer or null.
 func _consider(f, now: float, has_room: bool) -> Prayer:
 	for kind in Prayer.KINDS:
-		var need := String(Prayer.KINDS[kind]["need"])
-		var level: float = float(f.brain.stats.get(need, 1.0))
-		if level >= Brain.URGENT:
-			continue
-		var desperate: bool = level < Brain.DESPERATE
+		var row: Dictionary = Prayer.KINDS[kind]
+		var desperate := false
+		if bool(row.get("danger", false)):
+			# NOT A STAT. Somebody standing next to a fire is in trouble
+			# whatever their hunger bar says, and this is always desperate --
+			# there is no mild version of the treeline being alight.
+			if not Prayer.near_danger(f, host):
+				continue
+			desperate = true
+		else:
+			var level: float = float(f.brain.stats.get(
+				String(row["need"]), 1.0))
+			if level >= Brain.URGENT:
+				continue
+			desperate = level < Brain.DESPERATE
 		if not desperate and not has_room:
 			continue
 		# THE DEVOUT ASK MORE READILY, and a sceptic asks only when it is bad.

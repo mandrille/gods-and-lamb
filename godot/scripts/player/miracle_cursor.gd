@@ -594,4 +594,27 @@ func _end() -> void:
 	if _cloud != null and is_instance_valid(_cloud):
 		_cloud.queue_free()
 		_cloud = null
+	# SAY WHAT HAPPENED. The cursor credits as it sweeps, so this pays nothing
+	# -- but without it a miracle is the one divine act in the game that no
+	# prayer can be answered by and no reputation can be shaped by, because
+	# nothing downstream ever hears about it. `report` announces without
+	# crediting, which is exactly this case.
+	if divinity != null and was != "":
+		var hits: Array = []
+		for f in _folk_touched():
+			hits.append([f, 1.0])
+		divinity.report(DivineAction.miracle(
+			was, global_position - Vector3(0, HEIGHT, 0)), hits, _gain, 0)
 	finished.emit(was, n, _gain)
+
+
+## The villagers this sweep actually touched, as nodes. `_touched_folk` holds
+## instance ids because it is a paid-once set; this turns them back into people.
+func _folk_touched() -> Array:
+	var out: Array = []
+	if host == null:
+		return out
+	for f in host.folk:
+		if is_instance_valid(f) and _touched_folk.has(f.get_instance_id()):
+			out.append(f)
+	return out

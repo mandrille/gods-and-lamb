@@ -50,6 +50,9 @@ func _process(_d: float) -> bool:
 	_check_answered()
 	_check_solved_alone()
 	_check_expires()
+	_check_ailing()
+	_check_fire_frightens()
+	_check_miracles_answer()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
@@ -204,6 +207,82 @@ func _check_expires() -> void:
 	if still:
 		_faults.append("an unanswered prayer never expires -- it sits there "
 			+ "accusing the player forever")
+
+
+## MORE THAN ONE THING TO ASK FOR. A prayer system with one kind is a hunger
+## meter with a bubble on it.
+func _check_ailing() -> void:
+	_reset()
+	var who = _anyone()
+	if who == null:
+		return
+	who.brain.stats["health"] = 0.10
+	_run(30.0)
+	var p = _root.prayers.of(who)
+	print("[PRAY] a sick villager: %s"
+		% ("said '%s'" % p.says() if p != null else "said nothing"))
+	if p == null:
+		_faults.append("a villager at 10% health never asked for anything")
+	elif p.kind != "healing":
+		_faults.append("a sick villager asked for '%s'" % p.kind)
+
+
+## A FIRE MAKES PEOPLE ASK, and that is what finally puts disasters inside the
+## loop rather than beside them. Answered when the danger stops, however it
+## stops -- there is no stat to recover here.
+func _check_fire_frightens() -> void:
+	_reset()
+	var who = _anyone()
+	if who == null:
+		return
+	who.brain.stats["health"] = 1.0
+	var c := Calamity.new("fire", _root.grid.cell_of(who.position))
+	_root.calamities.append(c)
+	_run(30.0)
+	var p = _root.prayers.of(who)
+	print("[PRAY] with a fire at their feet: %s"
+		% ("said '%s'" % p.says() if p != null else "said nothing"))
+	if p == null:
+		_faults.append("a fire beside a villager frightened nobody into asking")
+		_root.calamities.erase(c)
+		return
+	if p.kind != "safety":
+		_faults.append("a villager beside a fire asked for '%s'" % p.kind)
+	if not p.urgent:
+		_faults.append("standing next to a fire is not urgent")
+	# The fire is answered by the fire STOPPING, not by a stat.
+	_root.calamities.erase(c)
+	_run(6.0)
+	print("[PRAY] once the fire was out: %s"
+		% ("gone" if _root.prayers.of(who) == null else "STILL THERE"))
+	if _root.prayers.of(who) != null:
+		_faults.append("the danger passed and the prayer stayed on screen")
+
+
+## A MIRACLE ANSWERS ONE. Until now the cursor credited as it swept and told
+## nothing downstream, so a miracle was the one divine act in the game that
+## could not answer a prayer.
+func _check_miracles_answer() -> void:
+	_reset()
+	var who = _anyone()
+	if who == null:
+		return
+	who.brain.stats["health"] = 0.10
+	_run(30.0)
+	var p = _root.prayers.of(who)
+	if p == null or p.kind != "healing":
+		return
+	# What the cursor does at the end of a `mend` sweep that touched them.
+	var a := DivineAction.miracle("mend", who.position)
+	_root.divinity.report(a, [[who, 1.0]], 0.0, 0)
+	print("[PRAY] a mend sweep marked the healing prayer as answered: %s"
+		% p.touched_by_god)
+	if not p.touched_by_god:
+		_faults.append("a mend miracle over the person asking to be healed "
+			+ "was not recognised as answering them")
+	if int(DivineAction.MIRACLE_TAGS.get("mend", 0)) & DivineAction.LIFE == 0:
+		_faults.append("mend does not carry the LIFE tag, so nothing it does "
+			+ "can ever answer a plea for healing")
 
 
 ## --- helpers ----------------------------------------------------------------
