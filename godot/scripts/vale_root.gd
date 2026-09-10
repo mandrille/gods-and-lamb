@@ -651,6 +651,34 @@ func _villagers_react(r: Dictionary) -> void:
 ## take any decision away from those systems -- it only refuses to let the quiet
 ## run past about a minute, by leaning on whichever of them is currently able to
 ## fire. See director.gd for why the pressure behind it is never shown.
+## WHOEVER BELIEVES HARDEST, reconsidered slowly and said out loud.
+##
+## Two announcements and they are deliberately different things. The title
+## changing hands is news about a PERSON -- somebody the player has been paying
+## into for twenty minutes -- so it is said whether or not anything else is
+## happening. The proclamation is news about the GOD, and it only lands once per
+## axis, because a prophet who tells you what you are every thirty seconds is a
+## caption rather than a character.
+func _tick_prophet() -> void:
+	if divinity == null or village == null:
+		return
+	var was: String = divinity.prophet.name_of()
+	if divinity.prophet.tick(folk, float(village.now)):
+		var now_name: String = divinity.prophet.name_of()
+		if now_name != "":
+			divinity.notice.emit("%s speaks for you now." % now_name)
+			if fxe != null and divinity.prophet.has():
+				fxe.burst("bless", divinity.prophet.who.position
+									+ Vector3(0, 1.2, 0))
+		elif was != "":
+			# LOSING one is the half that makes having one mean anything.
+			divinity.notice.emit("%s no longer speaks for you." % was)
+	var said: String = divinity.prophet.proclaim(divinity.reputation.title(),
+												divinity.reputation.dominant())
+	if said != "":
+		divinity.notice.emit(said)
+
+
 func _tick_director() -> void:
 	if divinity == null or village == null or folk.size() < Director.MIN_FOLK:
 		return
@@ -2452,6 +2480,7 @@ func _process(delta: float) -> void:
 			music.set_dusk(daylight.dusk_amount(), delta)
 	_tick_calamities(delta)
 	_tick_director()
+	_tick_prophet()
 	_tick_tides()
 	if prayers != null:
 		prayers.tick(delta)

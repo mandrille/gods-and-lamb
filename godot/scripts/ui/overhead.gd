@@ -221,6 +221,16 @@ func _draw() -> void:
 			continue
 		var p: Vector2 = rig.cam.unproject_position(head)
 
+		# THE PROPHET IS ALWAYS MARKED.
+		#
+		# Unlike the job badge below, which only appears on hover: the whole
+		# point of a prophet is that you can lose one, and a person you cannot
+		# pick out of a crowd is a person whose loss you will never notice.
+		# Drawn as a ring above the head rather than a glyph on it, so it reads
+		# at play distance and never fights the prayer bubble for the same spot.
+		if host.divinity != null and host.divinity.prophet != null 				and host.divinity.prophet.who == f:
+			_halo(p)
+
 		# A JOB BADGE, only while the player is already looking at this one --
 		# permanently visible on forty followers would be forty small icons
 		# competing with everything else on screen.
@@ -407,6 +417,19 @@ func _arrow(at: Vector2, angle: float, tint: Color) -> void:
 	draw_colored_polygon(PackedVector2Array([tip, a, b]), tint)
 	draw_arc(at, r + 3.0, 0.0, TAU, 22, Color(tint.r, tint.g, tint.b, 0.45),
 			 1.5, true)
+
+
+## The mark of the one who speaks for you.
+const HALO := Color(0.99, 0.86, 0.48)
+
+
+func _halo(p: Vector2) -> void:
+	var t := float(Time.get_ticks_msec()) * 0.0022
+	var c := p + Vector2(0, -30.0 - sin(t) * 1.6)
+	# An open ring, tilted, so it reads as sitting above them rather than as
+	# another badge stuck to them.
+	draw_arc(c, 10.0, 0.0, TAU, 24, Color(0.06, 0.07, 0.10, 0.55), 4.0, true)
+	draw_arc(c, 10.0, 0.0, TAU, 24, HALO, 2.0, true)
 
 
 ## A hot mark over a wrongdoer, pulsing so the eye finds it in a crowd.

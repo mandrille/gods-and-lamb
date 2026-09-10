@@ -158,6 +158,9 @@ const COMMUNE_GROWTH := 1.5
 var boons: Boons
 var witness: Witness
 var reputation: Reputation
+## Whoever currently believes hardest. Derived from the faith ladder rather
+## than stored, so it needs nothing in the save -- see prophet.gd.
+var prophet: Prophet
 var drafts_taken := 0
 var pending_draft: Array = []
 
@@ -242,6 +245,7 @@ func _init() -> void:
 	boons = Boons.new(20260901)
 	witness = Witness.new()
 	reputation = Reputation.new()
+	prophet = Prophet.new()
 
 
 ## Faith per second, right now, from everyone alive plus the buildings.
@@ -385,6 +389,21 @@ func perform(a: DivineAction) -> Dictionary:
 	if a.global > 0.0:
 		add_faith(a.global * fresh)
 		earned.emit(a.global * fresh, a.at, a.why)
+	# THE RUMOUR. If the prophet was standing there, the people out of sight
+	# hear about it -- at a fraction, because being told about a miracle is not
+	# the same as watching one, and never to somebody who already saw it.
+	#
+	# Paid HERE rather than in prophet.gd on purpose: this stays the one place
+	# in the game that grants a villager faith, and the prophet stays a question
+	# the funnel asks rather than a second economy running beside it.
+	var told := 0
+	if Prophet.among(hits, prophet.who) and a.weight > 0.0:
+		var share: float = a.weight * Prophet.RETELL_SHARE * fresh
+		if share > 0.0:
+			for f in prophet.listeners(host.folk, hits):
+				tiers += int(f.brain.gain_faith(share))
+				paid += share
+				told += 1
 	witness.spend(a.key, village.now)
 	# WHAT THEY THINK OF YOU, moved by how many of them saw it rather than by
 	# the act itself -- see reputation.gd.
@@ -394,12 +413,17 @@ func perform(a: DivineAction) -> Dictionary:
 	if now_known != was and now_known != "":
 		known_as.emit(now_known)
 		notice.emit("Your people see you as a %s." % reputation.title())
-	return report(a, hits, paid, tiers)
+	# THREADED THROUGH `report` RATHER THAN ADDED AFTERWARDS. `report` emits
+	# `witnessed`, so a field written to the returned dictionary a line later is
+	# a field every subscriber has already run without.
+	return report(a, hits, paid, tiers, told)
 
 
-func report(a: DivineAction, hits: Array, faith: float, tiers: int) -> Dictionary:
+func report(a: DivineAction, hits: Array, faith: float, tiers: int,
+			told := 0) -> Dictionary:
 	var r := {
 		"kind": a.kind, "at": a.at, "tags": a.tags, "verb": a.verb,
+		"told": told,
 		"hits": hits, "seen": hits.size(), "faith": faith, "tiers": tiers,
 		"novelty": witness.novelty(a.key, village.now if village != null else 0.0),
 		"subject": a.subject,
