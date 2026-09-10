@@ -49,6 +49,37 @@ const KINDS := {
 	# It is the seam that finally puts disasters inside the loop instead of
 	# beside it: a fire now makes people ASK, and answering pays like any other
 	# prayer rather than only through the calamity's own thanks.
+	# THE FEUD. Two villagers standing in the same field wanting opposite things
+	# from it, and the god cannot give them both.
+	#
+	# Everything above comes out of one villager's private state and is answered
+	# by the world getting better, however it gets better. These two are the
+	# other thing entirely: neither is a need, neither can resolve itself, and
+	# each one's answer is the other one's refusal. What decides it is the TAG
+	# of whatever the god does next where they can both see it -- grow something
+	# and the forager is answered, break stone and the miner is. There is no
+	# button for either; it is the acts the player already makes, read for what
+	# they say.
+	#
+	# `feud` is what marks a prayer as one of these, and `met` never returns
+	# true for one on the world's account. That is the whole point: nobody is
+	# coming to settle this but you.
+	"grove": {
+		"need": "",
+		"feud": true,
+		"tag": DivineAction.NATURE,
+		"icon": "tree",
+		"says": "%s wants the wood left to grow.",
+		"desperate": "%s begs you to spare the wood.",
+	},
+	"quarry": {
+		"need": "",
+		"feud": true,
+		"tag": DivineAction.STONE,
+		"icon": "stone",
+		"says": "%s wants the ground broken for stone.",
+		"desperate": "%s begs you to open the ground.",
+	},
 	"safety": {
 		"need": "",
 		"danger": true,
@@ -81,6 +112,13 @@ var urgent := false                ## was it DESPERATE when it started
 ## answered" from "they sorted it out themselves", and it is answered by the
 ## witness list rather than by guessing from timing.
 var touched_by_god := false
+## The prayer this one is arguing with, or null. Set in pairs and cleared in
+## pairs; a feud with one side left standing is just a prayer nobody can answer.
+var rival = null
+## Closed because the god took the other side, rather than because it lapsed.
+## Kept so the villager can be told, and so the probe can tell the difference
+## between a refusal and a shrug.
+var denied := false
 
 
 func _init(what: String, asker, now: float, desperate := false) -> void:
@@ -121,6 +159,11 @@ func danger() -> bool:
 	return bool(spec().get("danger", false))
 
 
+## Is this one half of an argument?
+func feud() -> bool:
+	return bool(spec().get("feud", false))
+
+
 ## Has the thing they were asking about sorted itself out?
 ##
 ## `host` is only needed for the danger kinds, which have to look at the world
@@ -128,6 +171,11 @@ func danger() -> bool:
 func met(host = null) -> bool:
 	if not is_instance_valid(who) or who.brain == null:
 		return true
+	# A FEUD IS NEVER SETTLED BY THE WORLD. There is no stat that gets better
+	# and no danger that passes -- if this returned true on its own the whole
+	# choice would evaporate while the player was looking elsewhere.
+	if feud():
+		return false
 	if danger():
 		return not near_danger(who, host)
 	return float(who.brain.stats.get(need(), 1.0)) >= SAFE

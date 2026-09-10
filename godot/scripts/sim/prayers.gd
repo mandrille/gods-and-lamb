@@ -43,8 +43,30 @@ const ANSWERED_FAITH := 22.0
 ## prayers is a god worth believing in even if it was not your prayer.
 const ANSWERED_WITNESS_RADIUS := 9.0
 
+## WHICH JOBS WANT WHICH THING FROM THE GROUND. The village already sorts
+## itself into people who take from the land and people who live off what grows
+## on it, and it has never once mattered. This is the seam where it does.
+const CLEARERS := ["lumberjack", "miner", "builder"]
+const GROWERS := ["adventurer", "hunter", "bard", "nurse", "villager"]
+
+## A feud is rare on purpose. It asks the player to disappoint somebody, and a
+## game that asks that every ninety seconds is a game about disappointing
+## people. It also needs a village big enough that both camps exist.
+const FEUD_EVERY := 240.0
+const FEUD_MIN_FOLK := 6
+## How far apart the two of them may be and still be arguing about the same
+## field. Inside the witness radius, so any act either sees, both see -- which
+## is what makes the tag, rather than the aim, the thing that decides it.
+const FEUD_NEAR := 8.0
+## What taking a side is worth to the one whose side you took. Above an
+## ordinary answered prayer: this one cost somebody else something.
+const FEUD_FAITH := 30.0
+
 signal opened(prayer: Prayer)
 signal closed(prayer: Prayer, answered: bool)
+## One side won and the other did not. Separate from `closed` because the
+## interesting thing about a feud is not that it ended.
+signal took_sides(won: Prayer, lost: Prayer)
 
 var host = null
 var village = null
@@ -54,6 +76,7 @@ var active: Array[Prayer] = []
 var _next_look: Dictionary = {}    ## instance id -> village time
 var _cooldown: Dictionary = {}     ## instance id -> village time
 var _rng := RandomNumberGenerator.new()
+var _feud_at := -1.0               ## village time of the last argument
 
 
 func _init() -> void:
@@ -86,11 +109,20 @@ func tick(_delta: float) -> void:
 	var now := float(village.now)
 	_close(now)
 	_open(now)
+	_open_feud(now)
 
 
 ## --- closing ----------------------------------------------------------------
 
 func _close(now: float) -> void:
+	# FEUDS FIRST, and separately, because closing one closes two -- walking the
+	# ordinary list and erasing a rival out from under it is how a loop like
+	# this ends up skipping an entry.
+	for p in active.duplicate():
+		if not p.feud() or not p.touched_by_god or not active.has(p):
+			continue
+		_settle(p, now)
+
 	for p in active.duplicate():
 		if not p.alive(now):
 			# Gave up, or died. No penalty: the design is explicit that
@@ -106,9 +138,96 @@ func _close(now: float) -> void:
 		closed.emit(p, p.touched_by_god)
 
 
+## THE GOD TOOK A SIDE.
+##
+## Both prayers end here. The one whose tag was matched is thanked and paid; the
+## other is DENIED, which is not the same as ignored -- ignoring a prayer is a
+## thing the design says a god may do, and the villager never knows whether they
+## were heard. Being denied means watching the answer go to the person standing
+## next to you.
+##
+## There is no faith penalty for it. The cost is a memory, and the memory is the
+## honest cost: their opinion of you drops because of something you did, and it
+## is a memory of the god so it does not fade away in ninety seconds like an
+## opinion about the weather.
+func _settle(won: Prayer, now: float) -> void:
+	var lost = won.rival
+	active.erase(won)
+	won.rival = null
+	_thank(won, FEUD_FAITH)
+	closed.emit(won, true)
+
+	if lost == null or not active.has(lost):
+		return
+	active.erase(lost)
+	lost.rival = null
+	lost.denied = true
+	_cooldown[lost.who.get_instance_id()] = now + COOLDOWN
+	if is_instance_valid(lost.who) and lost.who.brain != null:
+		# -0.5 AND NOT MORE. `divine_standing` SUMS its memories rather than
+		# averaging them, so this number lands on their opinion whole -- and at
+		# -0.7 a single denial was very nearly `smite`'s -0.8, which is what a
+		# villager feels watching you level a wood. Turning somebody down is
+		# not that. It should clearly cost something and clearly not be the
+		# worst thing you have ever done to them.
+		lost.who.brain.memories.add(Memories.KIND_PUNISHMENT,
+								    "You heard them, and not me.", -0.5, "",
+								    1.0 + lost.who.brain.personality.devotion)
+	closed.emit(lost, false)
+	took_sides.emit(won, lost)
+
+
+## --- the argument -----------------------------------------------------------
+
+## Start one, if the village is big enough to have two opinions in it.
+func _open_feud(now: float) -> void:
+	if _feud_at > 0.0 and now - _feud_at < FEUD_EVERY:
+		return
+	if host.folk.size() < FEUD_MIN_FOLK:
+		return
+	for p in active:
+		if p.feud():
+			return
+	var clearer = _pick(CLEARERS, now, null)
+	if clearer == null:
+		return
+	var grower = _pick(GROWERS, now, clearer)
+	if grower == null:
+		return
+	_feud_at = now
+	var a := Prayer.new("quarry", clearer, now)
+	var b := Prayer.new("grove", grower, now)
+	a.rival = b
+	b.rival = a
+	for p in [a, b]:
+		active.append(p)
+		_cooldown[p.who.get_instance_id()] = now + COOLDOWN
+		opened.emit(p)
+
+
+## Somebody with one of these jobs, free to speak, and near `beside` if given.
+func _pick(jobs: Array, now: float, beside):
+	var found: Array = []
+	for f in host.folk:
+		if not is_instance_valid(f) or f.brain == null or not f.brain.adult:
+			continue
+		if not (String(f.brain.job) in jobs):
+			continue
+		if now < float(_cooldown.get(f.get_instance_id(), 0.0)):
+			continue
+		if _has_prayer(f):
+			continue
+		if beside != null and f.position.distance_to(beside.position) > FEUD_NEAR:
+			continue
+		found.append(f)
+	if found.is_empty():
+		return null
+	return found[_rng.randi() % found.size()]
+
+
 ## THE PAYOUT, and it goes through `Divinity.perform` like everything else so it
 ## picks up the aggregated feedback, the reputation and the reaction for free.
-func _thank(p: Prayer) -> void:
+func _thank(p: Prayer, base := ANSWERED_FAITH) -> void:
 	if divinity == null or not is_instance_valid(p.who):
 		return
 	var a := DivineAction.make("answered", p.who.position, 0.0,
@@ -123,7 +242,7 @@ func _thank(p: Prayer) -> void:
 	# for the ones that were actually dire -- pulling somebody out of a fire is
 	# a different thing from handing somebody an apple, and the boon should
 	# know the difference.
-	var paid: float = ANSWERED_FAITH * divinity.boons.prayer_payout()
+	var paid: float = base * divinity.boons.prayer_payout()
 	if p.urgent:
 		paid *= divinity.boons.mercy()
 	p.who.brain.gain_faith(paid)
@@ -176,6 +295,11 @@ func _open(now: float) -> void:
 func _consider(f, now: float, has_room: bool) -> Prayer:
 	for kind in Prayer.KINDS:
 		var row: Dictionary = Prayer.KINDS[kind]
+		# Feuds are dealt in pairs by `_open_feud` and never one at a time. A
+		# single half of an argument is a prayer with no answer condition at
+		# all, which would stand for its full ninety seconds and then lapse.
+		if bool(row.get("feud", false)):
+			continue
 		var desperate := false
 		if bool(row.get("danger", false)):
 			# NOT A STAT. Somebody standing next to a fire is in trouble

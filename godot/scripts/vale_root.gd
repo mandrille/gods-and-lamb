@@ -2040,6 +2040,13 @@ func _add_ui() -> void:
 	prayers.divinity = divinity
 	add_child(prayers)
 	prayers.listen()
+	# TAKING A SIDE IS SAID OUT LOUD, and it names the person who lost. A choice
+	# nobody is told about is not a choice, it is a coin the game flipped.
+	prayers.took_sides.connect(func(won: Prayer, lost: Prayer):
+		if not is_instance_valid(won.who) or not is_instance_valid(lost.who):
+			return
+		divinity.notice.emit("You sided with %s. %s will remember."
+			% [String(won.who.brain.name), String(lost.who.brain.name)]))
 	prayers.opened.connect(func(pr):
 		# Somebody asking for something IS the interesting thing happening.
 		director.mark("prayer", float(village.now))

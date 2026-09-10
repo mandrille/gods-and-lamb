@@ -212,6 +212,7 @@ func _prayer(at: Vector2, pr) -> void:
 func _draw() -> void:
 	if host == null or rig == null or rig.cam == null:
 		return
+	_feuds()
 	for f in host.folk:
 		if not is_instance_valid(f) or f.brain == null:
 			continue
@@ -282,6 +283,56 @@ func _draw() -> void:
 			_face(p, f.brain.mood_face(), f == selected)
 
 	_edges()
+
+
+## DRAW THE ARGUMENT, not just the two people having it.
+##
+## Two prayer bubbles a few metres apart are two prayers. What makes a feud
+## legible is the line between them: it says these are one thing, it says you
+## cannot have both, and it says it before a word of text is read. Drawn under
+## everything, so it never sits on top of the bubbles it is joining.
+const FEUD_LINE := Color(0.97, 0.66, 0.36, 0.55)
+
+
+func _feuds() -> void:
+	if host.prayers == null:
+		return
+	var drawn: Dictionary = {}
+	for pr in (host.prayers.active as Array):
+		if not pr.feud() or pr.rival == null:
+			continue
+		# Once per pair, not once per end of it.
+		if drawn.has(pr.rival.get_instance_id()):
+			continue
+		drawn[pr.get_instance_id()] = true
+		var a = pr.who
+		var b = pr.rival.who
+		if not is_instance_valid(a) or not is_instance_valid(b):
+			continue
+		var ha: Vector3 = a.position + Vector3(0, HEAD_HEIGHT, 0)
+		var hb: Vector3 = b.position + Vector3(0, HEAD_HEIGHT, 0)
+		if rig.cam.is_position_behind(ha) or rig.cam.is_position_behind(hb):
+			continue
+		# THEY WALK. The pair are picked standing together, and nothing pins
+		# them there -- one wanders off to eat and the line becomes a rope
+		# stretched across the entire island, joining a villager on screen to
+		# somebody the player cannot see. A line that long says nothing except
+		# that the interface is confused.
+		if a.position.distance_to(b.position) > Prayers.FEUD_NEAR * 1.6:
+			continue
+		var pa: Vector2 = rig.cam.unproject_position(ha) + Vector2(0, -22)
+		var pb: Vector2 = rig.cam.unproject_position(hb) + Vector2(0, -22)
+		# And both ends have to be on screen, or it is an arrow pointing off
+		# the edge that never says what it is pointing at.
+		var view := Rect2(Vector2.ZERO, get_viewport_rect().size)
+		if not view.has_point(pa) or not view.has_point(pb):
+			continue
+		draw_line(pa, pb, FEUD_LINE, 2.0, true)
+		# A break in the middle, because the point of the line is that it does
+		# not join up.
+		var mid: Vector2 = (pa + pb) * 0.5
+		draw_circle(mid, 7.0, Color(0.08, 0.09, 0.12, 0.85))
+		draw_arc(mid, 7.0, 0.0, TAU, 16, FEUD_LINE, 1.6, true)
 
 
 ## POINT AT THE DISASTER THE PLAYER CANNOT SEE.
