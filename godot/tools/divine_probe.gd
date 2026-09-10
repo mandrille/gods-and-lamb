@@ -56,6 +56,7 @@ func _process(_d: float) -> bool:
 	_check_tiers()
 	_check_aggregation()
 	_check_they_notice()
+	_check_reputation()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
@@ -329,6 +330,78 @@ func _check_they_notice() -> void:
 	if who.state == who.State.TALK:
 		_faults.append("the villager never resumed -- a reaction that does not "
 			+ "end leaves them standing there forever")
+
+
+## WHAT KIND OF GOD THEY THINK YOU ARE.
+##
+## The three things that would go wrong quietly: an act nobody saw shaping an
+## opinion nobody holds, one apple in the first minute crowning you Provider,
+## and the announcement firing on every single act instead of when the answer
+## actually changes.
+func _check_reputation() -> void:
+	var rep = _root.divinity.reputation
+	for a in Reputation.AXES:
+		rep.axes[a] = 0.0
+
+	# NOBODY SAW IT, so nobody has an opinion.
+	rep.note(DivineAction.FOOD, 0)
+	print("[DIVINE] an unwitnessed act moved reputation by %.2f" % rep.total())
+	if rep.total() > 0.0:
+		_faults.append("an act nobody witnessed shaped what the village thinks "
+			+ "-- a reputation can be farmed in an empty corner of the map")
+
+	# NOT YET. One act is not an identity.
+	rep.note(DivineAction.FOOD, 3)
+	print("[DIVINE] after one witnessed act they call you '%s' (total %.1f)"
+		% [rep.dominant(), rep.total()])
+	if rep.dominant() != "":
+		_faults.append("one act was enough to be called a %s" % rep.dominant())
+
+	# FEEDING PEOPLE MAKES YOU A PROVIDER, and it takes a while.
+	var announced: Array = []
+	_root.divinity.known_as.connect(func(axis): announced.append(axis))
+	for i in 30:
+		_root.divinity.perform(_food_act())
+	print("[DIVINE] after thirty feedings: '%s', provider share %.0f%%, "
+		% [rep.dominant(), rep.share("provider") * 100.0]
+		+ "announced %d time(s)" % announced.size())
+	if rep.dominant() != "provider":
+		_faults.append("thirty acts of feeding people did not make a Provider: "
+			+ "'%s'" % rep.dominant())
+	# ONCE. Announcing on every act is the stat-grind readout the design says
+	# not to build.
+	if announced.size() != 1:
+		_faults.append("the reputation was announced %d times for one change"
+			% announced.size())
+
+	# AND IT CAN CHANGE. An identity that locks on the first thing you did is a
+	# class you picked by accident.
+	for i in 90:
+		rep.note(DivineAction.WRATH, 4)
+	print("[DIVINE] after a great deal of wrath they call you '%s'"
+		% rep.dominant())
+	if rep.dominant() != "wrath":
+		_faults.append("the identity would not move off provider: '%s'"
+			% rep.dominant())
+
+	# IT SURVIVES A SAVE. Everything else about a god is stored; an opinion the
+	# village forgets on reload is not an opinion.
+	var doc: Dictionary = rep.to_doc()
+	var fresh := Reputation.new()
+	fresh.from_doc(doc)
+	if absf(fresh.total() - rep.total()) > 0.01:
+		_faults.append("reputation does not round-trip: %.1f -> %.1f"
+			% [rep.total(), fresh.total()])
+	for a in Reputation.AXES:
+		rep.axes[a] = 0.0
+
+
+func _food_act() -> DivineAction:
+	var a := DivineAction.make("touch", _somewhere(), 0.1,
+							   WorldTouch.WITNESS_RANGE)
+	a.tags = DivineAction.FOOD
+	a.verb = "Apples fall."
+	return a
 
 
 func _anyone():

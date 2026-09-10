@@ -157,6 +157,7 @@ const COMMUNE_BASE := 55.0
 const COMMUNE_GROWTH := 1.5
 var boons: Boons
 var witness: Witness
+var reputation: Reputation
 var drafts_taken := 0
 var pending_draft: Array = []
 
@@ -215,6 +216,10 @@ signal level_up(level: int)
 ## One divine act, resolved: who saw it, what it paid, what it was.
 ## The only thing the feedback layer needs to subscribe to.
 signal witnessed(result: Dictionary)
+## THE ONLY TIME REPUTATION IS ANNOUNCED: when what they would CALL you
+## changes. Emitting on every act would be "Provider +0.2" forty times a
+## minute, which is the RPG-stat-grind readout the design explicitly rejects.
+signal known_as(axis: String)
 
 var age := 0                                                  ## how many ages have PASSED
 ## The first witnessed blessing has already been paid for with a boon.
@@ -236,6 +241,7 @@ func _init() -> void:
 	rng.seed = 20260901
 	boons = Boons.new(20260901)
 	witness = Witness.new()
+	reputation = Reputation.new()
 
 
 ## Faith per second, right now, from everyone alive plus the buildings.
@@ -376,6 +382,14 @@ func perform(a: DivineAction) -> Dictionary:
 		add_faith(a.global * fresh)
 		earned.emit(a.global * fresh, a.at, a.why)
 	witness.spend(a.key, village.now)
+	# WHAT THEY THINK OF YOU, moved by how many of them saw it rather than by
+	# the act itself -- see reputation.gd.
+	var was := reputation.dominant()
+	reputation.note(a.tags, hits.size())
+	var now_known := reputation.dominant()
+	if now_known != was and now_known != "":
+		known_as.emit(now_known)
+		notice.emit("Your people see you as a %s." % reputation.title())
 	return report(a, hits, paid, tiers)
 
 

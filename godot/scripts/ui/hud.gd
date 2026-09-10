@@ -506,9 +506,17 @@ func _ledger() -> void:
 ## for another minute.
 func _godbar() -> void:
 	var lv: int = int(divinity.god_level)
-	var label := "Level %d" % lv
+	# WHAT THEY CALL YOU, when they have made up their minds. One word beside
+	# the level and no numbers anywhere -- the whole design note on reputation
+	# is that it must not read as a stat sheet.
+	var known := String(divinity.reputation.title())
+	var label := "Level %d" % lv if known == "" else "Level %d  %s" % [lv, known]
 	var w := 34.0 + float(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT,
 												-1, 15).x) + 96.0
+	# CLAMPED. The label grows when they have decided what to call you, and this
+	# bar is one of the fixed-pixel rects that ran off the right edge of a phone
+	# the last time something here got longer.
+	w = minf(w, get_viewport_rect().size.x - PAD * 2.0)
 	var r := Rect2(PAD, _god_y(), w, GOD_H)
 	_panel(r)
 	if _level_flash > 0.0:

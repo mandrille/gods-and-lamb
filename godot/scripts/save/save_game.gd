@@ -172,6 +172,9 @@ static func _capture_divinity(d) -> Dictionary:
 		"hand": hand,
 		"drafts_taken": int(d.drafts_taken),
 		"witnessed_total": int(d.witnessed_total),
+		# Optional, like the faith ladder: an old save has no opinion of you
+		# yet, which is exactly what a fresh Reputation says too.
+		"reputation": d.reputation.to_doc(),
 		"boons": {"held": d.boons.held.duplicate(),
 				  "rank3_open": bool(d.boons.rank3_open)},
 	}
@@ -280,6 +283,7 @@ static func apply_divinity(d, doc: Dictionary) -> void:
 	d._tutorial_gift_given = bool(doc.get("tutorial_gift", false))
 	d.drafts_taken = int(doc.get("drafts_taken", 0))
 	d.witnessed_total = int(doc.get("witnessed_total", 0))
+	d.reputation.from_doc(doc.get("reputation", {}))
 	var cards: Array = doc.get("unlocked_cards", [])
 	if not cards.is_empty():
 		d.unlocked_cards.clear()
