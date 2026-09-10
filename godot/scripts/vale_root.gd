@@ -63,6 +63,7 @@ var panel: VillagerPanel
 var hud: HUD
 var chorus: Chorus = null
 var prayers: Prayers = null
+var director := Director.new()
 var floaters: Floaters
 var draft: BoonDraft
 var cursor: MiracleCursor
@@ -446,7 +447,7 @@ func _on_picked(entry: Dictionary) -> void:
 func _fruit(act: Dictionary, aid: String, at: Vector3) -> void:
 	var home: Vector2i = grid.cell_of(at)
 	var reach: int = int(act.get("reach", WorldTouch.FRUIT_REACH))
-	var want: int = int(act.get("count", WorldTouch.FRUIT))
+	var want: int = int(act.get("count", WorldTouch.FRUIT)) 		+ divinity.boons.extra_fruit()
 	# Every square under the canopy, nearest first, so a tree in a corner still
 	# drops what it can rather than failing on twenty random misses.
 	var near: Array[Vector2i] = []
@@ -639,6 +640,47 @@ func _villagers_react(r: Dictionary) -> void:
 			floaters.puff("bless", f.brain.faith_tier(),
 						  f.position + Vector3(0, 1.35, 0))
 			break
+
+
+## THE HEARTBEAT.
+##
+## Every source of drama in this village runs on its own timer, which averages
+## out fine and clumps badly: four things in ten seconds and then three quiet
+## minutes, and the three minutes are what a player quits during. This does not
+## take any decision away from those systems -- it only refuses to let the quiet
+## run past about a minute, by leaning on whichever of them is currently able to
+## fire. See director.gd for why the pressure behind it is never shown.
+func _tick_director() -> void:
+	if divinity == null or village == null or folk.size() < Director.MIN_FOLK:
+		return
+	var now := float(village.now)
+	director.tick(now)
+	var want := director.wants(now, {
+		"newcomer": village.population < village.pop_cap,
+		"wolf": divinity.age >= 2 and _has_prey(),
+		# See Director.CALAMITY_FOLK: the director may not pull a disaster
+		# forward into a village too young to survive one.
+		"calamity": divinity.age >= 2 and calamities.is_empty() 			and folk.size() >= Director.CALAMITY_FOLK,
+	})
+	if want == "":
+		return
+	director.mark(want, now)
+	match want:
+		"newcomer":
+			# Reach for the village's own timer rather than its guts: it
+			# already knows where a newcomer may stand and what to say.
+			_newcomer_timer = 0.01
+		"wolf":
+			_wolf_timer = 0.01
+		"calamity":
+			_calamity_timer = 0.01
+
+
+func _has_prey() -> bool:
+	for b in beasts:
+		if is_instance_valid(b) and b.kind != "Animals/wolf":
+			return true
+	return false
 
 
 ## Is a BUILDING standing here? Dressing and trees do not count -- they are
@@ -996,6 +1038,7 @@ func _restore_followers(doc: Dictionary) -> void:
 				"other": String(e.get("o", "")),
 				"valence": float(e.get("v", 0.0)),
 				"heat": float(e.get("h", 0.0)),
+				"keep": float(e.get("kp", 0.0)),
 				"age": float(e.get("a", 0.0))})
 		for line in (row.get("log", []) as Array):
 			b.thought_log.append(String(line))
@@ -1072,6 +1115,10 @@ func _start_calamity() -> void:
 	var heading: Vector2i = winds[_rng.randi() % winds.size()]
 	var c := Calamity.new(kind, where, heading)
 	calamities.append(c)
+	# Tell the director, whether it asked for this or the village's own timer
+	# did -- pressure is time since ANYTHING happened, not since the director
+	# last spoke, or it would fire on top of the village's own drama.
+	director.mark("calamity", float(village.now))
 	var look: Dictionary = c.look()
 	divinity.notice.emit(String(look["notice"]))
 	if sfx != null:
@@ -1945,6 +1992,8 @@ func _add_ui() -> void:
 	add_child(prayers)
 	prayers.listen()
 	prayers.opened.connect(func(pr):
+		# Somebody asking for something IS the interesting thing happening.
+		director.mark("prayer", float(village.now))
 		# The bubble is the real announcement; the line is for anyone whose eye
 		# was somewhere else, and only for the ones that are actually urgent.
 		if pr.urgent and divinity != null:
@@ -2065,6 +2114,13 @@ func _on_child_wanted(a: Node, b: Node) -> void:
 	if f == null:
 		return
 	f.become_child()
+	director.mark("newcomer", float(village.now))
+	# BORN ALREADY KNOWING YOUR NAME. Asked at the moment of birth, so a boon
+	# taken later never retroactively converts anybody -- which is the whole
+	# reason boons are questions rather than things that get applied.
+	var inherited: float = divinity.boons.birth_faith()
+	if inherited > 0.0:
+		f.brain.gain_faith(inherited)
 	village.population = folk.size()
 	fxe.burst("birth", grid.world_of(cell) + Vector3(0, 0.7, 0))
 	sfx.play("coin", 1.25)
@@ -2339,6 +2395,7 @@ func _process(delta: float) -> void:
 		if music != null:
 			music.set_dusk(daylight.dusk_amount(), delta)
 	_tick_calamities(delta)
+	_tick_director()
 	_tick_tides()
 	if prayers != null:
 		prayers.tick(delta)

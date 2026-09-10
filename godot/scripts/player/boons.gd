@@ -20,7 +20,51 @@ class_name Boons
 ## affect. `Brain.ACTIONS` is a const shared by every mind in the game, and a
 ## boon that mutated it would make the change permanent, global, and invisible
 ## to the next run.
+## THE RULE-CHANGERS.
+##
+## The eight above are dials: more faith, more yield, faster walking. These
+## five change WHAT HAPPENS, which is what makes a draft a decision rather than
+## a number to maximise -- "a crowd is worth more than a person" plays
+## differently from "+25%", even when the arithmetic works out the same.
+##
+## They are still QUESTIONS, not hooks. Every one is a `func` the interested
+## system asks at the moment it matters, so a boon reaches into nothing and
+## nothing has to be un-applied -- the rule this file has kept since it was
+## written, and the reason there is no on_divine_action() anywhere in it.
 const CATALOGUE := {
+	"divine_witness": {
+		"name": "Divine Witness", "icon": "pop",
+		"what": "A thing seen by a crowd is worth more than a thing seen.",
+		"ranks": [0.12, 0.20, 0.30],
+		"blurb": ["+12% Faith per witness beyond the third",
+				  "+20% per witness", "+30% per witness"],
+	},
+	"answered": {
+		"name": "Answered Prayers", "icon": "cross",
+		"what": "Whoever you answer will not stop talking about it.",
+		"ranks": [1.5, 2.2, 3.0],
+		"blurb": ["Answering a prayer pays 50% more",
+				  "120% more", "200% more"],
+	},
+	"mercy": {
+		"name": "Divine Mercy", "icon": "heart",
+		"what": "Pulling somebody back from the edge is remembered longest.",
+		"ranks": [2.0, 3.0, 4.5],
+		"blurb": ["Answering the dying or the endangered pays double",
+				  "triple", "four and a half times"],
+	},
+	"bountiful": {
+		"name": "Bountiful Earth", "icon": "apple",
+		"what": "The trees give more than trees should.",
+		"ranks": [2, 4, 6],
+		"blurb": ["Fruiting a tree drops 2 more", "4 more", "6 more"],
+	},
+	"children": {
+		"name": "Children of God", "icon": "birth",
+		"what": "Born already knowing your name.",
+		"ranks": [12.0, 30.0, 60.0],
+		"blurb": ["Newborns start with 12 Faith", "30 Faith", "60 Faith"],
+	},
 	"zeal": {
 		"name": "Zeal", "icon": "faith",
 		"what": "Your followers' devotion feeds you more richly.",
@@ -161,6 +205,37 @@ func _value(id: String, at_zero: float) -> float:
 
 func zeal() -> float:
 	return _value("zeal", 1.0)
+
+
+## --- the rule-changers, asked at the moment they matter ---------------------
+
+## How much a CROWD is worth beyond the third pair of eyes. Returns a plain
+## multiplier so the caller does not have to know the shape of the boon.
+func crowd_bonus(seen: int) -> float:
+	var per := _value("divine_witness", 0.0)
+	if per <= 0.0 or seen <= 3:
+		return 1.0
+	return 1.0 + per * float(seen - 3)
+
+
+## What answering a prayer is worth, over and above the base.
+func prayer_payout() -> float:
+	return _value("answered", 1.0)
+
+
+## And extra again when what you answered was somebody dying or in a fire.
+func mercy() -> float:
+	return _value("mercy", 1.0)
+
+
+## Extra fruit from a touched tree.
+func extra_fruit() -> int:
+	return int(_value("bountiful", 0.0))
+
+
+## What a newborn already believes.
+func birth_faith() -> float:
+	return _value("children", 0.0)
 
 
 func yield_bonus() -> int:

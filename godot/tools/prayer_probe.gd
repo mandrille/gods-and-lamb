@@ -53,6 +53,7 @@ func _process(_d: float) -> bool:
 	_check_ailing()
 	_check_fire_frightens()
 	_check_miracles_answer()
+	_check_memory_lasts()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
@@ -283,6 +284,45 @@ func _check_miracles_answer() -> void:
 	if int(DivineAction.MIRACLE_TAGS.get("mend", 0)) & DivineAction.LIFE == 0:
 		_faults.append("mend does not carry the LIFE tag, so nothing it does "
 			+ "can ever answer a plea for healing")
+
+
+## BELIEF THAT EVAPORATES IS NOT BELIEF.
+##
+## Every memory used to cool toward zero at the same rate and then be deleted,
+## which is right for a chat about the weather and absurd for "I asked, and it
+## came" -- a village forgot being saved in about ninety seconds of game time,
+## and `divine_standing` went with it.
+func _check_memory_lasts() -> void:
+	var who = _anyone()
+	if who == null:
+		return
+	var m = who.brain.memories
+	m.entries.clear()
+	m.add(Memories.KIND_MIRACLE, "I asked, and it came.", 0.95)
+	m.add(Memories.KIND_SOCIAL, "We talked about the weather.", 0.5, "Odo")
+	var standing: float = m.divine_standing()
+	# An hour of village time -- far past the old ninety-second death.
+	m.tick(3600.0)
+	var later: float = m.divine_standing()
+	var kinds: Array = []
+	for e in m.entries:
+		kinds.append(String(e["kind"]))
+	print("[PRAY] after an hour: divine standing %.2f -> %.2f, %d memories left "
+		% [standing, later, m.entries.size()] + "(%s)" % [kinds])
+	if later <= 0.0:
+		_faults.append("an hour after being saved the villager felt nothing "
+			+ "about the god at all")
+	if not kinds.has(Memories.KIND_MIRACLE):
+		_faults.append("the memory of a divine act was deleted entirely")
+	if kinds.has(Memories.KIND_SOCIAL):
+		_faults.append("small talk survived an hour -- the residue is being "
+			+ "given to memories that should fade")
+	# And it does still FADE. A memory frozen at full strength is a mood
+	# modifier with a story attached, not a memory.
+	if later >= standing:
+		_faults.append("the memory did not fade at all: %.2f -> %.2f"
+			% [standing, later])
+	m.entries.clear()
 
 
 ## --- helpers ----------------------------------------------------------------

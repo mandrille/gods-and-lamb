@@ -119,7 +119,14 @@ func _thank(p: Prayer) -> void:
 	a.why = "prayer"
 	# The requester's share is paid directly rather than through the witness
 	# sweep, because it is not about who was nearby -- it is theirs.
-	p.who.brain.gain_faith(ANSWERED_FAITH)
+	# WHAT ANSWERING IS WORTH, and the two boons that change it. Mercy is only
+	# for the ones that were actually dire -- pulling somebody out of a fire is
+	# a different thing from handing somebody an apple, and the boon should
+	# know the difference.
+	var paid: float = ANSWERED_FAITH * divinity.boons.prayer_payout()
+	if p.urgent:
+		paid *= divinity.boons.mercy()
+	p.who.brain.gain_faith(paid)
 	p.who.brain.memories.add(Memories.KIND_MIRACLE,
 							 "I asked, and it came.", 0.95, "",
 							 1.0 + p.who.brain.personality.devotion)

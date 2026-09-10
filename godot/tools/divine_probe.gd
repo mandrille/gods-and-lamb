@@ -57,6 +57,7 @@ func _process(_d: float) -> bool:
 	_check_aggregation()
 	_check_they_notice()
 	_check_reputation()
+	_check_rule_boons()
 	_report()
 	quit(0 if _faults.is_empty() else 1)
 	return true
@@ -394,6 +395,57 @@ func _check_reputation() -> void:
 			% [rep.total(), fresh.total()])
 	for a in Reputation.AXES:
 		rep.axes[a] = 0.0
+
+
+## BOONS THAT CHANGE A RULE, not a number.
+##
+## The point of asserting these is that each one is a QUESTION asked at a
+## moment -- so the test is that the answer differs with the boon held and that
+## it is asked at all. A boon nobody asks about is a line of catalogue text.
+func _check_rule_boons() -> void:
+	var b = _root.divinity.boons
+	var held: Dictionary = b.held.duplicate()
+
+	# A crowd is worth more than a person -- and only past the third.
+	b.held.erase("divine_witness")
+	var plain: float = b.crowd_bonus(8)
+	b.held["divine_witness"] = 3
+	var boosted: float = b.crowd_bonus(8)
+	var small: float = b.crowd_bonus(2)
+	print("[DIVINE] crowd of eight: x%.2f plain, x%.2f with Divine Witness "
+		% [plain, boosted] + "(a pair is still x%.2f)" % small)
+	if boosted <= plain:
+		_faults.append("Divine Witness did not make a crowd worth more")
+	if not is_equal_approx(small, 1.0):
+		_faults.append("Divine Witness paid out for a crowd of two, which is "
+			+ "not a crowd")
+
+	# Answering pays more, and mercy pays more again for the dire ones.
+	b.held.erase("answered")
+	b.held.erase("mercy")
+	var base: float = b.prayer_payout()
+	b.held["answered"] = 3
+	b.held["mercy"] = 3
+	print("[DIVINE] answering a prayer: x%.2f -> x%.2f, and x%.2f more when "
+		% [base, b.prayer_payout(), b.mercy()] + "it was dire")
+	if b.prayer_payout() <= base:
+		_faults.append("Answered Prayers changed nothing")
+	if b.mercy() <= 1.0:
+		_faults.append("Divine Mercy changed nothing")
+
+	# And the ones that alter what the world does at all.
+	b.held.erase("bountiful")
+	var fruit_plain: int = b.extra_fruit()
+	b.held["bountiful"] = 2
+	b.held["children"] = 2
+	print("[DIVINE] a touched tree drops %d extra with Bountiful Earth; a "
+		% b.extra_fruit() + "newborn starts with %.0f Faith" % b.birth_faith())
+	if b.extra_fruit() <= fruit_plain:
+		_faults.append("Bountiful Earth dropped no extra fruit")
+	if b.birth_faith() <= 0.0:
+		_faults.append("Children of God gave newborns nothing")
+
+	b.held = held
 
 
 func _food_act() -> DivineAction:

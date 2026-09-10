@@ -366,6 +366,10 @@ func perform(a: DivineAction) -> Dictionary:
 	# How tired they are of this particular act. An empty key never decays --
 	# blessing and answering a disaster are not things anyone gets bored of.
 	var fresh: float = witness.novelty(a.key, village.now)
+	# A THING SEEN BY A CROWD is worth more than a thing seen. Asked here
+	# rather than pushed from the boon, which is how every effect in boons.gd
+	# has always worked.
+	fresh *= boons.crowd_bonus(hits.size())
 	var paid := 0.0
 	var tiers := 0
 	for h in hits:

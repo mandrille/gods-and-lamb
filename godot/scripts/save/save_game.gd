@@ -245,6 +245,9 @@ static func _capture_memories(b) -> Array:
 					"o": String(e.get("other", "")),
 					"v": float(e.get("valence", 0.0)),
 					"h": float(e.get("heat", 0.0)),
+					# The residue, or a memory of being saved comes back as an
+					# ordinary one and fades away over the next minute.
+					"kp": float(e.get("keep", 0.0)),
 					"a": float(e.get("age", 0.0))})
 	return out
 

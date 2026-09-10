@@ -36,12 +36,32 @@ var entries: Array[Dictionary] = []
 ## reference on purpose, because a memory has to survive the thing it is about.
 ## Holding a node here would either keep a freed follower alive or leave a
 ## dangling reference the panel would crash on.
+## WHAT THE GOD DID IS NOT FORGOTTEN IN NINETY SECONDS.
+##
+## Every memory cooled at the same rate toward zero and was then deleted, which
+## for a chat about the weather is right and for "I asked, and it came" is
+## absurd: belief that evaporates before the day is out is not belief. Divine
+## memories keep a RESIDUE -- a floor the heat never falls below -- so the
+## strongest ones go on quietly colouring `mood()` and `divine_standing()` for
+## the rest of the village's life.
+##
+## A fraction rather than the whole, because a memory should still fade: what a
+## god did to you last week should matter less today than it did that evening,
+## and more than nothing at all.
+const KEEPS := [KIND_BLESSING, KIND_PUNISHMENT, KIND_MIRACLE]
+const RESIDUE := 0.35
+
+
 func add(kind: String, text: String, valence: float, other := "",
 		 weight := 1.0) -> void:
+	var heat: float = clampf(absf(valence) * weight, 0.0, 1.0)
 	entries.append({
 		"kind": kind, "text": text, "other": other,
 		"valence": clampf(valence, -1.0, 1.0),
-		"heat": clampf(absf(valence) * weight, 0.0, 1.0),
+		"heat": heat,
+		# The floor this one can never cool past. Only the god's doing earns
+		# one, and only in proportion to how much it meant at the time.
+		"keep": heat * RESIDUE if kind in KEEPS else 0.0,
 		"age": 0.0,
 	})
 	_trim()
@@ -50,12 +70,15 @@ func add(kind: String, text: String, valence: float, other := "",
 func tick(delta: float) -> void:
 	for e in entries:
 		e["age"] = float(e["age"]) + delta
-		e["heat"] = maxf(0.0, float(e["heat"]) - FADE_PER_SEC * delta)
+		# Toward the floor, not toward zero. For everything but the god's own
+		# acts the floor IS zero, so nothing else changed.
+		e["heat"] = maxf(float(e.get("keep", 0.0)),
+						 float(e["heat"]) - FADE_PER_SEC * delta)
 	# Cold memories are dropped rather than kept at zero. A list that only
 	# grows is the same leak whether or not the entries still do anything.
 	var kept: Array[Dictionary] = []
 	for e in entries:
-		if float(e["heat"]) > 0.02:
+		if float(e["heat"]) > 0.02 or float(e.get("keep", 0.0)) > 0.0:
 			kept.append(e)
 	entries = kept
 
@@ -122,5 +145,13 @@ func _trim() -> void:
 		return
 	# Drop the COLDEST, not the oldest. An old wound that still aches is more
 	# a part of this person than a warm greeting from a minute ago.
-	entries.sort_custom(func(a, b): return float(a["heat"]) > float(b["heat"]))
+	# What the god did outranks everything, however cold it has gone: a village
+	# that forgets being saved because four people said hello is a village with
+	# no history. Sorted by the floor first, then by warmth.
+	entries.sort_custom(func(a, b):
+		var ka: float = float(a.get("keep", 0.0))
+		var kb: float = float(b.get("keep", 0.0))
+		if not is_equal_approx(ka, kb):
+			return ka > kb
+		return float(a["heat"]) > float(b["heat"]))
 	entries = entries.slice(0, CAP)
