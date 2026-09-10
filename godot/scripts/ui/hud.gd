@@ -822,6 +822,28 @@ func _goal() -> void:
 		c + Vector2(-1, 0)]), Color(GOLD.r, GOLD.g, GOLD.b, 0.75))
 	draw_string(_font, at + Vector2(14.0, 1.0), text,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.62))
+	_prophecy(at + Vector2(0.0, 18.0))
+
+
+## WHAT THE PROPHET SAID IS COMING, under the standing goal rather than instead
+## of it. The two are different things and the difference matters: the goal is
+## what the game always wants next, and it never runs out; a prophecy is a thing
+## somebody in the village claimed, it has a clock on it, and it can be missed
+## with no consequence at all. Drawn in the prophet's gold so the two lines are
+## not read as one list.
+func _prophecy(at: Vector2) -> void:
+	if host == null or host.get("prophecies") == null:
+		return
+	var p = host.prophecies.current
+	if p == null or host.village == null:
+		return
+	var text: String = host.prophecies.line(float(host.village.now))
+	if text == "":
+		return
+	Icons.draw_icon(self, p.icon(), at + Vector2(5.0, -3.0), 14.0)
+	draw_string(_font, at + Vector2(14.0, 1.0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+				Color(GOLD.r, GOLD.g, GOLD.b, 0.78))
 
 
 ## The blessing chain, as pips beside the Faith counter.

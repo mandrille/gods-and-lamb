@@ -133,6 +133,7 @@ var _touched_at := -99.0            ## village clock of the last world touch
 ## Fires, droughts and winds currently eating the world.
 var calamities: Array = []
 var aftermath = null               ## the disaster resolution card
+var prophecies: Prophecies = null  ## what the prophet says is coming
 var _calamity_timer := 90.0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
@@ -2067,6 +2068,30 @@ func _add_ui() -> void:
 	prayers.village = village
 	prayers.divinity = divinity
 	add_child(prayers)
+	prophecies = Prophecies.new()
+	prophecies.host = self
+	prophecies.spoken.connect(func(p: Prophecy):
+		divinity.notice.emit(p.spoken)
+		if sfx != null:
+			sfx.play("bless"))
+	prophecies.fulfilled.connect(func(p: Prophecy):
+		divinity.notice.emit("It came to pass.")
+		if aftermath != null:
+			aftermath.show_report("IT CAME TO PASS", true, [
+				[p.icon(), String(p.spec().get("short", "%d/%d"))
+					% [p.need, p.need], Aftermath.GOOD],
+				["faith", "+%d Faith" % int(Prophecy.FAITH), Aftermath.GOLD],
+			]))
+	prophecies.broken.connect(func(p: Prophecy):
+		# NO PENALTY, and the line says so. The prophet was wrong; that is a
+		# thing that happens to prophets.
+		divinity.notice.emit("The hour passed, and it did not come.")
+		if aftermath != null:
+			aftermath.show_report("IT DID NOT COME", false, [
+				[p.icon(), String(p.spec().get("short", "%d/%d"))
+					% [mini(p.at(self), p.need), p.need], Aftermath.DIM],
+			]))
+
 	prayers.listen()
 	# TAKING A SIDE IS SAID OUT LOUD, and it names the person who lost. A choice
 	# nobody is told about is not a choice, it is a coin the game flipped.
@@ -2481,6 +2506,8 @@ func _process(delta: float) -> void:
 	_tick_calamities(delta)
 	_tick_director()
 	_tick_prophet()
+	if prophecies != null and village != null:
+		prophecies.tick(float(village.now))
 	_tick_tides()
 	if prayers != null:
 		prayers.tick(delta)
