@@ -62,6 +62,7 @@ var overhead: Overhead
 var panel: VillagerPanel
 var hud: HUD
 var chorus: Chorus = null
+var prayers: Prayers = null
 var floaters: Floaters
 var draft: BoonDraft
 var cursor: MiracleCursor
@@ -1934,6 +1935,25 @@ func _add_ui() -> void:
 	chorus.listen(divinity)
 	divinity.witnessed.connect(_villagers_react)
 
+	# THE VILLAGE ASKS. Built after Chorus so the answer's feedback has
+	# somewhere to go, and after divinity so it can listen for witnesses.
+	prayers = Prayers.new()
+	prayers.name = "Prayers"
+	prayers.host = self
+	prayers.village = village
+	prayers.divinity = divinity
+	add_child(prayers)
+	prayers.listen()
+	prayers.opened.connect(func(pr):
+		# The bubble is the real announcement; the line is for anyone whose eye
+		# was somewhere else, and only for the ones that are actually urgent.
+		if pr.urgent and divinity != null:
+			divinity.notice.emit(pr.says()))
+	prayers.closed.connect(func(pr, answered):
+		if answered and divinity != null:
+			divinity.notice.emit("%s got what they asked for."
+				% pr.who.brain.name if is_instance_valid(pr.who) else "Answered."))
+
 	# The held miracle lives in the WORLD, not the UI: it is a cloud with a
 	# position, and it has to be occluded by the terrain like anything else.
 	cursor = MiracleCursor.new()
@@ -2320,6 +2340,8 @@ func _process(delta: float) -> void:
 			music.set_dusk(daylight.dusk_amount(), delta)
 	_tick_calamities(delta)
 	_tick_tides()
+	if prayers != null:
+		prayers.tick(delta)
 	_service_grid(delta)
 	social.tick(delta, folk)
 	_maybe_newcomer(delta)

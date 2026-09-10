@@ -191,6 +191,24 @@ func _wonder(at: Vector2) -> void:
 	draw_circle(c + Vector2(0, 4.6), 1.7, g)
 
 
+## A thought bubble with what they want in it.
+##
+## The icon IS the message -- an apple means hungry -- because the player is
+## meant to be looking at the village rather than reading it. Urgency is a
+## faster pulse and a warmer rim, not a second icon and not a number, so a
+## screenful of these still reads at a glance.
+func _prayer(at: Vector2, pr) -> void:
+	var speed: float = 0.011 if pr.urgent else 0.005
+	var beat: float = 1.0 + (0.13 if pr.urgent else 0.06) 		* sin(float(Time.get_ticks_msec()) * speed)
+	var c := at + Vector2(0, -22)
+	var rim := Color(0.97, 0.66, 0.36) if pr.urgent 		else Color(0.86, 0.89, 0.96, 0.75)
+	draw_circle(c, 13.0 * beat, Color(0.08, 0.09, 0.12, 0.78))
+	draw_arc(c, 13.0 * beat, 0.0, TAU, 22, rim, 1.8, true)
+	# The little tail, so it reads as a thought rather than a badge.
+	draw_circle(at + Vector2(-1.0, -8.0), 2.6, Color(0.08, 0.09, 0.12, 0.78))
+	Icons.draw_icon(self, pr.icon(), c, 17.0)
+
+
 func _draw() -> void:
 	if host == null or rig == null or rig.cam == null:
 		return
@@ -227,6 +245,15 @@ func _draw() -> void:
 				_wonder(p)
 				continue
 			_looking.erase(f.get_instance_id())
+
+		# ASKING. Above guilt because a prayer is the thing the player is meant
+		# to act on and guilt is the thing they may ignore, and because a prayer
+		# stands for a minute and a half where guilt is a few seconds.
+		if host.prayers != null:
+			var pr = host.prayers.of(f)
+			if pr != null:
+				_prayer(p, pr)
+				continue
 
 		if host.divinity != null and host.divinity._is_guilty(f):
 			_guilt(p)
