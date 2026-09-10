@@ -135,6 +135,10 @@ var calamities: Array = []
 var aftermath = null               ## the disaster resolution card
 var prophecies: Prophecies = null  ## what the prophet says is coming
 var chronicle: Chronicle = Chronicle.new()   ## what this village remembers
+## What a portal would be told. Counted here rather than inside each system for
+## the same reason the feedback is: a system that reported its own metrics could
+## not be run headless without one.
+var stats: Analytics = Analytics.new()
 var _calamity_timer := 90.0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
@@ -674,6 +678,7 @@ func _tick_prophet() -> void:
 			divinity.notice.emit("%s speaks for you now." % now_name)
 			chronicle.add("prophet", daylight.day,
 						  "%s began to speak for you." % now_name)
+			stats.reach("first_prophet")
 			if fxe != null and divinity.prophet.has():
 				fxe.burst("bless", divinity.prophet.who.position
 									+ Vector3(0, 1.2, 0))
@@ -780,6 +785,8 @@ func _touch_take() -> bool:
 ## those are different verbs. Per-row keying is also self-limiting -- greening
 ## is spammable and fruiting is capped by how many trees exist.
 func _touch_paid(act: Dictionary, at: Vector3, novelty_key := "") -> void:
+	stats.note("touches")
+	stats.reach("first_touch")
 	var gives: Dictionary = act.get("gives", {})
 	if not gives.is_empty():
 		village.give(gives)
@@ -1156,6 +1163,7 @@ func _start_calamity() -> void:
 	var heading: Vector2i = winds[_rng.randi() % winds.size()]
 	var c := Calamity.new(kind, where, heading)
 	calamities.append(c)
+	stats.note("disasters_started")
 	# Tell the director, whether it asked for this or the village's own timer
 	# did -- pressure is time since ANYTHING happened, not since the director
 	# last spoke, or it would fire on top of the village's own drama.
@@ -1310,6 +1318,7 @@ func _end_calamity(c, solved: bool) -> void:
 		divinity.notice.emit("It burns itself out. %d lost." % c.eaten)
 		chronicle.add("loss", daylight.day,
 			"The %s ran its course. %d lost." % [c.kind, c.eaten])
+		stats.note("disasters_lost")
 		_aftermath(String(heads[1]), false, [
 			["punish", "%d lost to it" % c.eaten, Aftermath.BAD],
 			["pop", "%d stood in its way" % c.saved(folk), Aftermath.DIM],
@@ -1332,6 +1341,8 @@ func _end_calamity(c, solved: bool) -> void:
 	divinity.notice.emit("You answered it. %d gave thanks." % n)
 	chronicle.add("disaster", daylight.day,
 		"You answered the %s. %d were saved." % [c.kind, c.saved(folk)])
+	stats.note("disasters_answered")
+	stats.reach("first_disaster_answered")
 
 	# THE REPORT. Three lines, and the order is the order the player cares
 	# about: who got out, what it paid, and what it made you.
@@ -1566,6 +1577,9 @@ func _span(seconds: float) -> String:
 ## could not be run that way.
 func _wire_feedback() -> void:
 	divinity.judged.connect(func(who, good):
+		if good:
+			stats.note("blessings")
+			stats.reach("first_bless")
 		if not is_instance_valid(who):
 			return
 		var at: Vector3 = who.position + Vector3(0, 0.5, 0)
@@ -1666,6 +1680,8 @@ func _wire_follower(f: Node) -> void:
 		elif act == "pray":
 			divinity.on_prayer_done(f)
 		var raises := String(spec.get("builds", ""))
+		if raises != "":
+			stats.reach("first_building")
 		if raises != "":
 			_raise_structure(f, act, raises, spec)
 			return
@@ -2110,18 +2126,23 @@ func _add_ui() -> void:
 	# THE AGES, which are the most memorable thing the game has and were the one
 	# event that scrolled past in four seconds with nowhere to go and see it
 	# again.
-	divinity.age_reached.connect(func(_i: int, what: String):
-		chronicle.add("age", daylight.day, "%s." % what))
+	divinity.age_reached.connect(func(i: int, what: String):
+		chronicle.add("age", daylight.day, "%s." % what)
+		if i >= 1:
+			stats.reach("age_1"))
 
 	prophecies = Prophecies.new()
 	prophecies.host = self
 	prophecies.spoken.connect(func(p: Prophecy):
+		stats.note("prophecies_spoken")
 		divinity.notice.emit(p.spoken)
 		if sfx != null:
 			sfx.play("bless"))
 	prophecies.fulfilled.connect(func(p: Prophecy):
 		divinity.notice.emit("It came to pass.")
 		chronicle.add("prophecy", daylight.day, p.spoken + " It came to pass.")
+		stats.note("prophecies_kept")
+		stats.reach("first_prophecy_kept")
 		if aftermath != null:
 			aftermath.show_report("IT CAME TO PASS", true, [
 				[p.icon(), String(p.spec().get("short", "%d/%d"))
@@ -2134,12 +2155,27 @@ func _add_ui() -> void:
 		divinity.notice.emit("The hour passed, and it did not come.")
 		chronicle.add("prophecy", daylight.day,
 					  p.spoken + " The hour passed, and it did not.")
+		stats.note("prophecies_broken")
 		if aftermath != null:
 			aftermath.show_report("IT DID NOT COME", false, [
 				[p.icon(), String(p.spec().get("short", "%d/%d"))
 					% [mini(p.at(self), p.need), p.need], Aftermath.DIM],
 			]))
 
+	# THE SESSION STARTS NOW, not at the dawn of the village. `Village.now` is
+	# restored from the save and keeps counting, so without this every funnel
+	# step on a loaded game would be stamped with the total age of the village
+	# -- "they reached the first prophet after four hours" for something that
+	# happened forty seconds after they opened the tab.
+	stats.begin(float(village.now))
+
+	prayers.opened.connect(func(p: Prayer):
+		stats.note("prayers_opened")
+		stats.reach("first_prayer_seen"))
+	prayers.closed.connect(func(_p: Prayer, answered: bool):
+		stats.note("prayers_answered" if answered else "prayers_lapsed")
+		if answered:
+			stats.reach("first_prayer_answered"))
 	prayers.listen()
 	# TAKING A SIDE IS SAID OUT LOUD, and it names the person who lost. A choice
 	# nobody is told about is not a choice, it is a coin the game flipped.
@@ -2148,6 +2184,7 @@ func _add_ui() -> void:
 			return
 		divinity.notice.emit("You sided with %s. %s will remember."
 			% [String(won.who.brain.name), String(lost.who.brain.name)])
+		stats.note("feuds_settled")
 		chronicle.add("feud", daylight.day,
 			"You took %s's side against %s."
 			% [String(won.who.brain.name), String(lost.who.brain.name)]))
@@ -2234,6 +2271,8 @@ func _add_ui() -> void:
 
 	divinity.draft_offered.connect(draft.open)
 	draft.chosen.connect(func(id):
+		stats.note("boons_taken")
+		stats.reach("first_boon")
 		divinity.take_boon(id)
 		draft.close()
 		fxe.burst("bless", _village_centre())
@@ -2284,6 +2323,7 @@ func _on_child_wanted(a: Node, b: Node) -> void:
 	if inherited > 0.0:
 		f.brain.gain_faith(inherited)
 	village.population = folk.size()
+	stats.note("births")
 	fxe.burst("birth", grid.world_of(cell) + Vector3(0, 0.7, 0))
 	sfx.play("coin", 1.25)
 	divinity.notice.emit("%s and %s have a child: %s."
@@ -2353,6 +2393,7 @@ func _maybe_newcomer(delta: float) -> void:
 	sfx.play("coin")
 	if _day_drama == "":
 		_day_drama = "%s came up the road and stayed." % who.brain.name
+	stats.note("newcomers")
 	divinity.notice.emit("You have a new follower: %s." % who.brain.name)
 
 
@@ -2559,6 +2600,7 @@ func _process(delta: float) -> void:
 	_tick_calamities(delta)
 	_tick_director()
 	_tick_prophet()
+	stats.now = float(village.now)
 	if prophecies != null and village != null:
 		prophecies.tick(float(village.now))
 	_tick_tides()

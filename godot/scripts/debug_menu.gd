@@ -127,7 +127,7 @@ const BINDINGS := [
 	 "tab": "Light", "obj": "env", "prop": "ambient_light_sky_contribution"},
 ]
 
-const TABS := ["Settings", "Post FX", "Light", "Stress"]
+const TABS := ["Settings", "Post FX", "Light", "Stress", "Loop"]
 
 var _env: Environment = null
 var _sun: DirectionalLight3D = null
@@ -239,15 +239,15 @@ func is_open() -> bool:
 
 
 func _process(delta: float) -> void:
-	if _lbl_fps == null:
-		return
 	# Four updates a second. A Label rebuilt every frame allocates a String
 	# every frame, and the number is unreadable at 60 Hz anyway.
 	_fps_wait -= delta
 	if _fps_wait > 0.0:
 		return
 	_fps_wait = 0.25
-	_lbl_fps.text = "%d fps" % Engine.get_frames_per_second()
+	if _lbl_fps != null:
+		_lbl_fps.text = "%d fps" % Engine.get_frames_per_second()
+	_refresh_loop()
 
 
 # -- values ----------------------------------------------------------------
@@ -453,6 +453,7 @@ func _build() -> void:
 
 	_build_settings_extras(pages["Settings"])
 	_build_stress(pages["Stress"])
+	_build_loop(pages["Loop"])
 
 	var footer := HBoxContainer.new()
 	col.add_child(footer)
@@ -751,6 +752,166 @@ func _build_stress(page: VBoxContainer) -> void:
 	fps_row.add_child(_name_label("Frame rate"))
 	_lbl_fps = _label("%d fps" % Engine.get_frames_per_second())
 	fps_row.add_child(_lbl_fps)
+
+
+## --- the loop ---------------------------------------------------------------
+##
+## Every system added in stages 5 to 14 waits on something: a villager getting
+## hungry, a quiet stretch, a village of six, a prophet, four minutes. That is
+## correct for playing and hopeless for looking at -- checking one change to a
+## prayer bubble meant sitting through several minutes of village, every time.
+##
+## So this tab FORCES each of them, and shows the three numbers the game
+## deliberately never puts on screen. Pressure especially: it is hidden from the
+## player on purpose, because a pacing variable on screen becomes a resource
+## they manage, and it is exactly the number you need while tuning pacing.
+var _lbl_loop: Label = null
+
+
+func _build_loop(page: VBoxContainer) -> void:
+	_header(page, "Make something happen")
+	_row_of(page, [
+		["Prayer", _force_prayer],
+		["Feud", _force_feud],
+		["Fire", _force_fire],
+	])
+	_row_of(page, [
+		["Prophet", _force_prophet],
+		["Prophecy", _force_prophecy],
+		["Draft", _force_draft],
+	])
+	_header(page, "Numbers the player never sees")
+	_lbl_loop = _label("--")
+	_lbl_loop.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page.add_child(_lbl_loop)
+	_header(page, "Funnel")
+	var funnel := _label("--")
+	funnel.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	funnel.name = "Funnel"
+	page.add_child(funnel)
+	_refresh_loop()
+
+
+func _row_of(page: VBoxContainer, items: Array) -> void:
+	var hb := HBoxContainer.new()
+	page.add_child(hb)
+	for it in items:
+		var b := _button(String(it[0]))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(it[1])
+		hb.add_child(b)
+
+
+## Everything below asks the host rather than reaching into it, and says so in
+## the panel when the host cannot answer -- the same contract `_spawn` uses, and
+## the reason a probe scene without these systems does not take the panel down.
+func _loop_ready() -> bool:
+	if _host == null or _host.get("divinity") == null:
+		_status("no village in this scene")
+		return false
+	return true
+
+
+func _force_prayer() -> void:
+	if not _loop_ready() or _host.get("prayers") == null:
+		return
+	for f in _host.folk:
+		if is_instance_valid(f) and f.brain != null and f.brain.adult 				and _host.prayers.of(f) == null:
+			# Through the real path, so what appears is a real prayer rather
+			# than a shape that looks like one.
+			f.brain.stats["hunger"] = 0.05
+			_host.prayers._cooldown.erase(f.get_instance_id())
+			_host.prayers._next_look.erase(f.get_instance_id())
+			_status("%s is about to be hungry" % f.brain.name)
+			return
+	_status("everybody is already praying")
+
+
+func _force_feud() -> void:
+	if not _loop_ready() or _host.get("prayers") == null:
+		return
+	_host.prayers._feud_at = -1.0
+	_host.prayers._open_feud(float(_host.village.now))
+	var n := 0
+	for p in _host.prayers.active:
+		if p.feud():
+			n += 1
+	_status("feuding: %d" % n if n > 0
+			else "no two villagers with opposing jobs are free")
+
+
+func _force_fire() -> void:
+	if not _loop_ready():
+		return
+	_host._start_calamity()
+	_status("calamities: %d" % (_host.calamities as Array).size())
+
+
+func _force_prophet() -> void:
+	if not _loop_ready():
+		return
+	var best = null
+	for f in _host.folk:
+		if is_instance_valid(f) and f.brain != null and f.brain.adult:
+			best = f
+			break
+	if best == null:
+		_status("nobody to speak for you")
+		return
+	best.brain.faith_level = maxi(int(best.brain.faith_level),
+								  Prophet.NEEDS_LEVEL)
+	_host.divinity.prophet._next_look = -1.0
+	_host.divinity.prophet.choose(_host.folk)
+	_status("prophet: %s" % _host.divinity.prophet.name_of())
+
+
+func _force_prophecy() -> void:
+	if not _loop_ready() or _host.get("prophecies") == null:
+		return
+	if not _host.divinity.prophet.has():
+		_force_prophet()
+	_host.prophecies.current = null
+	_host.prophecies._next_at = -1.0
+	var now := float(_host.village.now)
+	_host.prophecies.tick(now)
+	_host.prophecies.tick(now + Prophecies.REST + 1.0)
+	var p = _host.prophecies.current
+	_status(p.spoken if p != null else "nothing was foretold")
+
+
+func _force_draft() -> void:
+	if not _loop_ready():
+		return
+	_host.divinity.grant_draft("debug")
+	_status("a gift is waiting")
+
+
+## Pressure, reputation and the funnel, refreshed on the panel's own tick.
+func _refresh_loop() -> void:
+	if _lbl_loop == null or _host == null or _host.get("divinity") == null:
+		return
+	var d = _host.divinity
+	var bits: Array = []
+	if _host.get("director") != null:
+		bits.append("pressure %.2f" % float(_host.director.pressure))
+	bits.append("seen as %s" % (d.reputation.title() if d.reputation.dominant()
+								!= "" else "nothing yet"))
+	var shares: Array = []
+	for axis in Reputation.AXES:
+		shares.append("%s %.0f%%" % [axis.substr(0, 4),
+									 d.reputation.share(axis) * 100.0])
+	bits.append(", ".join(shares))
+	bits.append("prophet %s" % (d.prophet.name_of() if d.prophet.has()
+								else "none"))
+	_lbl_loop.text = "
+".join(bits)
+
+	var funnel := _lbl_loop.get_parent().find_child("Funnel", false, false)
+	if funnel is Label and _host.get("stats") != null:
+		funnel.text = "depth %d/%d
+%s" % [_host.stats.depth(),
+			Analytics.FUNNEL.size(), "
+".join(_host.stats.lines())]
 
 
 ## The host owns the followers; this only asks. `spawn_follower` and
