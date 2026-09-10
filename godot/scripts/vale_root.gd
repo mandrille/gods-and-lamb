@@ -139,6 +139,9 @@ var chronicle: Chronicle = Chronicle.new()   ## what this village remembers
 ## the same reason the feedback is: a system that reported its own metrics could
 ## not be run headless without one.
 var stats: Analytics = Analytics.new()
+## How much motion and effect the player has asked for. Read wherever it is
+## needed rather than pushed anywhere -- see comfort.gd.
+var comfort: Comfort = Comfort.new()
 var _calamity_timer := 90.0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
@@ -184,6 +187,17 @@ var _walk_paths: Array = []          ## world-space paths, reused by the stress 
 const UI_UNITS_WANTED := 400.0
 
 
+## Put the three switches into effect. Only two things actually need telling --
+## the particle pool and the window scale; every pulse in the game reads
+## `comfort` at draw time and needs nothing at all.
+func _apply_comfort() -> void:
+	if fxe != null:
+		fxe.set_density(comfort.density())
+	_apply_ui_scale()
+	if settings != null:
+		comfort.store_in(settings)
+
+
 func _apply_ui_scale() -> void:
 	var w: Window = get_window()
 	if w == null:
@@ -198,10 +212,16 @@ func _apply_ui_scale() -> void:
 	# A window taller than it is wide is a handset or a tablet held upright;
 	# nothing else is shaped like that, and a desktop window narrowed until it
 	# is portrait wants the bigger UI too.
+	# LARGER TEXT IS ALSO WANTED IN LANDSCAPE, which the portrait test alone
+	# cannot deliver -- somebody who needs bigger controls needs them on a
+	# desktop monitor too, and returning 1.0 here made the setting silently do
+	# nothing on the platform most likely to be reading it.
+	var wanted: float = comfort.ui_units(UI_UNITS_WANTED)
 	if float(w.size.y) <= float(w.size.x):
-		w.content_scale_factor = 1.0
+		w.content_scale_factor = (clampf(across / (UI_UNITS_WANTED * 2.0),
+										 1.0, 1.6) if comfort.big_text else 1.0)
 		return
-	w.content_scale_factor = clampf(across / UI_UNITS_WANTED, 1.0, 2.4)
+	w.content_scale_factor = clampf(across / wanted, 1.0, 2.4)
 
 
 func _ready() -> void:
@@ -308,6 +328,9 @@ func _ready() -> void:
 	_add_fx()
 	fxe = FXEvents.new()
 	fxe.name = "FXEvents"
+	# The saved density has to reach the pool at birth, not when somebody first
+	# opens the pause menu.
+	fxe.set_density(comfort.density())
 	add_child(fxe)
 	sfx = SFX.new()
 	sfx.name = "SFX"
@@ -365,6 +388,10 @@ func _add_menu() -> void:
 		add_child(settings)
 		if settings.has_method("load_all"):
 			settings.load_all()
+	# BEFORE ANYTHING IS BUILT WITH IT. A player who turned motion down last
+	# session should not get one session of full motion back for their trouble,
+	# and the FX pool reads its density when it is created.
+	comfort.load_from(settings)
 	var dbg := _optional(DEBUG_PATH, "debug_menu.gd")
 	if dbg == null:
 		return
@@ -613,6 +640,32 @@ func _tick_tides() -> void:
 const REACT_MAX := 4
 
 
+## WHERE THE REACTION DETAIL STEPS DOWN, as MULTIPLES OF THE CAMERA'S OWN
+## DISTANCE rather than in metres.
+##
+## Written in metres first, at 18 and 34, and that was simply wrong: the camera
+## sits 30 m back by default, so everything on screen is 25 to 55 m away and an
+## 18 m band culled the overhead mark from the entire visible island. divine_
+## probe caught it -- "no marker went up over the villager who noticed" -- and
+## it would have shipped as marks that never appeared at default zoom.
+##
+## A multiple is also the RIGHT shape rather than merely a working one. What
+## decides whether a clip is worth playing is how big the villager looks, and
+## that is apparent size, which is distance divided by how far back the camera
+## is. Written this way the bands behave identically at every zoom level, which
+## a pair of constants in metres could never do.
+const REACT_NEAR := 1.35
+const REACT_FAR := 2.20
+
+
+## How far away this is, in camera-distances. 1.0 is the point the camera is
+## looking at; the far edge of the view is somewhere near 1.8.
+func _camera_distance(at: Vector3) -> float:
+	if rig == null or rig.cam == null:
+		return 0.0
+	return rig.cam.global_position.distance_to(at) / maxf(1.0, float(rig.dist))
+
+
 func _villagers_react(r: Dictionary) -> void:
 	var hits: Array = r.get("hits", [])
 	if hits.is_empty():
@@ -628,13 +681,23 @@ func _villagers_react(r: Dictionary) -> void:
 		var f = h[0]
 		if not is_instance_valid(f) or f.brain == null:
 			continue
+		# LEVEL OF DETAIL, and it is a correctness question before it is a
+		# performance one. A reaction is an animation clip plus an overhead
+		# mark, and both are wasted on somebody the camera cannot resolve --
+		# but the SIMULATION result is not: they were still paid, they still
+		# remember it, they simply do not perform it for nobody.
+		var d: float = _camera_distance(f.position)
+		if d > REACT_FAR:
+			continue
 		# THE DEVOUT LOOK UP FIRST. Free characterisation from a roll that
 		# already exists, and it keeps a crowd from moving as one body.
 		var chance: float = 0.35 + 0.55 * float(f.brain.personality.devotion)
 		if _rng.randf() > chance:
 			continue
 		f.notice_at(at)
-		if overhead != null:
+		# The mark above the head is the cheapest part and the least readable
+		# at range; near camera only.
+		if overhead != null and d <= REACT_NEAR:
 			overhead.mark(f)
 		turned += 1
 
@@ -2069,6 +2132,7 @@ func _add_ui() -> void:
 
 	aftermath = Aftermath.new()
 	aftermath.name = "Aftermath"
+	aftermath.comfort = comfort
 	ui.add_child(aftermath)
 
 	panel = VillagerPanel.new()
@@ -2239,6 +2303,8 @@ func _add_ui() -> void:
 	# unpaused is the worst bug a portal build can have.
 	pause_menu = PauseMenu.new()
 	pause_menu.name = "PauseMenu"
+	pause_menu.comfort = comfort
+	pause_menu.comfort_changed.connect(_apply_comfort)
 	ui.add_child(pause_menu)
 	pause_menu.muted_changed.connect(func(on: bool):
 		if sfx != null:

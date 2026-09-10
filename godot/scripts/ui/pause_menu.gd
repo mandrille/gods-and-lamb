@@ -14,6 +14,10 @@ class_name PauseMenu
 signal resumed()
 signal restarted()
 signal muted_changed(on: bool)
+## One signal for all three comfort switches rather than three: the host puts
+## them all back through the same door, and a menu that knows which one moved
+## would be a menu that has to be updated when a fourth arrives.
+signal comfort_changed()
 
 const PANEL_W := 300.0
 const DIM := Color(0.03, 0.04, 0.07, 0.72)
@@ -73,24 +77,44 @@ func is_open() -> bool:
 	return visible
 
 
+## Set by the host before the menu is opened.
+var comfort = null
+
+
 func _labels() -> Array:
+	var motion := true
+	var effects := true
+	var big := false
+	if comfort != null:
+		motion = bool(comfort.motion)
+		effects = bool(comfort.effects)
+		big = bool(comfort.big_text)
 	return ["Resume",
 			"Sound: off" if muted else "Sound: on",
+			"Motion: reduced" if not motion else "Motion: full",
+			"Effects: fewer" if not effects else "Effects: full",
+			"Text: larger" if big else "Text: normal",
 			"Start over" if not _confirm else "Start over -- are you sure?"]
+
+
+## SIZED FROM THE LABEL LIST rather than from the number 3, which is what it
+## used to be in both of these functions -- adding a row to `_labels` alone
+## would have drawn three buttons off the bottom of a panel that had not grown.
+func _rows() -> int:
+	return _labels().size()
 
 
 func _button_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
-	var h := 44.0 * 3.0 + 16.0 * 2.0 + 96.0
-	var p := Rect2((size.x - PANEL_W) * 0.5, (size.y - h) * 0.5, PANEL_W, h)
-	for i in 3:
+	var p := _panel_rect()
+	for i in _rows():
 		out.append(Rect2(p.position.x + 24.0, p.position.y + 76.0
-						 + float(i) * 60.0, PANEL_W - 48.0, 44.0))
+						 + float(i) * 52.0, PANEL_W - 48.0, 44.0))
 	return out
 
 
 func _panel_rect() -> Rect2:
-	var h := 44.0 * 3.0 + 16.0 * 2.0 + 96.0
+	var h := 52.0 * float(_rows()) + 96.0
 	return Rect2((size.x - PANEL_W) * 0.5, (size.y - h) * 0.5, PANEL_W, h)
 
 
@@ -127,6 +151,21 @@ func _gui_input(event: InputEvent) -> void:
 				muted_changed.emit(muted)
 				queue_redraw()
 			2:
+				if comfort != null:
+					comfort.motion = not comfort.motion
+					comfort_changed.emit()
+				queue_redraw()
+			3:
+				if comfort != null:
+					comfort.effects = not comfort.effects
+					comfort_changed.emit()
+				queue_redraw()
+			4:
+				if comfort != null:
+					comfort.big_text = not comfort.big_text
+					comfort_changed.emit()
+				queue_redraw()
+			5:
 				# Twice, because there is no undo and the button sits directly
 				# under the one people click to leave.
 				if not _confirm:
@@ -154,7 +193,10 @@ func _draw() -> void:
 		draw_rect(r, HOT if i == _hot else EDGE, false, 1.0)
 		draw_string(_font, r.position + Vector2(0, 28.0), String(labels[i]),
 					HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 15,
-					INK if i != 2 or not _confirm else HOT)
+					# The confirm highlight belongs to the LAST row, which is
+					# where "Start over" is -- it was pinned to index 2, which
+					# is now "Motion".
+					INK if i != rects.size() - 1 or not _confirm else HOT)
 	draw_string(_font, p.position + Vector2(0, p.size.y - 14.0),
 				"Escape closes this. F3 is the debug panel.",
 				HORIZONTAL_ALIGNMENT_CENTER, p.size.x, 11, SOFT)

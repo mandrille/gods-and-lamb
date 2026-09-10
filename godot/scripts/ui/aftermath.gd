@@ -40,6 +40,10 @@ var _left := 0.0                   ## seconds of life remaining
 var _head := ""
 var _good := true
 var _rows: Array = []              ## [[icon, text, tone], ...]
+## Set by the host. The card SLIDES on the way in, and a slide is exactly the
+## kind of motion somebody turns off -- so the distance it travels is a
+## multiplier rather than a constant.
+var comfort = null
 
 
 func _ready() -> void:
@@ -81,7 +85,8 @@ func _draw() -> void:
 	# And a short rise on the way in, so it reads as arriving rather than as
 	# having been there all along and only now noticed.
 	var born: float = HOLD + FADE - _left
-	var lift: float = 14.0 * (1.0 - clampf(born / IN, 0.0, 1.0))
+	var damp: float = float(comfort.beat()) if comfort != null else 1.0
+	var lift: float = 14.0 * damp * (1.0 - clampf(born / IN, 0.0, 1.0))
 
 	# THE VIEWPORT, NOT `size`. A full-rect Control added to a CanvasLayer only
 	# learns its size when the parent notifies a resize, and this one is built

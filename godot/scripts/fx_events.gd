@@ -148,6 +148,22 @@ var _next: Dictionary = {}
 var _meshes: Dictionary = {}
 var _density := 1.0
 
+## THE BUDGET. How many bursts may start in one frame.
+##
+## The pool has always capped how many emitters EXIST -- three per kind, reused
+## round-robin -- and nothing has ever capped how fast they are asked to
+## restart. `ring` alone fires seven, a calamity bite can fire several rings,
+## and a crowded act now reaches more villagers than it used to; on a phone
+## that is a frame with a dozen `restart()` calls in it, each one refilling a
+## particle buffer.
+##
+## Twelve is above anything the game does deliberately and below the pile-ups.
+## What is dropped is the TAIL of a frame, which is by construction the least
+## visible part: the first bursts of a ring draw its shape and the last ones
+## land on top of what is already lit.
+const PER_FRAME := 12
+var _spent := 0
+
 
 func _ready() -> void:
 	for kind in KINDS:
@@ -273,6 +289,9 @@ func _make(kind: String) -> GPUParticles3D:
 func burst(kind: String, at: Vector3, scale_v := 1.0) -> void:
 	if not _pool.has(kind) or _density <= 0.0:
 		return
+	if _spent >= PER_FRAME:
+		return
+	_spent += 1
 	var bucket: Array = _pool[kind]
 	var i: int = int(_next[kind]) % bucket.size()
 	_next[kind] = i + 1
@@ -302,6 +321,20 @@ func ring(kind: String, at: Vector3, radius: float, points := 6) -> void:
 
 func set_density(scale_v: float) -> void:
 	_density = clampf(scale_v, 0.0, 1.0)
+
+
+## Reset the frame budget. Not `_process`, deliberately: this node is created
+## with the world and a system that spent its budget before this node's turn in
+## the frame order would be silently throttled for reasons nobody could find.
+## `_physics_process` runs on its own clock ahead of every `_process` in the
+## game, which makes the reset point predictable.
+func _physics_process(_delta: float) -> void:
+	_spent = 0
+
+
+## What the budget did last frame, for the probe and the debug panel.
+func spent() -> int:
+	return _spent
 
 
 func active_count() -> int:

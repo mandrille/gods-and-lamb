@@ -213,6 +213,23 @@ func _check_modals() -> void:
 				if rects[a].grow(-1.0).intersects(rects[b].grow(-1.0)):
 					_faults.append("boon cards %d and %d overlap" % [a, b])
 		draft._options = []
+	# THE PAUSE MENU, which is where the comfort switches live and which grew
+	# from three rows to six the day they arrived. A modal that fits at three
+	# rows is not a modal that fits at six, and nothing was checking.
+	var pause = _root.pause_menu
+	if pause != null:
+		pause.size = vp
+		pause.comfort = _root.comfort
+		var pr: Rect2 = pause._panel_rect()
+		print("[PHONE] pause menu: %d rows, %s" % [pause._labels().size(), pr])
+		_fits1("the pause menu", pr, vp)
+		var buttons: Array = pause._button_rects()
+		for i in buttons.size():
+			_fits1("pause row %d" % i, buttons[i], vp)
+			if buttons[i].size.y < THUMB:
+				_faults.append("pause row %d is %.0f units tall, under a thumb"
+					% [i, buttons[i].size.y])
+
 	var night = _root.day_screen
 	if night != null:
 		night.size = vp

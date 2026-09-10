@@ -66,6 +66,15 @@ var highlight_all := false
 var _mouse := Vector2(-1000, -1000)
 
 
+## HOW MUCH OF THE AUTHORED MOTION SURVIVES, asked at draw time rather than
+## pushed in when the setting changes -- so nothing here can be left in a stale
+## state and turning motion down lands on the very next frame.
+func _beat() -> float:
+	if host == null or host.get("comfort") == null:
+		return 1.0
+	return float(host.comfort.beat())
+
+
 func _ready() -> void:
 	# The icons must never eat a click meant for the ground: panning is a drag
 	# on the world, and a full-screen Control that accepts input would swallow
@@ -179,7 +188,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## polygons rather than typed as a character -- the default font has no emoji
 ## and renders one as a hollow box, which is the note at the top of this file.
 func _wonder(at: Vector2) -> void:
-	var beat: float = 1.0 + 0.10 * sin(float(Time.get_ticks_msec()) * 0.010)
+	var beat: float = 1.0 + 0.10 * _beat() 		* sin(float(Time.get_ticks_msec()) * 0.010)
 	var c := at + Vector2(0, -20)
 	draw_circle(c, 12.0 * beat, Color(0.08, 0.09, 0.12, 0.72))
 	draw_arc(c, 12.0 * beat, 0.0, TAU, 20, Color(0.99, 0.84, 0.40, 0.55),
@@ -199,7 +208,7 @@ func _wonder(at: Vector2) -> void:
 ## screenful of these still reads at a glance.
 func _prayer(at: Vector2, pr) -> void:
 	var speed: float = 0.011 if pr.urgent else 0.005
-	var beat: float = 1.0 + (0.13 if pr.urgent else 0.06) 		* sin(float(Time.get_ticks_msec()) * speed)
+	var beat: float = 1.0 + (0.13 if pr.urgent else 0.06) * _beat() 		* sin(float(Time.get_ticks_msec()) * speed)
 	var c := at + Vector2(0, -22)
 	var rim := Color(0.97, 0.66, 0.36) if pr.urgent 		else Color(0.86, 0.89, 0.96, 0.75)
 	draw_circle(c, 13.0 * beat, Color(0.08, 0.09, 0.12, 0.78))
@@ -408,7 +417,7 @@ func _reach(d: Vector2, frame: Rect2) -> float:
 
 
 func _arrow(at: Vector2, angle: float, tint: Color) -> void:
-	var pulse: float = 1.0 + sin(float(Time.get_ticks_msec()) * 0.005) * 0.12
+	var pulse: float = 1.0 		+ sin(float(Time.get_ticks_msec()) * 0.005) * 0.12 * _beat()
 	var r: float = EDGE_R * pulse
 	draw_circle(at, r + 3.0, Color(0.06, 0.07, 0.10, 0.70))
 	var tip: Vector2 = at + Vector2(r, 0).rotated(angle)
@@ -425,7 +434,7 @@ const HALO := Color(0.99, 0.86, 0.48)
 
 func _halo(p: Vector2) -> void:
 	var t := float(Time.get_ticks_msec()) * 0.0022
-	var c := p + Vector2(0, -30.0 - sin(t) * 1.6)
+	var c := p + Vector2(0, -30.0 - sin(t) * 1.6 * _beat())
 	# An open ring, tilted, so it reads as sitting above them rather than as
 	# another badge stuck to them.
 	draw_arc(c, 10.0, 0.0, TAU, 24, Color(0.06, 0.07, 0.10, 0.55), 4.0, true)
@@ -435,7 +444,7 @@ func _halo(p: Vector2) -> void:
 ## A hot mark over a wrongdoer, pulsing so the eye finds it in a crowd.
 func _guilt(p: Vector2) -> void:
 	var t := float(Time.get_ticks_msec()) * 0.006
-	var pulse := 1.0 + sin(t) * 0.14
+	var pulse := 1.0 + sin(t) * 0.14 * _beat()
 	var r := 11.0 * pulse
 	var hot := Color(1.0, 0.35, 0.28)
 	draw_circle(p + Vector2(0, -2), r + 3.0, Color(0.10, 0.02, 0.02, 0.55))
