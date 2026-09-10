@@ -73,6 +73,38 @@ func note(tags: int, seen: int, strength := 1.0) -> void:
 			axes[axis] = maxf(0.0, float(axes[axis]) + float(pair[1]) * w)
 
 
+## Which axis this kind of act speaks to loudest, before it is spent.
+##
+## `note` folds an act into the running totals and then it is gone, so nothing
+## downstream can say WHICH WAY the needle just moved -- and "you are seen as a
+## Protector" is a much duller line than "Protector, rising". This answers that
+## from the tags alone: no state, no history, just what the act was about.
+## SUMMED PER AXIS, exactly the way `note` folds it in, and that is not a
+## detail. Answering a fire is tagged PROTECTION and LIFE; taking the single
+## largest entry made both "protector" and "life" worth 1.0 and the winner was
+## whichever the dictionary happened to iterate first, so the game announced
+## "Life rising" for putting out a fire. Adding them up gives protector 1.4
+## against life's 1.0 -- the same answer `note` reaches, which is the only
+## answer that can be right.
+static func leading_from(tags: int) -> String:
+	var sums: Dictionary = {}
+	for bit in FROM_TAG:
+		if tags & int(bit) == 0:
+			continue
+		for pair in FROM_TAG[bit]:
+			var axis := String(pair[0])
+			sums[axis] = float(sums.get(axis, 0.0)) + float(pair[1])
+	var best := ""
+	var best_w := 0.0
+	# Walked in AXES order rather than in dictionary order, so a genuine tie
+	# resolves the same way on every machine and in every build.
+	for axis in AXES:
+		if float(sums.get(axis, 0.0)) > best_w:
+			best_w = float(sums[axis])
+			best = axis
+	return best
+
+
 func total() -> float:
 	var t := 0.0
 	for a in AXES:

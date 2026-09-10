@@ -132,6 +132,7 @@ var _rng := RandomNumberGenerator.new()
 var _touched_at := -99.0            ## village clock of the last world touch
 ## Fires, droughts and winds currently eating the world.
 var calamities: Array = []
+var aftermath = null               ## the disaster resolution card
 var _calamity_timer := 90.0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
@@ -1074,6 +1075,9 @@ func _tick_calamities(delta: float) -> void:
 		return
 	for c in calamities:
 		c.age += delta
+		# Counted while it burns, because at the moment it ends nobody is in
+		# danger any more and there would be nothing left to count.
+		c.watch(folk, grid.world_of)
 	_answer_calamities()
 	for c in calamities.duplicate():
 		if c.expired():
@@ -1248,10 +1252,29 @@ func _answer_calamities() -> void:
 ## The end of one, either answered or burnt out. Answering pays FAITH FROM
 ## EVERY VILLAGER -- the village thanks you, and a crisis leaves the place more
 ## devout than it found it.
+## What a disaster is called when it is over, either way.
+const CALAMITY_HEAD := {
+	"fire": ["FIRE CONTAINED", "THE FIRE BURNED OUT"],
+	"drought": ["THE DROUGHT BREAKS", "THE DROUGHT RAN ITS COURSE"],
+	"tornado": ["THE WIND IS STILLED", "THE WIND BLEW ITSELF OUT"],
+}
+
+## How an axis is named when the player is told it moved.
+const AXIS_TITLE := {
+	"provider": "Provider", "protector": "Protector", "nature": "Nature",
+	"life": "Life", "wrath": "Wrath", "fortune": "Fortune",
+}
+
+
 func _end_calamity(c, solved: bool) -> void:
 	calamities.erase(c)
+	var heads: Array = CALAMITY_HEAD.get(c.kind, CALAMITY_HEAD["fire"])
 	if not solved:
 		divinity.notice.emit("It burns itself out. %d lost." % c.eaten)
+		_aftermath(String(heads[1]), false, [
+			["punish", "%d lost to it" % c.eaten, Aftermath.BAD],
+			["pop", "%d stood in its way" % c.saved(folk), Aftermath.DIM],
+		])
 		return
 	# EVERY VILLAGER, UNBANDED, and that is a decision rather than an oversight.
 	# Thinning relief by distance from the fire would pay the people who were
@@ -1261,12 +1284,34 @@ func _end_calamity(c, solved: bool) -> void:
 	# never looks at where they were standing.
 	var a := DivineAction.relief(c.thanks())
 	a.verb = "You answered it."
-	var n: int = int(divinity.perform(a)["seen"])
+	var r: Dictionary = divinity.perform(a)
+	var n: int = int(r["seen"])
 	if fxe != null:
 		fxe.burst("bless", grid.world_of(c.cell) + Vector3(0, 0.6, 0))
 	if sfx != null:
 		sfx.play("bless")
 	divinity.notice.emit("You answered it. %d gave thanks." % n)
+
+	# THE REPORT. Three lines, and the order is the order the player cares
+	# about: who got out, what it paid, and what it made you.
+	var rows: Array = []
+	var rescued: int = c.saved(folk)
+	if rescued > 0:
+		rows.append(["cross", "%d saved" % rescued, Aftermath.GOOD])
+	if c.eaten > 0:
+		rows.append(["punish", "%d lost" % c.eaten, Aftermath.DIM])
+	rows.append(["faith", "+%d Faith" % int(round(float(r["faith"]))),
+				 Aftermath.GOLD])
+	var axis: String = Reputation.leading_from(a.tags)
+	if axis != "" and n > 0:
+		rows.append(["saint", "%s rising" % String(AXIS_TITLE.get(axis, axis)),
+					 Aftermath.GOOD])
+	_aftermath(String(heads[0]), true, rows)
+
+
+func _aftermath(head: String, good: bool, rows: Array) -> void:
+	if aftermath != null:
+		aftermath.show_report(head, good, rows)
 
 
 ## Losing focus pauses the village.
@@ -1937,6 +1982,10 @@ func _add_ui() -> void:
 	overhead.host = self
 	overhead.rig = rig
 	ui.add_child(overhead)
+
+	aftermath = Aftermath.new()
+	aftermath.name = "Aftermath"
+	ui.add_child(aftermath)
 
 	panel = VillagerPanel.new()
 	panel.name = "VillagerPanel"

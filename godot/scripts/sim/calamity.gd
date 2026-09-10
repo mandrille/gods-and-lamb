@@ -62,6 +62,34 @@ var bites := 0
 var eaten := 0                     ## what it has taken so far
 var dir := Vector2i(1, 0)          ## tornadoes walk
 
+## WHO THIS EVER PUT IN DANGER, by instance id.
+##
+## Counted while it runs rather than when it ends, because when it ends nobody
+## is in danger any more -- that is the whole point -- and a rescue nobody can
+## count is a rescue the player never hears about. This is the number behind
+## "3 saved", and it is a set rather than a tally so somebody who walks in and
+## out of the treeline four times is still one person.
+var endangered: Dictionary = {}
+
+
+## Anybody near enough right now joins the list and stays on it.
+func watch(folk: Array, world: Callable) -> void:
+	var here: Vector3 = world.call(cell)
+	for f in folk:
+		if not is_instance_valid(f) or f.brain == null:
+			continue
+		if here.distance_to(f.position) <= Prayer.DANGER_NEAR:
+			endangered[f.get_instance_id()] = true
+
+
+## Of the people it endangered, how many are still standing.
+func saved(folk: Array) -> int:
+	var n := 0
+	for f in folk:
+		if is_instance_valid(f) and endangered.has(f.get_instance_id()):
+			n += 1
+	return n
+
 
 func _init(what: String, at: Vector2i, heading := Vector2i(1, 0)) -> void:
 	kind = what

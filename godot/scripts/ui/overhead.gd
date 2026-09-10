@@ -281,6 +281,82 @@ func _draw() -> void:
 			_ground_ring(f, f == selected)
 			_face(p, f.brain.mood_face(), f == selected)
 
+	_edges()
+
+
+## POINT AT THE DISASTER THE PLAYER CANNOT SEE.
+##
+## A fire has sixty seconds and a specific answer, and both of those are wasted
+## if it starts on the far side of the island while the camera is somewhere
+## else. The player was told "Fire in the trees." and given no way at all to
+## find WHICH trees -- the honest version of that message is an arrow.
+##
+## Only for what is off screen. An on-screen fire is already pointing at itself
+## in orange, and a marker on top of it would be the interface explaining
+## something the world had already said.
+## BIG ENOUGH TO FIND WITHOUT LOOKING FOR IT. The first version was a 15 px
+## chevron sitting 44 px in, and in a screenshot it read as a speck of dirt on
+## the grass -- which is a marker that costs a draw call and saves nobody.
+const EDGE_INSET := 54.0           ## how far in from the frame the arrow sits
+const EDGE_R := 22.0
+
+const TINTS := {
+	"ember": Color(0.98, 0.48, 0.22),
+	"sand": Color(0.92, 0.79, 0.42),
+	"slate": Color(0.66, 0.72, 0.82),
+}
+
+
+func _edges() -> void:
+	if host.get("calamities") == null or host.grid == null:
+		return
+	# THE VIEWPORT RECT, NOT `size`: this Control's own size is (0, 0) until the
+	# parent notifies a resize, and a zero frame contains no point at all -- so
+	# every calamity counted as off-screen and its arrow was drawn around the
+	# top-left corner. The camera unprojects into the viewport, so this is the
+	# same space the projected point is already in.
+	var screen: Vector2 = get_viewport_rect().size
+	var frame := Rect2(Vector2(EDGE_INSET, EDGE_INSET),
+					   screen - Vector2(EDGE_INSET, EDGE_INSET) * 2.0)
+	if frame.size.x <= 0.0 or frame.size.y <= 0.0:
+		return
+	for c in (host.calamities as Array):
+		var at: Vector3 = host.grid.world_of(c.cell) + Vector3(0, 0.8, 0)
+		var behind: bool = rig.cam.is_position_behind(at)
+		var p: Vector2 = rig.cam.unproject_position(at)
+		if not behind and frame.has_point(p):
+			continue
+		# BEHIND THE CAMERA UNPROJECTS TO A MIRRORED POINT, which would send the
+		# arrow to the opposite edge from the fire. Flipping it around the
+		# screen centre puts it back on the side the fire is actually on.
+		var mid: Vector2 = screen * 0.5
+		var dir: Vector2 = (mid - p) if behind else (p - mid)
+		if dir.length() < 0.001:
+			continue
+		_arrow(mid + dir.normalized() * _reach(dir.normalized(), frame),
+			   dir.angle(), TINTS.get(String(c.look().get("tint", "ember")),
+									  TINTS["ember"]))
+
+
+## How far from the centre the frame is, in this direction.
+func _reach(d: Vector2, frame: Rect2) -> float:
+	var half: Vector2 = frame.size * 0.5
+	var tx: float = 1e9 if absf(d.x) < 0.001 else half.x / absf(d.x)
+	var ty: float = 1e9 if absf(d.y) < 0.001 else half.y / absf(d.y)
+	return minf(tx, ty)
+
+
+func _arrow(at: Vector2, angle: float, tint: Color) -> void:
+	var pulse: float = 1.0 + sin(float(Time.get_ticks_msec()) * 0.005) * 0.12
+	var r: float = EDGE_R * pulse
+	draw_circle(at, r + 3.0, Color(0.06, 0.07, 0.10, 0.70))
+	var tip: Vector2 = at + Vector2(r, 0).rotated(angle)
+	var a: Vector2 = at + Vector2(-r * 0.55, -r * 0.72).rotated(angle)
+	var b: Vector2 = at + Vector2(-r * 0.55, r * 0.72).rotated(angle)
+	draw_colored_polygon(PackedVector2Array([tip, a, b]), tint)
+	draw_arc(at, r + 3.0, 0.0, TAU, 22, Color(tint.r, tint.g, tint.b, 0.45),
+			 1.5, true)
+
 
 ## A hot mark over a wrongdoer, pulsing so the eye finds it in a crowd.
 func _guilt(p: Vector2) -> void:
