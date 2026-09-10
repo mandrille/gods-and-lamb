@@ -129,6 +129,14 @@ func _panel_rect() -> Rect2:
 		h = 176.0 + float(lines) * 20.0
 		if int(_doc.get("streak", 0)) >= 2:
 			h += 22.0
+		# The two new blocks have to be measured here as well as drawn below,
+		# or they are drawn straight through the bottom edge and out onto the
+		# world -- which is what a panel "sized to its contents" means when the
+		# contents grow and the arithmetic does not.
+		for key in ["history", "pending"]:
+			var rows: int = (_doc.get(key, []) as Array).size()
+			if rows > 0:
+				h += 30.0 + float(rows) * 19.0
 	var w := _pw()
 	return Rect2((size.x - w) * 0.5, (size.y - h) * 0.5, w, h)
 
@@ -295,6 +303,35 @@ func _draw_morning(p: Rect2) -> void:
 		draw_string(_font, Vector2(x + 26.0, y + 12.0),
 					"Day %d in a row. %s" % [streak, String(_doc.get("gift", ""))],
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, GOLD)
+
+	# BEFORE THAT, and WAITING FOR YOU. Two short blocks under the log, and the
+	# order is the order a person cares about it in: what happened while you
+	# were gone, then what this village remembers of before that, then what is
+	# going on RIGHT NOW -- which the return screen has never once mentioned,
+	# so a player could read three lines about last night and close the panel
+	# onto a fire.
+	var history: Array = _doc.get("history", [])
+	if not history.is_empty():
+		y += 30.0
+		draw_string(_font, Vector2(x, y + 12.0), "Before that",
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, SOFT)
+		for e in history:
+			y += 19.0
+			draw_string(_font, Vector2(x + 10.0, y + 12.0),
+						"Day %d.  %s" % [int(e.get("day", 1)),
+										 String(e.get("text", ""))],
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+						Color(INK.r, INK.g, INK.b, 0.72))
+
+	var pending: Array = _doc.get("pending", [])
+	if not pending.is_empty():
+		y += 30.0
+		draw_string(_font, Vector2(x, y + 12.0), "Waiting for you",
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, HOT)
+		for line in pending:
+			y += 19.0
+			draw_string(_font, Vector2(x + 10.0, y + 12.0), String(line),
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)
 
 
 func _draw_buttons() -> void:

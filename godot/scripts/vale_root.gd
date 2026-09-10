@@ -134,6 +134,7 @@ var _touched_at := -99.0            ## village clock of the last world touch
 var calamities: Array = []
 var aftermath = null               ## the disaster resolution card
 var prophecies: Prophecies = null  ## what the prophet says is coming
+var chronicle: Chronicle = Chronicle.new()   ## what this village remembers
 var _calamity_timer := 90.0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
@@ -283,6 +284,9 @@ func _ready() -> void:
 	social = Social.new(20260901)
 	daylight = Daylight.new()
 	daylight.from_doc(_save_doc.get("daylight", {}))
+	# Restored HERE rather than in `apply_divinity`, which is handed the god and
+	# not the world -- the chronicle belongs to the village.
+	chronicle.from_doc(_save_doc.get("chronicle", []))
 	daylight.night_fell.connect(_on_night)
 
 	divinity = Divinity.new()
@@ -668,12 +672,16 @@ func _tick_prophet() -> void:
 		var now_name: String = divinity.prophet.name_of()
 		if now_name != "":
 			divinity.notice.emit("%s speaks for you now." % now_name)
+			chronicle.add("prophet", daylight.day,
+						  "%s began to speak for you." % now_name)
 			if fxe != null and divinity.prophet.has():
 				fxe.burst("bless", divinity.prophet.who.position
 									+ Vector3(0, 1.2, 0))
 		elif was != "":
 			# LOSING one is the half that makes having one mean anything.
 			divinity.notice.emit("%s no longer speaks for you." % was)
+			chronicle.add("prophet", daylight.day,
+						  "%s stopped speaking for you." % was)
 	var said: String = divinity.prophet.proclaim(divinity.reputation.title(),
 												divinity.reputation.dominant())
 	if said != "":
@@ -1300,6 +1308,8 @@ func _end_calamity(c, solved: bool) -> void:
 	var heads: Array = CALAMITY_HEAD.get(c.kind, CALAMITY_HEAD["fire"])
 	if not solved:
 		divinity.notice.emit("It burns itself out. %d lost." % c.eaten)
+		chronicle.add("loss", daylight.day,
+			"The %s ran its course. %d lost." % [c.kind, c.eaten])
 		_aftermath(String(heads[1]), false, [
 			["punish", "%d lost to it" % c.eaten, Aftermath.BAD],
 			["pop", "%d stood in its way" % c.saved(folk), Aftermath.DIM],
@@ -1320,6 +1330,8 @@ func _end_calamity(c, solved: bool) -> void:
 	if sfx != null:
 		sfx.play("bless")
 	divinity.notice.emit("You answered it. %d gave thanks." % n)
+	chronicle.add("disaster", daylight.day,
+		"You answered the %s. %d were saved." % [c.kind, c.saved(folk)])
 
 	# THE REPORT. Three lines, and the order is the order the player cares
 	# about: who got out, what it paid, and what it made you.
@@ -1491,24 +1503,51 @@ func _add_persistence() -> void:
 	log["day"] = daylight.day
 	log["gift"] = gift
 	log["span"] = _span(float(log.get("seconds", 0.0)))
+	# WHAT THIS VILLAGE REMEMBERS, and WHAT HAS NOT FINISHED HAPPENING. The
+	# away log has only ever been able to talk about a stretch of time nobody
+	# watched; these two put it in a village with a past and a present.
+	log["history"] = chronicle.recent(3)
+	log["pending"] = Chronicle.pending(self)
 	day_screen.open_morning(log)
 	get_tree().paused = true
 
 
 ## What showing up again is worth. Small, escalating, and never a substitute
 ## for playing -- the streak is a reason to open the tab, not a way to win.
+## TWO FULL-SCREEN MODALS AT ONCE, which is what this used to do.
+##
+## The streak gift called `grant_draft` here, which opens the boon draft, and
+## then the caller opened the morning screen straight on top of it. The player
+## came back to a stack: an away log they could read, over three boon cards they
+## could not reach, and no way to tell that the second thing was even there.
+##
+## The draft is now REMEMBERED and dealt when the morning screen is dismissed,
+## which is also the right order to read them in -- what happened while you were
+## gone, and then what you get for it.
+var _draft_owed := ""
+
+
 func _streak_gift(streak: int) -> String:
 	if streak < 2:
 		return ""
 	if streak >= 5:
 		divinity.add_faith(80.0)
-		divinity.grant_draft("streak")
+		_draft_owed = "streak"
 		return "A gift, and 80 Faith."
 	if streak >= 3:
-		divinity.grant_draft("streak")
+		_draft_owed = "streak"
 		return "A gift waits for you."
 	divinity.add_faith(40.0)
 	return "40 Faith for your return."
+
+
+## Hand over anything the return owes, once the player has finished reading.
+func pay_owed_draft() -> void:
+	if _draft_owed == "":
+		return
+	var source := _draft_owed
+	_draft_owed = ""
+	divinity.grant_draft(source)
 
 
 func _span(seconds: float) -> String:
@@ -2068,6 +2107,12 @@ func _add_ui() -> void:
 	prayers.village = village
 	prayers.divinity = divinity
 	add_child(prayers)
+	# THE AGES, which are the most memorable thing the game has and were the one
+	# event that scrolled past in four seconds with nowhere to go and see it
+	# again.
+	divinity.age_reached.connect(func(_i: int, what: String):
+		chronicle.add("age", daylight.day, "%s." % what))
+
 	prophecies = Prophecies.new()
 	prophecies.host = self
 	prophecies.spoken.connect(func(p: Prophecy):
@@ -2076,6 +2121,7 @@ func _add_ui() -> void:
 			sfx.play("bless"))
 	prophecies.fulfilled.connect(func(p: Prophecy):
 		divinity.notice.emit("It came to pass.")
+		chronicle.add("prophecy", daylight.day, p.spoken + " It came to pass.")
 		if aftermath != null:
 			aftermath.show_report("IT CAME TO PASS", true, [
 				[p.icon(), String(p.spec().get("short", "%d/%d"))
@@ -2086,6 +2132,8 @@ func _add_ui() -> void:
 		# NO PENALTY, and the line says so. The prophet was wrong; that is a
 		# thing that happens to prophets.
 		divinity.notice.emit("The hour passed, and it did not come.")
+		chronicle.add("prophecy", daylight.day,
+					  p.spoken + " The hour passed, and it did not.")
 		if aftermath != null:
 			aftermath.show_report("IT DID NOT COME", false, [
 				[p.icon(), String(p.spec().get("short", "%d/%d"))
@@ -2099,6 +2147,9 @@ func _add_ui() -> void:
 		if not is_instance_valid(won.who) or not is_instance_valid(lost.who):
 			return
 		divinity.notice.emit("You sided with %s. %s will remember."
+			% [String(won.who.brain.name), String(lost.who.brain.name)])
+		chronicle.add("feud", daylight.day,
+			"You took %s's side against %s."
 			% [String(won.who.brain.name), String(lost.who.brain.name)]))
 	prayers.opened.connect(func(pr):
 		# Somebody asking for something IS the interesting thing happening.
@@ -2173,11 +2224,13 @@ func _add_ui() -> void:
 	day_screen.rested.connect(func():
 		day_screen.close()
 		_start_day()
+		pay_owed_draft()
 		if saving != null:
 			saving.save_now("rest"))
 	day_screen.resumed.connect(func():
 		day_screen.close()
-		_start_day())
+		_start_day()
+		pay_owed_draft())
 
 	divinity.draft_offered.connect(draft.open)
 	draft.chosen.connect(func(id):

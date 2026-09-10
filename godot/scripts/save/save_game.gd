@@ -175,6 +175,12 @@ static func _capture_divinity(d) -> Dictionary:
 		# Optional, like the faith ladder: an old save has no opinion of you
 		# yet, which is exactly what a fresh Reputation says too.
 		"reputation": d.reputation.to_doc(),
+		# THE HISTORY, and like the reputation above it is optional: an old
+		# save has no chronicle, which is exactly what a village that has done
+		# nothing memorable yet also has. No version bump is owed for a key
+		# whose absent value equals today's behaviour.
+		"chronicle": (d.host.chronicle.to_doc()
+					  if d.host != null and d.host.chronicle != null else []),
 		"boons": {"held": d.boons.held.duplicate(),
 				  "rank3_open": bool(d.boons.rank3_open)},
 	}
