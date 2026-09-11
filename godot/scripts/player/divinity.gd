@@ -223,6 +223,14 @@ signal witnessed(result: Dictionary)
 ## changes. Emitting on every act would be "Provider +0.2" forty times a
 ## minute, which is the RPG-stat-grind readout the design explicitly rejects.
 signal known_as(axis: String)
+## SOMETHING HAPPENED TO THE VILLAGE, as distinct from `notice`, which is the
+## game answering something the player just pressed.
+##
+## A separate signal rather than a second argument on `notice`: adding a
+## parameter would have invalidated all thirty `notice.emit` calls in this file
+## for no gain, and a separate name is what lets the HUD hold news in its own
+## lane and lets a probe assert that the village was heard at all.
+signal news(text: String, icon: String)
 
 var age := 0                                                  ## how many ages have PASSED
 ## The first witnessed blessing has already been paid for with a boon.

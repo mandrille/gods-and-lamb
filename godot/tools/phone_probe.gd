@@ -125,6 +125,19 @@ func _check_top() -> void:
 		_faults.append("the god level bar overlaps the ledger")
 	if _hud._goal_y() < god.end.y:
 		_faults.append("the goal line is drawn through the god level bar")
+	# THE NOTICE STACK, which this probe has never checked and which was drawn
+	# straight over the ledger on every phone: it started at PAD + 52 = 68,
+	# centred, while `_stack_top` put the ledger at 74 -- and `_toast` paints
+	# after `_ledger`, so every message covered the village's own resource
+	# counts. It is the last rung of the ladder on a narrow screen now.
+	var notice := Rect2(_hud.PAD, _hud._notice_y(), 120.0, 32.0)
+	print("[PHONE] notice stack starts at y = %.0f" % notice.position.y)
+	if notice.intersects(ledger):
+		_faults.append("the notice stack is drawn over the ledger")
+	if notice.position.y < _hud._combo_y():
+		_faults.append("the notice stack is drawn through the combo rung")
+	if notice.end.y > vp.y:
+		_faults.append("the notice stack starts below the bottom of the screen")
 	if _hud._combo_y() < _hud._goal_y() + 12.0:
 		_faults.append("the combo pips are drawn through the goal line")
 

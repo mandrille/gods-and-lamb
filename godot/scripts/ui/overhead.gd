@@ -250,6 +250,20 @@ func _draw() -> void:
 			continue
 		var p: Vector2 = rig.cam.unproject_position(head)
 
+		# THE GROUND RING AND THE MOOD FACE COME FIRST, outside the chain.
+		#
+		# They used to sit at the BOTTOM of a chain of `continue`s, which meant
+		# that tapping a villager who was praying, guilty, blessable or talking
+		# gave no selection ring at their feet and no face -- the four states
+		# where the player is most likely to be tapping somebody on purpose.
+		# A ring on the ground cannot collide with a mark above a head, so it
+		# should never have been in the chain at all.
+		if highlight_all and f != hovered and f != selected:
+			_ground_ring(f, false)
+		if f == hovered or f == selected:
+			_ground_ring(f, f == selected)
+			_face(p, f.brain.mood_face(), f == selected)
+
 		# THE PROPHET IS ALWAYS MARKED.
 		#
 		# Unlike the job badge below, which only appears on hover: the whole
@@ -273,12 +287,24 @@ func _draw() -> void:
 			draw_arc(badge, 11.0, 0.0, TAU, 20, Color(1, 1, 1, 0.35), 1.5, true)
 			Icons.draw_icon(self, String(JOB_ICON[f.brain.job]), badge, 17.0)
 
-		# GUILT IS THE ONE THING ALWAYS WORTH DRAWING.
+		# THE SPUR, beside the head rather than above it.
 		#
-		# It is drawn for everyone, unhovered and unselected, because it is the
-		# player's cue to act and it expires in a few seconds -- a mark you
-		# only see by hovering is a mark you never see. It sits above the chat
-		# bubble in priority for the same reason.
+		# A villager who is praying AND has an open witness window is the most
+		# valuable target in the game -- the prayer pays, the blessing pays,
+		# and the chain pays -- and the old chain hid that overlap by showing
+		# whichever came first. The dial moves to its own anchor instead, a
+		# little smaller and with no pulse, so only one thing on a given head
+		# is ever moving. In a crowd of forty that is the whole difference
+		# between readable and strobing.
+		var spur := false
+		if host.divinity != null:
+			var window: float = host.divinity.witness_left(f)
+			if window > 0.0 and _mark_taken(f):
+				_blessable(p + Vector2(-17, 4), window, true)
+				spur = true
+
+		# WHAT SITS ABOVE THE HEAD, highest priority first. One only: two
+		# glyphs in the same place is worse than the lower one being missed.
 		# LOOKING UP, above everything: it is the shortest-lived mark there is.
 		if _looking.has(f.get_instance_id()):
 			if float(_looking[f.get_instance_id()]) > float(host.village.now):
@@ -305,23 +331,29 @@ func _draw() -> void:
 		# mechanic. Drawn for everyone for the same reason guilt is -- a cue
 		# you only see by hovering is a cue you never see -- and it depletes,
 		# so the player learns the window's length by watching it close.
-		if host.divinity != null:
+		if not spur and host.divinity != null:
 			var left: float = host.divinity.witness_left(f)
 			if left > 0.0:
 				_blessable(p, left)
 				continue
 		if f.brain.chatting_with != "":
 			_speech(p)
-			continue
-		# The mood face is a hover affordance (item 1), plus a permanent one on
-		# whoever is selected so the open panel and the world agree.
-		if highlight_all and f != hovered and f != selected:
-			_ground_ring(f, false)
-		if f == hovered or f == selected:
-			_ground_ring(f, f == selected)
-			_face(p, f.brain.mood_face(), f == selected)
 
 	_edges()
+
+
+## Is something already claiming the space above this head?
+##
+## Kept beside the chain it mirrors: if a mark is added there and not here, the
+## dial quietly starts drawing underneath it again.
+func _mark_taken(f) -> bool:
+	if _looking.has(f.get_instance_id()) 			and float(_looking[f.get_instance_id()]) > float(host.village.now):
+		return true
+	if host.prayers != null and host.prayers.of(f) != null:
+		return true
+	if host.divinity != null and host.divinity._is_guilty(f):
+		return true
+	return false
 
 
 ## DRAW THE ARGUMENT, not just the two people having it.
@@ -504,10 +536,14 @@ func _guilt(p: Vector2) -> void:
 ##
 ## An arc rather than a filled disc so it reads as a clock, and quieter than
 ## the guilt bolt on purpose -- guilt is a demand, this is an opportunity.
-func _blessable(p: Vector2, left: float) -> void:
+## `quiet` is the SPUR form: smaller and dimmer, for when this is the second
+## mark on a head and something louder already owns the space above it.
+func _blessable(p: Vector2, left: float, quiet := false) -> void:
 	var c := p + Vector2(0, -2)
-	var r := 10.0
+	var r := 7.0 if quiet else 10.0
 	var gold := Color(1.0, 0.84, 0.36)
+	if quiet:
+		gold.a = 0.72
 	draw_circle(c, r + 2.0, Color(0.12, 0.09, 0.02, 0.42))
 	# The remaining arc, wound clockwise from the top so it closes like a dial.
 	var start := -PI * 0.5

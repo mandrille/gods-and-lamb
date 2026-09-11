@@ -77,7 +77,15 @@ func _process(_d: float) -> bool:
 				_wanted.append(p.says()))
 		# EVERY LINE THE GAME SAYS, so the probe can ask whether the village
 		# asking for something is among them.
+		# BOTH LANES. Prayers were promoted to `news`, and a probe watching only
+		# `notice` would have reported the village asking in silence while it
+		# was in fact announcing every single one -- which is exactly the kind
+		# of false failure that teaches people to ignore a suite.
 		_root.divinity.notice.connect(func(t: String):
+			_notices += 1
+			if _said.size() < 200:
+				_said.append(t))
+		_root.divinity.news.connect(func(t: String, _i: String):
 			_notices += 1
 			if _said.size() < 200:
 				_said.append(t))

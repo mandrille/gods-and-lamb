@@ -46,9 +46,21 @@ var _font: Font
 ## emit into it -- a birth, an age, a sin and a wolf landing in the same second
 ## left the player with whichever fired last. A village that is doing things
 ## the player cannot see is a village that is not doing them.
+## THE STACK HAS TWO LANES, and the reason is arithmetic: sixty-two
+## `notice.emit` call sites feed three slots for four seconds each. A birth, a
+## death and a prophet being named were typographically identical to "Not
+## enough Faith to strike." and evicted by it. That IS the "poor UI and
+## feedback" complaint, in miniature.
+##
+## NEWS holds the things that happened to the village. CHATTER holds everything
+## else, which is the default -- nothing had to be re-tagged at 62 call sites
+## for this to work, only the fifteen lines worth promoting.
 const NOTICE_MAX := 3
+const NEWS_SLOTS := 2
 const NOTICE_LIFE := 4.0
-var _notices: Array = []                ## [{text, left, warn}], newest first
+const NEWS_LIFE := 6.0
+const CHATTER_LIFE := 3.0
+var _notices: Array = []                ## [{text, left, warn, news, icon}]
 var _combo_chain := 0
 var _combo_mult := 1.0
 var _combo_flash := 0.0            ## counts down after a chain BREAKS
@@ -78,6 +90,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	divinity.notice.connect(func(t): _say(t, NOTICE_LIFE))
+	divinity.news.connect(func(t: String, icon: String): news(t, icon))
 	divinity.combo_changed.connect(func(chain: int, mult: float):
 		# A BREAK is the event worth drawing. The old wiring only reacted at
 		# chain >= 2, so losing a chain of five produced nothing at all.
@@ -153,8 +166,13 @@ func _process(delta: float) -> void:
 		_level_flash -= delta
 	for n in _notices:
 		n["left"] = float(n["left"]) - delta
-	while not _notices.is_empty() and float(_notices[-1]["left"]) <= 0.0:
-		_notices.pop_back()
+	# FILTERED, NOT POPPED FROM THE TAIL.
+	#
+	# A short line pushed in FRONT of a longer one reached zero while the older
+	# one was still alive, so the tail test never reached it: it drew at alpha
+	# zero forever and `_toast` still advanced the layout 36 units for it. An
+	# invisible gap above the visible text, for up to four and a half seconds.
+	_notices = _notices.filter(func(n): return float(n["left"]) > 0.0)
 	var m := (_hover_override if _hover_override.x >= 0.0
 			  else get_local_mouse_position())
 	_refresh_hot(m)
@@ -359,7 +377,13 @@ func amend(text: String, secs: float) -> void:
 	_notices[0]["left"] = secs
 
 
-func _say(text: String, secs: float) -> void:
+## Something happened to the VILLAGE. Held longer, carries a glyph, and can
+## only be pushed out by more news -- never by a misclick.
+func news(text: String, icon := "faith", secs := NEWS_LIFE) -> void:
+	_say(text, secs, true, icon)
+
+
+func _say(text: String, secs: float, is_news := false, icon := "") -> void:
 	# A repeat refreshes the line it is already on rather than stacking three
 	# copies of "Not enough Faith to strike."
 	for n in _notices:
@@ -367,9 +391,39 @@ func _say(text: String, secs: float) -> void:
 			n["left"] = secs
 			return
 	_notices.push_front({"text": text, "left": secs,
-						 "warn": _aiming >= 0 or _smiting})
+						 "warn": _aiming >= 0 or _smiting,
+						 "news": is_news, "icon": icon})
+	_trim()
+
+
+## Trim by LANE rather than by age.
+##
+## News is evicted only by news, and only once there are more than NEWS_SLOTS
+## of it. Chatter is evicted by anything. So "Mara and Odo have a child" cannot
+## be pushed off the screen by the player tapping a card they cannot afford,
+## which is what used to happen.
+func _trim() -> void:
 	while _notices.size() > NOTICE_MAX:
-		_notices.pop_back()
+		var victim := -1
+		for i in range(_notices.size() - 1, -1, -1):
+			if not bool(_notices[i].get("news", false)):
+				victim = i
+				break
+		if victim < 0:
+			victim = _notices.size() - 1
+		_notices.remove_at(victim)
+	# And news never occupies the whole stack, or the chatter lane -- which is
+	# where every refusal the player needs to read lives -- has nowhere to go.
+	var newsy := 0
+	for n in _notices:
+		if bool(n.get("news", false)):
+			newsy += 1
+	while newsy > NEWS_SLOTS:
+		for i in range(_notices.size() - 1, -1, -1):
+			if bool(_notices[i].get("news", false)):
+				_notices.remove_at(i)
+				newsy -= 1
+				break
 
 
 ## --- paint ------------------------------------------------------------------
@@ -677,24 +731,46 @@ func _wrath() -> void:
 				INK if afford else Color(0.7, 0.55, 0.55))
 
 
+## Where the notice stack starts: the last rung of the left ladder on a phone.
+##
+## It used to start at PAD + 52 = 68, centred. On a narrow screen `_stack_top`
+## is 74, so the ledger occupied y 74-108 and the first notice y 68-100 -- and
+## `_toast` draws AFTER `_ledger`, so every message painted over the village's
+## own resource counts. `phone_probe` never caught it because its overlap check
+## only registered the hand, Commune and Wrath.
+func _notice_y() -> float:
+	return _combo_y() + 20.0 if _is_narrow() else PAD + 52.0
+
+
 func _toast() -> void:
 	if _notices.is_empty():
 		return
 	var vp := get_viewport_rect().size
-	# Below the day bar, which now owns the top centre.
-	var y := PAD + 52.0
+	var narrow := _is_narrow()
+	var y := _notice_y()
 	for n in _notices:
-		var text := String(n["text"])
-		var w := float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
-											 -1, 15).x) + 34.0
-		var r := Rect2((vp.x - w) * 0.5, y, w, 32.0)
-		# Fades out over its last second rather than vanishing, so the eye is
-		# not caught by something disappearing.
 		var a := clampf(float(n["left"]), 0.0, 1.0)
+		# NOTHING ADVANCES THE LAYOUT THAT DID NOT DRAW. Belt and braces with
+		# the filter in `_process`: a row at zero alpha must not leave a hole.
+		if a <= 0.0:
+			continue
+		var text := String(n["text"])
+		var icon := String(n.get("icon", ""))
+		var lead := 34.0 + (16.0 if icon != "" else 0.0)
+		var w := float(_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
+											 -1, 15).x) + lead
+		# Left-aligned in the ladder on a phone; centred where there is room.
+		var r := Rect2(PAD if narrow else (vp.x - w) * 0.5, y, w, 32.0)
 		draw_rect(r, Color(PANEL.r, PANEL.g, PANEL.b, PANEL.a * a), true)
 		draw_rect(r, Color(1, 1, 1, 0.10 * a), false, 1.0)
+		var x := r.position.x + 17.0
+		# A GLYPH IS THE OTHER HALF. A birth and a misclick reading identically
+		# is the complaint; the icon separates them before a word is read.
+		if icon != "":
+			Icons.draw_icon(self, icon, Vector2(x + 1.0, y + 16.0), 15.0)
+			x += 17.0
 		var tint := WARN if bool(n["warn"]) else INK
-		draw_string(_font, r.position + Vector2(17.0, 21.0), text,
+		draw_string(_font, Vector2(x, y + 21.0), text,
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 15,
 					Color(tint.r, tint.g, tint.b, a))
 		y += 36.0

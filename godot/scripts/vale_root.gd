@@ -808,7 +808,7 @@ func _tick_prophet() -> void:
 	if divinity.prophet.tick(folk, float(village.now)):
 		var now_name: String = divinity.prophet.name_of()
 		if now_name != "":
-			divinity.notice.emit("%s speaks for you now." % now_name)
+			_news("%s speaks for you now." % now_name, "saint")
 			chronicle.add("prophet", daylight.day,
 						  "%s began to speak for you." % now_name)
 			stats.reach("first_prophet")
@@ -817,7 +817,7 @@ func _tick_prophet() -> void:
 									+ Vector3(0, 1.2, 0))
 		elif was != "":
 			# LOSING one is the half that makes having one mean anything.
-			divinity.notice.emit("%s no longer speaks for you." % was)
+			_news("%s no longer speaks for you." % was, "saint")
 			chronicle.add("prophet", daylight.day,
 						  "%s stopped speaking for you." % was)
 	var said: String = divinity.prophet.proclaim(divinity.reputation.title(),
@@ -1100,7 +1100,7 @@ func _maybe_spawn_wolf(delta: float) -> void:
 	if spot.x < 0:
 		return
 	if _spawn_beast("Animals/wolf", grid.world_of(spot)):
-		divinity.notice.emit("Wolves at the edge of the village.")
+		_news("Wolves at the edge of the village.", "bolt")
 
 
 ## A walkable cell on the RIM of an unlocked plot, farthest from where the
@@ -1471,7 +1471,7 @@ func _end_calamity(c, solved: bool) -> void:
 		fxe.burst("bless", grid.world_of(c.cell) + Vector3(0, 0.6, 0))
 	if sfx != null:
 		sfx.play("bless")
-	divinity.notice.emit("You answered it. %d gave thanks." % n)
+	_news("You answered it. %d gave thanks." % n, "cross")
 	chronicle.add("disaster", daylight.day,
 		"You answered the %s. %d were saved." % [c.kind, c.saved(folk)])
 	stats.note("disasters_answered")
@@ -2262,6 +2262,7 @@ func _add_ui() -> void:
 	# again.
 	divinity.age_reached.connect(func(i: int, what: String):
 		chronicle.add("age", daylight.day, "%s." % what)
+		_news("%s." % what, "saint")
 		if i >= 1:
 			stats.reach("age_1"))
 
@@ -2273,7 +2274,7 @@ func _add_ui() -> void:
 		if sfx != null:
 			sfx.play("bless"))
 	prophecies.fulfilled.connect(func(p: Prophecy):
-		divinity.notice.emit("It came to pass.")
+		_news("It came to pass.", "saint")
 		chronicle.add("prophecy", daylight.day, p.spoken + " It came to pass.")
 		stats.note("prophecies_kept")
 		stats.reach("first_prophecy_kept")
@@ -2286,7 +2287,7 @@ func _add_ui() -> void:
 	prophecies.broken.connect(func(p: Prophecy):
 		# NO PENALTY, and the line says so. The prophet was wrong; that is a
 		# thing that happens to prophets.
-		divinity.notice.emit("The hour passed, and it did not come.")
+		_news("The hour passed, and it did not come.", "saint")
 		chronicle.add("prophecy", daylight.day,
 					  p.spoken + " The hour passed, and it did not.")
 		stats.note("prophecies_broken")
@@ -2318,7 +2319,10 @@ func _add_ui() -> void:
 	prayers.opened.connect(func(p: Prayer):
 		stats.note("prayers_opened")
 		stats.reach("first_prayer_seen")
-		divinity.notice.emit(p.says())
+		# THE ASK IS THE LOUDEST THING THE VILLAGE DOES. It carries the same
+		# glyph as the bubble over their head, so the line and the mark in the
+		# world are visibly one event.
+		_news(p.says(), p.icon())
 		if sfx != null:
 			sfx.play("chat", 0.7))
 	# AND WHEN IT IS ANSWERED, so the other half of the exchange is legible
@@ -2327,7 +2331,7 @@ func _add_ui() -> void:
 	# their own whether or not they help.
 	prayers.closed.connect(func(p: Prayer, answered: bool):
 		if answered and is_instance_valid(p.who) and p.who.brain != null:
-			divinity.notice.emit("%s is answered." % String(p.who.brain.name)))
+			_news("%s is answered." % String(p.who.brain.name), "cross"))
 	prayers.closed.connect(func(_p: Prayer, answered: bool):
 		stats.note("prayers_answered" if answered else "prayers_lapsed")
 		if answered:
@@ -2338,8 +2342,9 @@ func _add_ui() -> void:
 	prayers.took_sides.connect(func(won: Prayer, lost: Prayer):
 		if not is_instance_valid(won.who) or not is_instance_valid(lost.who):
 			return
-		divinity.notice.emit("You sided with %s. %s will remember."
-			% [String(won.who.brain.name), String(lost.who.brain.name)])
+		_news("You sided with %s. %s will remember."
+			% [String(won.who.brain.name), String(lost.who.brain.name)],
+			"cross")
 		stats.note("feuds_settled")
 		chronicle.add("feud", daylight.day,
 			"You took %s's side against %s."
@@ -2484,8 +2489,8 @@ func _on_child_wanted(a: Node, b: Node) -> void:
 	stats.note("births")
 	fxe.burst("birth", grid.world_of(cell) + Vector3(0, 0.7, 0))
 	sfx.play("coin", 1.25)
-	divinity.notice.emit("%s and %s have a child: %s."
-		% [a.brain.name, b.brain.name, f.brain.name])
+	_news("%s and %s have a child: %s."
+		% [a.brain.name, b.brain.name, f.brain.name], "pop")
 	for p in [a, b]:
 		p.brain.memories.add(Memories.KIND_SOCIAL,
 			"We have a child, %s." % f.brain.name, 0.9, f.brain.name, 1.5)
@@ -2552,7 +2557,7 @@ func _maybe_newcomer(delta: float) -> void:
 	if _day_drama == "":
 		_day_drama = "%s came up the road and stayed." % who.brain.name
 	stats.note("newcomers")
-	divinity.notice.emit("You have a new follower: %s." % who.brain.name)
+	_news("You have a new follower: %s." % who.brain.name, "pop")
 
 
 ## A village that reaches a size has EARNED something. Same draft as Commune,
@@ -2633,6 +2638,16 @@ func _service_grid(delta: float) -> void:
 	_grid_wait = GRID_MIN_GAP
 	n_grid_rebuilds += 1
 	rebuild_grid()
+
+
+## SOMETHING HAPPENED TO THE VILLAGE, as opposed to something the player just
+## pressed. News is held longer, carries a glyph, and cannot be evicted by a
+## refusal -- see HUD's lane comment for the arithmetic that made this
+## necessary. Routed through here rather than through `divinity.notice` so the
+## promotion list is one readable place instead of fifteen scattered calls.
+func _news(text: String, icon := "faith") -> void:
+	if divinity != null:
+		divinity.news.emit(text, icon)
 
 
 ## Push every boon that lives on a follower back out to all of them.
