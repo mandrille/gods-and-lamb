@@ -138,6 +138,13 @@ static func takes(cell: Vector2i, step: int, chance: float) -> bool:
 ## producing an item rather than a tree fruiting. Several, scattered under the
 ## canopy, is the difference -- and every one of them is food a villager will
 ## walk over and eat, so the number is a real quantity and not decoration.
+## HOW MANY HEAPS ONE TREE MAY HAVE LYING UNDER IT AT ONCE.
+##
+## There was no cap at all -- five heaps a click, a 0.45 s cooldown, no per-tree
+## limit and no global prop limit -- so the whole island could be carpeted in
+## fruit in under a minute. A tree that is already loaded now refuses, which
+## also makes a click on a bare tree mean something again.
+const FRUIT_HELD := 6
 const FRUIT := 5
 const FRUIT_REACH := 2
 

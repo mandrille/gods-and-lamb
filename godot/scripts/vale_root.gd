@@ -455,6 +455,19 @@ func _on_picked(entry: Dictionary) -> void:
 	var act := WorldTouch.prop_action(id)
 	if act.is_empty():
 		return
+	# A TREE THAT HAS ALREADY GIVEN cannot give again until somebody eats.
+	#
+	# There was no cap of any kind: five heaps per click, a 0.45 s cooldown and
+	# no per-tree limit, so the island could be carpeted in apples in under a
+	# minute -- which is what the owner did. Refusing here rather than in
+	# `_fruit` keeps the cooldown unspent, because being told "no" should never
+	# cost the player their next touch.
+	if bool(act.get("fruit", false)) 			and _fruit_near(grid.cell_of(entry.get("pos", Vector3.ZERO)),
+							int(act.get("reach", WorldTouch.FRUIT_REACH))) 				>= WorldTouch.FRUIT_HELD:
+		divinity.notice.emit("This tree has given all it can.")
+		if sfx != null:
+			sfx.play("deny")
+		return
 	# The cooldown is spent only once the touch is going to DO something. A
 	# scenery prop with no entry in the table used to eat it silently, and the
 	# player's next tap -- on a tree, on purpose -- was the one that failed.
@@ -481,6 +494,19 @@ func _on_picked(entry: Dictionary) -> void:
 ## hungry villager is walking toward one before the player has let go of the
 ## mouse. FruitFall is the picture of it -- apples in the leaves that hang and
 ## then drop onto exactly the squares the heaps went to.
+## How much fruit is already lying within `reach` of this cell.
+func _fruit_near(home: Vector2i, reach: int) -> int:
+	var n := 0
+	for e in builder.placed_props:
+		if String(e.get("id", "")) != "Nature/apples":
+			continue
+		if bool(e.get("gone", false)) or not is_instance_valid(e.get("node")):
+			continue
+		if absi(int(e.get("col", -999)) - home.x) <= reach 				and absi(int(e.get("row", -999)) - home.y) <= reach:
+			n += 1
+	return n
+
+
 func _fruit(act: Dictionary, aid: String, at: Vector3) -> void:
 	var home: Vector2i = grid.cell_of(at)
 	var reach: int = int(act.get("reach", WorldTouch.FRUIT_REACH))
@@ -508,6 +534,27 @@ func _fruit(act: Dictionary, aid: String, at: Vector3) -> void:
 	FruitFall.drop(builder, at, landed, _rng)
 
 
+## The nearest hard tree whose canopy this cell sits under, or an empty entry.
+##
+## Returns the BUILDER'S OWN dictionary, not a copy, because `_on_picked` may
+## hand it to `remove_prop` and GDScript compares dictionaries by reference --
+## the same trap hover.gd documents at length for its `src` field.
+func _tree_near(cell: Vector2i) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := 3
+	for e in builder.placed_props:
+		var id := String(e.get("id", ""))
+		if not (id == "Nature/tree" or id == "Nature/pine"):
+			continue
+		if bool(e.get("gone", false)) or not is_instance_valid(e.get("node")):
+			continue
+		var d: int = absi(int(e.get("col", -999)) - cell.x) 			+ absi(int(e.get("row", -999)) - cell.y)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
+
 ## THE GROUND WAS TOUCHED, which is the verb the whole desert opening is made
 ## of: dirt becomes grass, and grass grows something if there is room for it.
 func _on_ground(at: Vector3) -> void:
@@ -530,6 +577,15 @@ func _on_ground(at: Vector3) -> void:
 		# Only where there is ROOM. A meadow you can fill by holding the mouse
 		# down is not a decision, and a tree on top of a hut is a bug.
 		if not grid.is_plain(cell) or _prop_on(cell):
+			# EXCEPT THAT THE THING IN THE WAY MIGHT BE THE THING THEY MEANT.
+			#
+			# A click landing on the very cell a tree stands on returned here
+			# in silence -- no fruit, no notice, no sound, nothing. That is the
+			# most direct "I clicked the tree" there is, and it was the one
+			# case that did the least.
+			var under := _tree_near(cell)
+			if not under.is_empty():
+				_on_picked(under)
 			return
 		# AND THE ROOM IS BIGGER THAN THE TILE. A tree's footprint covers its
 		# neighbours, so a square that is empty by cell can still be full by
@@ -538,7 +594,21 @@ func _on_ground(at: Vector3) -> void:
 		# It reads as the game ignoring you.
 		var seed_id := WorldTouch.seed_for(cell)
 		if builder.would_overlap(seed_id, cell.x, cell.y):
-			_touch_take()
+			# NEAR A TREE MEANS THE TREE.
+			#
+			# The ring of grass around a trunk is a deny zone -- `would_overlap`
+			# reserves 5x5 around every hard prop while the walk grid blocks
+			# only the centre -- and it is precisely where somebody aiming at
+			# the tree clicks. Treating that click as the tree makes the canopy
+			# a large, forgiving target and turns the commonest misclick in the
+			# game into the thing the player meant by it.
+			var tree := _tree_near(cell)
+			if not tree.is_empty():
+				_on_picked(tree)
+				return
+			# AND A REFUSAL COSTS NOTHING. This spent the full touch cooldown
+			# on the way out, so being told "no room" also took away the next
+			# touch -- the player pressed twice and the game answered once.
 			if divinity != null:
 				divinity.notice.emit("No room to grow there.")
 			if sfx != null:
@@ -2589,6 +2659,24 @@ func apply_boons() -> void:
 ## updated in place rather than a new one built and handed to everybody. See
 ## WalkGrid.rebuild_props for why that matters.
 func rebuild_grid() -> void:
+	# THE PICKER HAS TO BE REFRESHED ON BOTH PATHS, and for a long time it was
+	# refreshed on neither.
+	#
+	# `grid` is assigned in `_ready` and never set back to null, so the cheap
+	# in-place branch below ALWAYS took its early return and everything after
+	# it -- including the `pick.setup` that this function's own comment says is
+	# necessary -- was dead code. The picker's cached AABBs were therefore
+	# built exactly twice in a session: at startup, and when an island was
+	# bought.
+	#
+	# What that cost, in the owner's words: "trees grow but I can't click on
+	# them to produce apples, it says no room to grow trees". Every tree the
+	# player grew, every apple heap, every hut the villagers raised was
+	# invisible to the picker, so the click fell through to the ground path and
+	# landed in the deny zone around the trunk. And "after a while I'm allowed
+	# to touch the tree" was after BUYING LAND, the one thing that happened to
+	# call `setup` again.
+	_refresh_picker()
 	if grid != null:
 		grid.rebuild_props(builder.live_doc())
 		return
@@ -2610,6 +2698,15 @@ func rebuild_grid() -> void:
 	# the picker's cached AABBs are stale in exactly the same way, and the
 	# structure census is what tells villagers whether to build another.
 	village.census(builder.placed_props)
+
+
+## Re-snapshot the click picker's prop AABBs.
+##
+## Coalesced with the grid rebuild rather than run per placement: `setup` walks
+## every prop and unions its meshes, and the grid rebuild it rides along with
+## is already the expensive half (29.75 ms measured). One extra pass at most
+## every GRID_MIN_GAP is proportionate; one per felled tree would not be.
+func _refresh_picker() -> void:
 	if pick != null:
 		pick.setup(rig, builder, builder.placed_props)
 

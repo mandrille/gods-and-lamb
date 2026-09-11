@@ -54,6 +54,24 @@ const DESPERATE := 0.20
 ## `builds` places a structure on completion, which is the only way any
 ## building enters this world.
 const ACTIONS := {
+	# FOOD YOU CAN SEE BEATS FOOD IN A LEDGER, and it sits above `eat` on
+	# purpose -- `_action_for_need` walks this table in order.
+	#
+	# `eat` has no `sources` and `anywhere: true`: it is a withdrawal from the
+	# abstract store, performed standing wherever the villager happens to be.
+	# `forage` is the only action bound to `Nature/apples` and it carries
+	# `"need": ""`, so it is WORK, weighted by the granary's shortage. Between
+	# them there was no path at all from being hungry to walking over to an
+	# apple -- the owner asked for one twice, and the answer both times was a
+	# villager standing in a field of fruit eating from the larder.
+	#
+	# No `takes`, deliberately: that skips the `can_take` gate in
+	# `_action_for_need`, so this stays actionable when the granary is empty,
+	# which is exactly the moment windfall matters most.
+	"graze":   {"need": "hunger", "sources": ["Nature/apples"],
+				"seconds": 2.5, "anim": "pickup", "refill": 0.60,
+				"morality": 0.0, "verb": "eating windfall",
+				"consumes_only": ["Nature/apples"]},
 	"eat":     {"need": "hunger", "sources": [], "anywhere": true,
 				"seconds": 2.5, "anim": "pickup", "refill": 0.85,
 				"takes": {"food": 1}, "morality": 0.0, "verb": "eating"},
@@ -289,7 +307,10 @@ const ADULT_AT := 240.0
 ## What a child is allowed to do. They eat, sleep, wash, play and talk; they do
 ## not fell trees or raise buildings. Without this a newborn walks off with an
 ## axe, which is funny once.
-const CHILD_ACTIONS := ["eat", "rest", "wash", "play", "pick"]
+## `graze` is in here and `forage` is not: picking up a windfall apple is not
+## a job, and a hungry child who cannot touch fruit is the one villager the
+## player can never feed.
+const CHILD_ACTIONS := ["graze", "eat", "rest", "wash", "play", "pick"]
 
 var name := "Someone"
 var age := 0.0
@@ -725,21 +746,32 @@ func _worst_actionable() -> Array:
 ## `_worst_actionable` moves on, and the work branch below picks up foraging
 ## with a shortage of 1.0 behind it. Hungry villagers go and find food instead
 ## of queueing for it.
+## TRIES EVERY CANDIDATE, rather than only the first.
+##
+## This used to `return ""` the moment the first action matching the need failed
+## a gate. With one honest answer per need that was indistinguishable from
+## walking on -- but the moment a second appeared (`graze` beside `eat`) it
+## became: no apples in reach, therefore hunger is unanswerable, therefore a
+## villager starves beside a full granary. Sins are skipped here and chosen
+## separately by `_sin_for_need`, which is what kept `steal` from being picked
+## as an honest answer by accident of dictionary order.
 func _action_for_need(key: String) -> String:
 	for a in ACTIONS:
 		var spec: Dictionary = ACTIONS[a]
 		if String(spec.get("need", "")) != key:
 			continue
+		if bool(spec.get("sin", false)):
+			continue
 		if village != null:
 			var takes: Dictionary = spec.get("takes", {})
 			if not takes.is_empty() and not village.can_take(takes):
-				return ""
+				continue
 		# And the PLACE has to exist. Praying needs a shrine; with none built,
 		# every villager whose Faith ran low chose `pray`, found no
 		# destination, wandered, and chose it again -- 2473 dead decisions in
 		# one run, which from outside is a village milling about.
 		if not _somewhere_to_do(spec):
-			return ""
+			continue
 		return a
 	return ""
 
