@@ -206,16 +206,36 @@ func _wonder(at: Vector2) -> void:
 ## meant to be looking at the village rather than reading it. Urgency is a
 ## faster pulse and a warmer rim, not a second icon and not a number, so a
 ## screenful of these still reads at a glance.
+## A PRAYER HAS TO CARRY ACROSS THE WHOLE ISLAND.
+##
+## This was 13 px of near-black disc with a pale grey rim. Photographed at the
+## default camera distance with two villagers genuinely praying, it was two
+## specks of grey on grey -- present, correct, and completely invisible. The
+## guilt mark next door has always been hot orange and pulsing for exactly this
+## reason and nobody carried that lesson across.
+##
+## Bigger, warm, and with a halo behind it so it is never read against the
+## terrain -- a mark whose legibility depends on what it happens to be standing
+## on is a mark that disappears over the ploughed field.
+const PRAY_R := 19.0
+const PRAY_WARM := Color(0.99, 0.84, 0.44)
+const PRAY_HOT := Color(0.99, 0.55, 0.30)
+
+
 func _prayer(at: Vector2, pr) -> void:
 	var speed: float = 0.011 if pr.urgent else 0.005
 	var beat: float = 1.0 + (0.13 if pr.urgent else 0.06) * _beat() 		* sin(float(Time.get_ticks_msec()) * speed)
-	var c := at + Vector2(0, -22)
-	var rim := Color(0.97, 0.66, 0.36) if pr.urgent 		else Color(0.86, 0.89, 0.96, 0.75)
-	draw_circle(c, 13.0 * beat, Color(0.08, 0.09, 0.12, 0.78))
-	draw_arc(c, 13.0 * beat, 0.0, TAU, 22, rim, 1.8, true)
+	var c := at + Vector2(0, -28)
+	var rim: Color = PRAY_HOT if pr.urgent else PRAY_WARM
+	var r: float = PRAY_R * beat
+	# The halo first: a soft wash of the rim colour that separates the whole
+	# mark from whatever it is standing over.
+	draw_circle(c, r + 5.0, Color(rim.r, rim.g, rim.b, 0.20))
+	draw_circle(c, r, Color(0.08, 0.09, 0.12, 0.92))
+	draw_arc(c, r, 0.0, TAU, 26, rim, 2.4, true)
 	# The little tail, so it reads as a thought rather than a badge.
-	draw_circle(at + Vector2(-1.0, -8.0), 2.6, Color(0.08, 0.09, 0.12, 0.78))
-	Icons.draw_icon(self, pr.icon(), c, 17.0)
+	draw_circle(at + Vector2(-1.0, -11.0), 3.4, Color(0.08, 0.09, 0.12, 0.92))
+	Icons.draw_icon(self, pr.icon(), c, 22.0)
 
 
 func _draw() -> void:
@@ -378,7 +398,7 @@ const TINTS := {
 
 
 func _edges() -> void:
-	if host.get("calamities") == null or host.grid == null:
+	if host.grid == null:
 		return
 	# THE VIEWPORT RECT, NOT `size`: this Control's own size is (0, 0) until the
 	# parent notifies a resize, and a zero frame contains no point at all -- so
@@ -390,22 +410,42 @@ func _edges() -> void:
 					   screen - Vector2(EDGE_INSET, EDGE_INSET) * 2.0)
 	if frame.size.x <= 0.0 or frame.size.y <= 0.0:
 		return
+	# SOMEBODY ASKING FROM OFF SCREEN, for the same reason a fire off screen
+	# gets one: a prayer stands for a median of twelve seconds, and twelve
+	# seconds is not long enough to find somebody by panning at random.
+	if host.prayers != null:
+		for pr in (host.prayers.active as Array):
+			if not is_instance_valid(pr.who):
+				continue
+			_point_at(pr.who.position + Vector3(0, 1.2, 0), frame, screen,
+					  PRAY_HOT if pr.urgent else PRAY_WARM)
+
+	if host.get("calamities") == null:
+		return
 	for c in (host.calamities as Array):
-		var at: Vector3 = host.grid.world_of(c.cell) + Vector3(0, 0.8, 0)
-		var behind: bool = rig.cam.is_position_behind(at)
-		var p: Vector2 = rig.cam.unproject_position(at)
-		if not behind and frame.has_point(p):
-			continue
-		# BEHIND THE CAMERA UNPROJECTS TO A MIRRORED POINT, which would send the
-		# arrow to the opposite edge from the fire. Flipping it around the
-		# screen centre puts it back on the side the fire is actually on.
-		var mid: Vector2 = screen * 0.5
-		var dir: Vector2 = (mid - p) if behind else (p - mid)
-		if dir.length() < 0.001:
-			continue
-		_arrow(mid + dir.normalized() * _reach(dir.normalized(), frame),
-			   dir.angle(), TINTS.get(String(c.look().get("tint", "ember")),
-									  TINTS["ember"]))
+		_point_at(host.grid.world_of(c.cell) + Vector3(0, 0.8, 0), frame,
+				  screen, TINTS.get(String(c.look().get("tint", "ember")),
+									TINTS["ember"]))
+
+
+## One arrow at the frame edge, if this world point is not already on screen.
+##
+## Shared by the fires and the prayers rather than written twice, because the
+## awkward half is the same for both: a point BEHIND the camera unprojects to a
+## mirrored position, which would send the arrow to the opposite edge from the
+## thing it is pointing at. Flipping the direction around the screen centre puts
+## it back on the side the thing is actually on.
+func _point_at(at: Vector3, frame: Rect2, screen: Vector2, tint: Color) -> void:
+	var behind: bool = rig.cam.is_position_behind(at)
+	var p: Vector2 = rig.cam.unproject_position(at)
+	if not behind and frame.has_point(p):
+		return
+	var mid: Vector2 = screen * 0.5
+	var dir: Vector2 = (mid - p) if behind else (p - mid)
+	if dir.length() < 0.001:
+		return
+	_arrow(mid + dir.normalized() * _reach(dir.normalized(), frame),
+		   dir.angle(), tint)
 
 
 ## How far from the centre the frame is, in this direction.

@@ -2233,9 +2233,31 @@ func _add_ui() -> void:
 	# happened forty seconds after they opened the tab.
 	stats.begin(float(village.now))
 
+	# SAY IT. This was the hole the whole loop fell through.
+	#
+	# Measured on a real fifteen-minute village: 54 prayers opened, four
+	# standing at once at the peak, the first at forty seconds. The simulation
+	# was never the problem. The only thing that ever said so was a 13 px dark
+	# disc in world space -- at the default camera distance that is a speck of
+	# grey on grey, and `opened` was wired to nothing but an analytics counter.
+	# So the village asked the player for something fifty-four times and told
+	# them nothing, fifty-four times.
+	#
+	# The notice stack is how everything else in this game speaks, and one line
+	# every sixteen seconds is well inside what it already carries.
 	prayers.opened.connect(func(p: Prayer):
 		stats.note("prayers_opened")
-		stats.reach("first_prayer_seen"))
+		stats.reach("first_prayer_seen")
+		divinity.notice.emit(p.says())
+		if sfx != null:
+			sfx.play("chat", 0.7))
+	# AND WHEN IT IS ANSWERED, so the other half of the exchange is legible
+	# too. Only when the god did it: somebody wandering off and finding a bush
+	# is not news, and saying so would teach the player that prayers resolve on
+	# their own whether or not they help.
+	prayers.closed.connect(func(p: Prayer, answered: bool):
+		if answered and is_instance_valid(p.who) and p.who.brain != null:
+			divinity.notice.emit("%s is answered." % String(p.who.brain.name)))
 	prayers.closed.connect(func(_p: Prayer, answered: bool):
 		stats.note("prayers_answered" if answered else "prayers_lapsed")
 		if answered:
