@@ -146,12 +146,21 @@ func _check_top() -> void:
 ## rect, so an overlap is not a cosmetic complaint: whichever is tested first
 ## silently swallows the tap meant for the other.
 func _check_overlap() -> void:
+	# Deal a hand, so the row above it -- and the reroll in the middle of it --
+	# is laid out the way a player actually sees it.
+	if _root.divinity.hand.is_empty():
+		for i in 3:
+			_root.divinity.draw_card()
 	var named: Array = []
 	var hand: Array[Rect2] = _hud._hand_rects()
 	for i in hand.size():
 		named.append(["card %d" % i, hand[i]])
 	named.append(["commune", _hud._commune_rect()])
 	named.append(["wrath", _hud._wrath_rect()])
+	# THE REROLL BUTTON, which used to sit under the Commune/Wrath row on every
+	# phone and could not be pressed. It needs a hand to exist at all.
+	if _hud._reroll_rect().size.x > 0.0:
+		named.append(["reroll", _hud._reroll_rect()])
 	for a in named.size():
 		for b in range(a + 1, named.size()):
 			var ra: Rect2 = named[a][1]
@@ -178,6 +187,8 @@ func _check_thumb() -> void:
 	var worst := ""
 	var named: Array = [["commune", _hud._commune_rect()],
 						["wrath", _hud._wrath_rect()]]
+	if _hud._reroll_rect().size.x > 0.0:
+		named.append(["reroll", _hud._reroll_rect()])
 	var hand: Array[Rect2] = _hud._hand_rects()
 	for i in hand.size():
 		named.append(["card %d" % i, hand[i]])

@@ -45,6 +45,13 @@ const MIRACLE_TAGS := {
 	"mend": LIFE | PROTECTION,
 	"calm": PROTECTION,
 	"upheaval": STONE,
+	# The village-wide cards. Tagged like everything else so they answer the
+	# prayers that match: Plenty is FOOD, so it satisfies every food prayer.
+	"plenty": FOOD,
+	"vision": JOY,
+	"sabbath": LIFE,
+	"gathering": JOY,
+	"cleanse": WATER | LIFE,
 }
 
 

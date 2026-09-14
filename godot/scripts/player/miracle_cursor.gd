@@ -44,6 +44,9 @@ const HEIGHT := 2.6
 ## from the basket -- while it is out. Independent of SOW_EVERY, which plants
 ## props; this is purely what the player sees happening every frame.
 const TRAIL_EVERY := 0.40
+## How much further each extra copy reaches: 1.35x for a pair, 1.7x for three.
+## Area grows with the square of this, which is the superlinear part.
+const STACK_REACH := 0.35
 
 var host = null                          ## ValeRoot
 var divinity = null
@@ -51,6 +54,11 @@ var divinity = null
 var id := ""
 var left := 0.0
 var radius := 4.5
+## HOW MANY IDENTICAL CARDS WERE SPENT ON THIS ONE MIRACLE. Two Groves played
+## together are one Grove that reaches further, works faster and pays more per
+## soul -- worth MORE than two played apart, because the wider reach alone
+## touches people the second sweep would have had to go and find.
+var power := 1
 var _sow := 0.0
 var _trail := 0.0
 var _touched_folk: Dictionary = {}       ## instance id -> true, paid once each
@@ -125,9 +133,10 @@ func _ready() -> void:
 	visible = false
 
 
-func begin(card_id: String, r: float) -> void:
+func begin(card_id: String, r: float, copies := 1) -> void:
 	id = card_id
-	radius = r
+	power = maxi(1, copies)
+	radius = r * (1.0 + STACK_REACH * float(power - 1))
 	left = SECONDS
 	_sow = 0.0
 	_trail = 0.0             # the first burst of the trail fires almost at once
@@ -506,30 +515,31 @@ func _apply(delta: float) -> void:
 	_sow -= delta
 	if _sow > 0.0:
 		return
-	_sow = SOW_EVERY
+	_sow = SOW_EVERY / float(maxi(1, power))
 	_plant(grows, ground)
 
 
 func _touch_folk(f, delta: float) -> void:
 	var b = f.brain
+	var rate: float = RATE * float(power)
 	match id:
 		"rain":
 			b.stats["hygiene"] = minf(1.0,
-				float(b.stats["hygiene"]) + RATE * delta)
+				float(b.stats["hygiene"]) + rate * delta)
 			b.stats["health"] = minf(1.0,
-				float(b.stats["health"]) + RATE * 0.5 * delta)
+				float(b.stats["health"]) + rate * 0.5 * delta)
 		"feast":
 			b.stats["hunger"] = minf(1.0,
-				float(b.stats["hunger"]) + RATE * delta)
+				float(b.stats["hunger"]) + rate * delta)
 		"revel":
-			b.stats["fun"] = minf(1.0, float(b.stats["fun"]) + RATE * delta)
+			b.stats["fun"] = minf(1.0, float(b.stats["fun"]) + rate * delta)
 			b.stats["social"] = minf(1.0,
-				float(b.stats["social"]) + RATE * delta)
+				float(b.stats["social"]) + rate * delta)
 		"mend":
 			b.stats["health"] = minf(1.0,
-				float(b.stats["health"]) + RATE * delta)
+				float(b.stats["health"]) + rate * delta)
 			b.stats["energy"] = minf(1.0,
-				float(b.stats["energy"]) + RATE * delta)
+				float(b.stats["energy"]) + rate * delta)
 		"calm":
 			# Cools grudges without erasing them. The memories are the record;
 			# heat is only how much they still sting.
@@ -541,7 +551,7 @@ func _touch_folk(f, delta: float) -> void:
 			# still gladden anyone caught under them, so a cast through the
 			# village is worth more than one out in the wilds.
 			b.stats["fun"] = minf(1.0,
-				float(b.stats["fun"]) + RATE * 0.3 * delta)
+				float(b.stats["fun"]) + rate * 0.3 * delta)
 
 	# PAID ONCE EACH. Parking the cloud on one villager for seven seconds pays
 	# for one villager; sweeping it across eight pays for eight. That is the
@@ -550,10 +560,10 @@ func _touch_folk(f, delta: float) -> void:
 	if _touched_folk.has(key):
 		return
 	_touched_folk[key] = true
-	b.gain_faith(1.2)          # a miracle passing over you is a small sermon
+	b.gain_faith(1.2 * float(power))          # a miracle passing over you is a small sermon
 	b.memories.add(Memories.KIND_MIRACLE, "The sky opened over me.", 0.7, "",
 				   1.0 + b.personality.devotion)
-	var gain: float = divinity.boons.card_kick() * 0.55
+	var gain: float = divinity.boons.card_kick() * 0.55 * float(power)
 	_gain += gain
 	divinity.add_faith(gain)
 	# NO PER-VILLAGER `earned` HERE. A wide miracle sweeping eight people fired

@@ -131,6 +131,20 @@ const DECK := [
 	# village that quarried itself out had no way back.
 	{"id": "upheaval", "name": "Upheaval", "icon": "stone", "target": "ground",
 	 "desc": "Stone breaks through the soil."},
+	# THE WHOLE VILLAGE AT ONCE. Every card above is a sweep that touches only
+	# who you pass it over, so the only way to help everybody was to spend a
+	# card per knot of people. These trade reach for aim: they land on every
+	# villager, pay a little less each, and still answer prayers by their tags.
+	{"id": "plenty", "name": "Plenty", "icon": "food", "target": "all",
+	 "desc": "Every villager eats their fill."},
+	{"id": "vision", "name": "Vision", "icon": "saint", "target": "all",
+	 "desc": "Every villager glimpses you. Faith for all."},
+	{"id": "sabbath", "name": "Sabbath", "icon": "energy", "target": "all",
+	 "desc": "A day of rest. Everyone wakes restored."},
+	{"id": "gathering", "name": "Gathering", "icon": "social", "target": "all",
+	 "desc": "The whole village comes together."},
+	{"id": "cleanse", "name": "Cleanse", "icon": "hygiene", "target": "all",
+	 "desc": "Every villager washed and healed."},
 ]
 
 var faith := 25.0
@@ -175,12 +189,12 @@ var pending_draft: Array = []
 ## boon is. Gated on the first building it lands at 70-95 s, right after they
 ## have watched their villagers earn something.
 const AGES := [
-	{"name": "The First Roof", "lump": 40.0, "cards": ["grove"],
+	{"name": "The First Roof", "lump": 40.0, "cards": ["grove", "vision"],
 	 "note": "Your people have a roof. You may Commune."},
-	{"name": "The Watched Village", "lump": 90.0, "cards": ["rain", "feast"],
+	{"name": "The Watched Village", "lump": 90.0, "cards": ["rain", "feast", "plenty", "sabbath"],
 	 "note": "They know they are watched."},
 	{"name": "The Shrine Age", "lump": 180.0,
-	 "cards": ["mend", "revel", "calm", "upheaval"],
+	 "cards": ["mend", "revel", "calm", "upheaval", "gathering", "cleanse"],
 	 "note": "A shrine stands. The deepest gifts are open to you."},
 	# THE CLIFF. The table stopped at three, and the third landed around minute
 	# six -- so the eight-minute session ran out of firsts exactly when it was
@@ -483,42 +497,60 @@ func can_afford(cost: float) -> bool:
 
 ## --- cards ------------------------------------------------------------------
 
-## Cheap and flat, deliberately: this is meant to be a small "I don't want
-## this one" tax the player can pay on a whim, not a second Commune. A card
-## that was drawn for free costing more to undo than it cost to get would make
-## rerolling feel like a trap rather than a relief valve.
-const HAND_REROLL_COST := 6.0
-
-
-## Swap ONE card for a fresh one, same slot, without playing it.
+## ONE REROLL, FOR THE WHOLE HAND.
 ##
-## Reuses draw_card's pool and duplicate-avoidance rather than a second copy
-## of that logic -- the two are the same operation, "a random unlocked card
-## that is not already overrepresented in the hand", just entered from a
-## different place.
-func reroll_card(index: int) -> bool:
-	if index < 0 or index >= hand.size():
-		return false
-	if not can_afford(HAND_REROLL_COST):
-		notice.emit("Rerolling costs %d Faith." % int(HAND_REROLL_COST))
-		return false
+## There used to be a reroll per card, and it lived inside the hover tooltip
+## ABOVE each card -- with a ten-pixel dead gap between the lifted card and the
+## tooltip, so moving the pointer up to it dropped the hover and the button
+## vanished before it could be reached. On a phone the Commune/Wrath row was
+## painted straight over it. The owner called it impossible to click, and it
+## was. One large standing button beside the hand replaces all of that, and it
+## replaces every card at once.
+const HAND_REROLL_COST := 8.0
+
+
+## The unlocked pool, in deck order. One place, used by both draw and reroll.
+func _pool() -> Array[Dictionary]:
 	var pool: Array[Dictionary] = []
 	for c in DECK:
 		if String(c["id"]) in unlocked_cards:
 			pool.append(c)
+	return pool
+
+
+## Deal a fresh hand of the same size, for a small flat price.
+func reroll_hand() -> bool:
+	if hand.is_empty():
+		return false
+	if not can_afford(HAND_REROLL_COST):
+		notice.emit("Rerolling costs %d Faith." % int(HAND_REROLL_COST))
+		return false
+	var pool := _pool()
 	if pool.is_empty():
 		return false
-	var old_id := String(hand[index]["id"])
-	var card: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
-	# Try not to hand back the very thing that was just discarded, when there
-	# is a choice -- otherwise a reroll can do nothing at all and look broken.
-	if pool.size() > 1:
-		for attempt in 6:
-			if String(card["id"]) != old_id:
-				break
-			card = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+	var before: Array[String] = []
+	for h in hand:
+		before.append(String(h["id"]))
+	before.sort()
+	var n := hand.size()
+	var fresh: Array[Dictionary] = []
+	# NOT THE SAME HAND BACK, when the pool allows anything else. A reroll that
+	# returns exactly what was discarded looks like a button that did nothing.
+	for attempt in 6:
+		fresh.clear()
+		var ids: Array[String] = []
+		for i in n:
+			var c: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
+			fresh.append(c)
+			ids.append(String(c["id"]))
+		ids.sort()
+		if pool.size() <= 1 or ids != before:
+			break
 	add_faith(-HAND_REROLL_COST)
-	hand[index] = card
+	hand.clear()
+	for c in fresh:
+		hand.append(c)
+	_said_full = false
 	hand_changed.emit()
 	return true
 
@@ -530,22 +562,14 @@ func draw_card() -> void:
 		# only as "the game ate my miracle". The TIMER announces this now, once
 		# per full-hand state -- saying it here said it on every attempt.
 		return
-	# From the UNLOCKED pool only, and rerolled once if it would be a third
-	# copy of something already in hand -- a two-card pool otherwise deals the
-	# same card five times and looks broken.
-	var pool: Array[Dictionary] = []
-	for c in DECK:
-		if String(c["id"]) in unlocked_cards:
-			pool.append(c)
+	# From the UNLOCKED pool only, and purely at random. This used to redraw
+	# rather than deal a third copy of anything; now that copies STACK into one
+	# stronger miracle (see `stacks`), a duplicate is the good outcome and
+	# avoiding it would be avoiding the best thing the hand can do.
+	var pool := _pool()
 	if pool.is_empty():
 		return
 	var card: Dictionary = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
-	var same := 0
-	for h in hand:
-		if String(h["id"]) == String(card["id"]):
-			same += 1
-	if same >= 2 and pool.size() > 1:
-		card = pool[rng.randi_range(0, pool.size() - 1)].duplicate()
 	hand.append(card)
 	card_drawn.emit(card)
 	hand_changed.emit()
@@ -553,11 +577,14 @@ func draw_card() -> void:
 
 ## Play `index` from the hand. `at` is a world point for "ground" cards and
 ## `who` a Follower for "folk" cards; both are ignored otherwise.
-func play(index: int, at := Vector3.ZERO, who = null) -> bool:
+## `copies` is how many identical cards are spent together. Every copy of a card
+## in hand is played as ONE miracle, stronger for each copy -- see `stacks`.
+func play(index: int, at := Vector3.ZERO, who = null, copies := 1) -> bool:
 	if index < 0 or index >= hand.size():
 		return false
 	var card: Dictionary = hand[index]
 	var cid := String(card["id"])
+	copies = clampi(copies, 1, _count_of(cid))
 
 	# CHANNELLED CARDS ARE HELD, NOT DROPPED.
 	#
@@ -569,14 +596,25 @@ func play(index: int, at := Vector3.ZERO, who = null) -> bool:
 		if cursor.is_active():
 			notice.emit("One miracle at a time.")
 			return false
-		cursor.begin(cid, boons.card_radius())
-		hand.remove_at(index)
+		cursor.begin(cid, boons.card_radius(), copies)
+		_spend(cid, copies)
 		_said_full = false
 		hand_changed.emit()
 		miracle_cast.emit(cid, at)
 		return true
 
 	var kind := String(card["target"])
+	# EVERY VILLAGER AT ONCE. No aiming and no sweep: the whole village is the
+	# target, which is exactly what makes these a different decision from the
+	# sweeping miracles rather than a weaker copy of them.
+	if kind == "all":
+		if not _cast_all(cid, copies):
+			return false
+		_spend(cid, copies)
+		_said_full = false
+		hand_changed.emit()
+		miracle_cast.emit(cid, at)
+		return true
 	if kind == "folk" and (who == null or not is_instance_valid(who)):
 		notice.emit("%s needs a villager." % card["name"])
 		return false
@@ -587,6 +625,121 @@ func play(index: int, at := Vector3.ZERO, who = null) -> bool:
 	hand_changed.emit()
 	miracle_cast.emit(String(card["id"]), at)
 	return true
+
+
+## THE HAND AS THE PLAYER SEES IT: identical cards collapse into one stack.
+##
+## Returned in first-appearance order, so a stack does not jump sideways when a
+## second copy arrives. The underlying `hand` stays a flat list of cards, which
+## is what the save already writes and reads -- nothing about stacking is
+## stored, it is only how the list is looked at.
+func stacks() -> Array:
+	var out: Array = []
+	var at: Dictionary = {}
+	for c in hand:
+		var cid := String(c["id"])
+		if at.has(cid):
+			out[int(at[cid])]["count"] = int(out[int(at[cid])]["count"]) + 1
+		else:
+			at[cid] = out.size()
+			out.append({"card": c, "count": 1})
+	return out
+
+
+## Play every copy of this card as one miracle.
+func play_stack(card_id: String, at := Vector3.ZERO, who = null) -> bool:
+	for i in hand.size():
+		if String(hand[i]["id"]) == card_id:
+			return play(i, at, who, _count_of(card_id))
+	return false
+
+
+func _count_of(card_id: String) -> int:
+	var n := 0
+	for c in hand:
+		if String(c["id"]) == card_id:
+			n += 1
+	return n
+
+
+## Remove `copies` of a card from the hand.
+func _spend(card_id: String, copies: int) -> void:
+	var left := copies
+	for i in range(hand.size() - 1, -1, -1):
+		if left <= 0:
+			break
+		if String(hand[i]["id"]) == card_id:
+			hand.remove_at(i)
+			left -= 1
+
+
+## What each village-wide card does to every villager, per copy spent.
+##
+## `faith` is what each villager's own belief gains; the god's share is paid
+## separately below. Lower per head than a sweep pays, deliberately: a sweep
+## asks the player to find the people, and this does not.
+const ALL_EFFECTS := {
+	"plenty": {"stats": {"hunger": 0.7}, "faith": 1.0,
+			   "verb": "Plenty. Everyone ate."},
+	"vision": {"stats": {"fun": 0.2}, "faith": 3.0,
+			   "verb": "A vision. Every villager saw you."},
+	"sabbath": {"stats": {"energy": 0.8}, "faith": 1.0,
+				"verb": "A day of rest. The village wakes restored."},
+	"gathering": {"stats": {"social": 0.7, "fun": 0.3}, "faith": 1.0,
+				  "verb": "The whole village gathers."},
+	"cleanse": {"stats": {"hygiene": 0.9, "health": 0.35}, "faith": 1.0,
+				"verb": "The village is washed clean."},
+}
+
+## The god's own share of a village-wide card, per villager per copy, as a
+## fraction of what a sweep pays for each soul it passes.
+const ALL_SHARE := 0.35
+
+
+func _cast_all(card_id: String, power: int) -> bool:
+	var spec: Dictionary = ALL_EFFECTS.get(card_id, {})
+	if spec.is_empty() or host == null:
+		return false
+	var hits: Array = []
+	var tiers := 0
+	var st: Dictionary = spec["stats"]
+	for f in host.folk:
+		if not is_instance_valid(f) or f.brain == null:
+			continue
+		for k in st:
+			if f.brain.stats.has(k):
+				f.brain.stats[k] = minf(1.0, float(f.brain.stats[k])
+										+ float(st[k]) * float(power))
+		tiers += int(f.brain.gain_faith(float(spec["faith"]) * float(power)))
+		f.brain.memories.add(Memories.KIND_MIRACLE,
+			"It came to all of us at once.", 0.6, "",
+			1.0 + f.brain.personality.devotion)
+		hits.append([f, 1.0])
+	if hits.is_empty():
+		notice.emit("There is nobody to receive it.")
+		return false
+	var gain: float = boons.card_kick() * ALL_SHARE * float(power) * float(hits.size())
+	add_faith(gain)
+	var centre := Vector3.ZERO
+	if host.has_method("_village_centre"):
+		centre = host._village_centre()
+	earned.emit(gain, centre, "miracle")
+	# REPORTED WITH EVERY VILLAGER AS A WITNESS, so a village-wide Plenty
+	# answers every standing food prayer by its tag -- the same path a swept
+	# Feast or a dropped apple already takes.
+	report(DivineAction.miracle(card_id, centre), hits, gain, tiers)
+	var verb := String(spec["verb"])
+	if power > 1:
+		verb += "  x%d" % power
+	news.emit(verb, _card_icon(card_id))
+	return true
+
+
+func _card_icon(card_id: String) -> String:
+	for c in DECK:
+		if String(c["id"]) == card_id:
+			return String(c.get("icon", "faith"))
+	return "faith"
 
 
 func _cast(id: String, at: Vector3, who) -> bool:

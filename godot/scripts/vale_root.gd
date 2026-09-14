@@ -142,7 +142,19 @@ var stats: Analytics = Analytics.new()
 ## How much motion and effect the player has asked for. Read wherever it is
 ## needed rather than pushed anywhere -- see comfort.gd.
 var comfort: Comfort = Comfort.new()
-var _calamity_timer := 90.0
+## Seconds of calm after the first roof before the world first pushes back.
+##
+## Was 90, but counted only from AGE II -- which needs four villagers or twenty
+## witnessed acts, and a person clicking at a human pace can go a long session
+## without either. Measured: an untouched village sat at age 0 for thirty
+## minutes and saw nothing at all, and the owner reported never having seen a
+## fire or a tornado. The gate is the first roof now, and this is the breath
+## after it.
+var _calamity_timer := 180.0
+## How many have started this session. The FIRST is always a fire, when there
+## is a tree to burn: it is the most legible disaster there is, and a drought
+## -- grass quietly turning back to dirt -- is a bad way to meet the idea.
+var _disasters_seen := 0
 var _bite_at := 0.0
 var _save_doc: Dictionary = {}
 var _save_how := ""
@@ -836,7 +848,7 @@ func _tick_director() -> void:
 		"wolf": divinity.age >= 2 and _has_prey(),
 		# See Director.CALAMITY_FOLK: the director may not pull a disaster
 		# forward into a village too young to survive one.
-		"calamity": divinity.age >= 2 and calamities.is_empty() 			and folk.size() >= Director.CALAMITY_FOLK,
+		"calamity": divinity.age >= 1 and calamities.is_empty() 			and folk.size() >= Director.CALAMITY_FOLK,
 	})
 	if want == "":
 		return
@@ -1265,12 +1277,42 @@ func _tick_calamities(delta: float) -> void:
 			for c in calamities:
 				_bite(c)
 		return
-	if divinity.age < 2:
+	if divinity.age < 1:
 		return
 	_calamity_timer -= delta
 	if _calamity_timer <= 0.0:
 		_calamity_timer = CALAMITY_EVERY
 		_start_calamity()
+
+
+## How often each kind is chosen, once the first fire has happened. Drought was
+## drawn as often as fire and it is the one nobody notices: in a measured half
+## hour, five of nine disasters were droughts and only two were fires.
+const CALAMITY_WEIGHT := {"fire": 3.0, "tornado": 2.0, "drought": 1.0}
+const CALAMITY_ICON := {"fire": "punish", "tornado": "bolt", "drought": "sprout"}
+
+
+## The order to try kinds in: fire first the first time, weighted after that.
+## `_start_calamity` still takes the first one the world can actually host.
+func _calamity_order() -> Array:
+	if _disasters_seen == 0:
+		return ["fire", "tornado", "drought"]
+	var left: Array = Calamity.KINDS.duplicate()
+	var out: Array = []
+	while not left.is_empty():
+		var total := 0.0
+		for k in left:
+			total += float(CALAMITY_WEIGHT.get(k, 1.0))
+		var roll := _rng.randf() * total
+		var pick: String = String(left[left.size() - 1])
+		for k in left:
+			roll -= float(CALAMITY_WEIGHT.get(k, 1.0))
+			if roll <= 0.0:
+				pick = String(k)
+				break
+		out.append(pick)
+		left.erase(pick)
+	return out
 
 
 func _start_calamity() -> void:
@@ -1279,8 +1321,7 @@ func _start_calamity() -> void:
 	# found nothing to burn, and spent the whole two-minute cycle on nothing --
 	# so early on, when the plot is mostly desert, the world would go silent
 	# exactly where it was supposed to start pushing back.
-	var kinds: Array = Calamity.KINDS.duplicate()
-	kinds.shuffle()
+	var kinds: Array = _calamity_order()
 	var kind := ""
 	var where := Vector2i(-1, -1)
 	for k in kinds:
@@ -1296,13 +1337,17 @@ func _start_calamity() -> void:
 	var heading: Vector2i = winds[_rng.randi() % winds.size()]
 	var c := Calamity.new(kind, where, heading)
 	calamities.append(c)
+	_disasters_seen += 1
 	stats.note("disasters_started")
 	# Tell the director, whether it asked for this or the village's own timer
 	# did -- pressure is time since ANYTHING happened, not since the director
 	# last spoke, or it would fire on top of the village's own drama.
 	director.mark("calamity", float(village.now))
 	var look: Dictionary = c.look()
-	divinity.notice.emit(String(look["notice"]))
+	# NEWS, NOT CHATTER. A fire in the trees is the most urgent thing the
+	# village will say all session, and as a plain notice it shared three
+	# slots with "Not enough Faith".
+	_news(String(look["notice"]), String(CALAMITY_ICON.get(kind, "bolt")))
 	if sfx != null:
 		sfx.play(String(look["sfx"]))
 	if fxe != null:
@@ -2382,8 +2427,10 @@ func _add_ui() -> void:
 			divinity.notice.emit(
 				"The %s passed over nothing at all." % id)
 			return
-		divinity.notice.emit("The %s touched %d, and you gained %d Faith."
-			% [id, touched, int(gain)])
+		# Says how many cards went into it, so a stack is visibly one act.
+		var stack := ("  x%d" % cursor.power) if cursor.power > 1 else ""
+		divinity.notice.emit("The %s%s touched %d, and you gained %d Faith."
+			% [id, stack, touched, int(gain)])
 		# ONE token for the whole sweep. The cursor used to emit `earned` per
 		# villager, so eight people meant eight tokens racing the counter; the
 		# credit was always right and the picture of it was a pile-up.

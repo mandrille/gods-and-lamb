@@ -229,25 +229,45 @@ func _check_burnout() -> void:
 func _check_gate() -> void:
 	_root.calamities.clear()
 	var age: int = _root.divinity.age
-	_root.divinity.age = 1
+	_root.divinity.age = 0
 	_root._calamity_timer = 0.01
 	_root._tick_calamities(1.0)
 	var early: int = _root.calamities.size()
-	_root.divinity.age = maxi(age, 2)
+	_root.divinity.age = maxi(age, 1)
 	_root._calamity_timer = 0.01
 	_root._tick_calamities(1.0)
 	var later: int = _root.calamities.size()
-	print("[CALAMITY] at age 1: %d running; at age 2: %d" % [early, later])
+	print("[CALAMITY] before the first roof: %d running; after it: %d"
+		% [early, later])
 	if early > 0:
-		_faults.append("a calamity hit a first-age village")
+		_faults.append("a calamity hit a village that has not raised a roof")
+	# THE GATE USED TO BE AGE II, and a person clicking at a human pace could go
+	# a whole session without reaching it -- the owner reported never having
+	# seen a single fire or tornado. It is the first roof now.
 	if later < 1:
-		_faults.append("no calamity ever starts, so the world never takes "
-			+ "anything back")
+		_faults.append("no calamity starts once there is a roof, so a normal "
+			+ "player never sees the world take anything back")
 	# And never two at once: two disasters is not twice the drama.
 	_root._calamity_timer = 0.01
 	_root._tick_calamities(1.0)
 	if _root.calamities.size() > 1:
 		_faults.append("%d calamities at once" % _root.calamities.size())
+	_root.calamities.clear()
+
+	# THE FIRST ONE IS A FIRE, whenever there is a tree to burn. A drought --
+	# grass quietly turning back to dirt -- is a bad way to meet the idea that
+	# the world pushes back, and in a measured half hour it was five of nine.
+	_root._disasters_seen = 0
+	var tree := _plant_tree()
+	if tree.x >= 0:
+		_root._start_calamity()
+		var first := ""
+		if not _root.calamities.is_empty():
+			first = String(_root.calamities[0].kind)
+		print("[CALAMITY] the first disaster of a session is a %s" % first)
+		if first != "fire":
+			_faults.append("the first disaster was '%s' with a tree standing "
+				% first + "-- it should be a fire, the one nobody can miss")
 	_root.calamities.clear()
 
 

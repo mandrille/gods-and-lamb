@@ -68,7 +68,7 @@ var _level_flash := 0.0            ## counts down after the god levels up
 var _aiming := -1                  ## hand index awaiting a target, or -1
 var _smiting := false
 var _hot := -1                     ## hovered card, or -1
-var _hot_hand_reroll := false      ## hovering the hovered card's reroll button
+var _hot_reroll := false      ## hovering the reroll-all button
 
 ## TEST HOOK ONLY. The probe window runs parked off-screen and unfocused (see
 ## tools/shot_window.gd), so the real mouse position it reports is meaningless
@@ -109,7 +109,9 @@ func _ready() -> void:
 
 func _hand_rects() -> Array[Rect2]:
 	var out: Array[Rect2] = []
-	var n: int = divinity.hand.size()
+	# One rect per STACK, not per card: two Groves in hand are one card on
+	# screen with a badge on it, played together as one stronger miracle.
+	var n: int = divinity.stacks().size()
 	if n == 0:
 		return out
 	var vp := get_viewport_rect().size
@@ -140,21 +142,57 @@ func _is_narrow() -> bool:
 	return get_viewport_rect().size.x < NARROW
 
 
+const REROLL_W := 84.0
+
+
+## On a phone the row above the hand holds THREE buttons -- Commune, Reroll,
+## Wrath -- in equal thirds. On a 400-unit screen each is about 117 units wide
+## and 46 tall, comfortably over a thumb on both sides.
+func _third() -> float:
+	var vp := get_viewport_rect().size
+	return (vp.x - PAD * 2.0 - 16.0) / 3.0
+
+
+func _row_y() -> float:
+	var vp := get_viewport_rect().size
+	return vp.y - CARD_H - PAD - BUTTON_H - 8.0
+
+
 func _wrath_rect() -> Rect2:
 	var vp := get_viewport_rect().size
 	if _is_narrow():
-		var w := (vp.x - PAD * 2.0 - 8.0) * 0.5
-		return Rect2(PAD + w + 8.0, vp.y - CARD_H - PAD - BUTTON_H - 8.0,
-					 w, BUTTON_H)
+		var w := _third()
+		return Rect2(PAD + (w + 8.0) * 2.0, _row_y(), w, BUTTON_H)
 	return Rect2(vp.x - 132.0 - PAD, vp.y - CARD_H - PAD, 132.0, BUTTON_H)
 
 
 func _commune_rect() -> Rect2:
-	var r := _wrath_rect()
 	if _is_narrow():
-		return Rect2(PAD, r.position.y, r.size.x, r.size.y)
+		return Rect2(PAD, _row_y(), _third(), BUTTON_H)
+	var r := _wrath_rect()
 	return Rect2(r.position.x, r.position.y - BUTTON_H - 6.0, r.size.x,
 				 BUTTON_H)
+
+
+## THE REROLL-ALL BUTTON.
+##
+## It used to be a 22-unit strip inside each card's hover tooltip, above the
+## card, with a dead gap between the two that dropped the hover on the way up
+## -- and on a phone the Commune/Wrath row was drawn straight over it. Now it
+## is a card-height button standing immediately left of the hand, or the
+## middle third of the row above it on a phone. Empty when there is no hand.
+func _reroll_rect() -> Rect2:
+	if divinity == null or divinity.hand.is_empty():
+		return Rect2()
+	if _is_narrow():
+		var w := _third()
+		return Rect2(PAD + w + 8.0, _row_y(), w, BUTTON_H)
+	var rects := _hand_rects()
+	if rects.is_empty():
+		return Rect2()
+	var first: Rect2 = rects[0]
+	return Rect2(first.position.x - CARD_GAP - REROLL_W, first.position.y,
+				 REROLL_W, CARD_H)
 
 
 ## --- input ------------------------------------------------------------------
@@ -203,31 +241,24 @@ func _process(delta: float) -> void:
 ## An InputEvent carries raw viewport coordinates too, so it goes through
 ## make_input_local() before being compared with anything.
 func _refresh_hot(m: Vector2) -> void:
-	_hot_hand_reroll = false
 	var was := _hot
 	var rects := _hand_rects()
-	# STICKY. The reroll button lives in the tooltip, which sits ABOVE the
-	# card rather than inside it, so a straight point-in-rect test loses the
-	# hover -- and the tooltip along with it -- the instant the mouse leaves
-	# the card on its way up to the button it is trying to reach. Holding the
-	# previous card hot while the pointer is anywhere over its card OR its
-	# tooltip is what makes the button reachable at all.
+	_hot = -1
+	# The lifted card keeps its hover over its LIFTED area, or a pointer
+	# resting on its raised top edge flickers between hot and not. No longer
+	# "sticky" across a tooltip: there is nothing in the tooltip to reach.
 	if was >= 0 and was < rects.size():
 		var r: Rect2 = rects[was]
 		r.position.y -= LIFT
 		r.size.y += LIFT
-		var geo := _tooltip_geo(rects[was], divinity.hand[was])
-		if r.has_point(m) or (geo["panel"] as Rect2).has_point(m):
+		if r.has_point(m):
 			_hot = was
-			_hot_hand_reroll = (geo["reroll"] as Rect2).has_point(m)
-			_hot_wrath = _wrath_rect().has_point(m)
-			_hot_commune = _commune_rect().has_point(m)
-			return
-	_hot = -1
-	for i in rects.size():
-		if rects[i].has_point(m):
-			_hot = i
-			break
+	if _hot < 0:
+		for i in rects.size():
+			if rects[i].has_point(m):
+				_hot = i
+				break
+	_hot_reroll = _reroll_rect().has_point(m)
 	_hot_wrath = _wrath_rect().has_point(m)
 	_hot_commune = _commune_rect().has_point(m)
 
@@ -261,14 +292,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# tested against where the mouse used to be.
 	_refresh_hot(make_input_local(mb).position)
 
-	# A click on the hand or the wrath button, first: these sit on top.
-	#
-	# The reroll button is checked BEFORE playing the card -- it sits in the
-	# tooltip above the card, so a click that lands on it is never also a
-	# click on the card body, but it shares the sticky `_hot` index and has to
-	# be asked about first or it would be swallowed as "play card _hot".
-	if _hot_hand_reroll and _hot >= 0:
-		if divinity.reroll_card(_hot) and host != null and host.sfx != null:
+	# A click on the hand or the standing buttons, first: these sit on top.
+	if _hot_reroll:
+		if divinity.reroll_hand() and host != null and host.sfx != null:
 			host.sfx.play("chat", 1.2)
 		get_viewport().set_input_as_handled()
 		return
@@ -326,21 +352,35 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
+## `index` is a STACK on screen. Sweeps and village-wide cards spend every copy
+## of that card at once; the old aimed path, which nothing in the deck uses any
+## more, still receives a real hand index.
 func _play_card(index: int) -> void:
+	var st: Array = divinity.stacks()
+	if index < 0 or index >= st.size():
+		return
+	var top: Dictionary = st[index]["card"]
+	var cid := String(top["id"])
+	var copies: int = int(st[index]["count"])
+	# A HELD miracle needs no aiming step at all: it appears on the cursor and
+	# the player walks it over whatever they want it to touch.
+	if MiracleCursor.handles(cid):
+		if divinity.play_stack(cid):
+			_aiming = -1
+			_smiting = false
+			var lead := "x%d. " % copies if copies > 1 else ""
+			_say("%sSweep it over your people. It fades in %d seconds."
+				% [lead, int(MiracleCursor.SECONDS)], 4.0)
+		return
+	if String(top["target"]) == "all":
+		divinity.play_stack(cid)
+		_aiming = -1
+		_smiting = false
+		return
+	index = _first_hand_index(cid)
 	if index < 0 or index >= divinity.hand.size():
 		return
 	var card: Dictionary = divinity.hand[index]
-	var cid := String(card["id"])
-	# A HELD miracle needs no aiming step at all: it appears on the cursor and
-	# the player walks it over whatever they want it to touch. Asking them to
-	# click a spot first would be choosing the target twice.
-	if MiracleCursor.handles(cid):
-		if divinity.play(index):
-			_aiming = -1
-			_smiting = false
-			_say("Sweep it over your people. It fades in %d seconds."
-				% int(MiracleCursor.SECONDS), 4.0)
-		return
 	var kind := String(card["target"])
 	if kind == "none":
 		divinity.play(index)
@@ -437,6 +477,7 @@ func _draw() -> void:
 	_goal()
 	_combo()
 	_hand()
+	_reroll()
 	_commune()
 	_wrath()
 	_toast()
@@ -592,23 +633,39 @@ func _godbar() -> void:
 
 func _hand() -> void:
 	var rects := _hand_rects()
-	for i in rects.size():
-		var card: Dictionary = divinity.hand[i]
+	var st: Array = divinity.stacks()
+	var armed_id := ""
+	if _aiming >= 0 and _aiming < divinity.hand.size():
+		armed_id = String(divinity.hand[_aiming]["id"])
+	for i in mini(rects.size(), st.size()):
+		var card: Dictionary = st[i]["card"]
+		var count: int = int(st[i]["count"])
 		var r: Rect2 = rects[i]
 		var hot := i == _hot
-		var armed := i == _aiming
+		var armed := armed_id != "" and String(card["id"]) == armed_id
 		if hot or armed:
 			r.position.y -= LIFT
-		_card(r, card, hot, armed)
-	if _hot >= 0:
-		_tooltip(rects[_hot], divinity.hand[_hot])
+		_card(r, card, hot, armed, count)
+	if _hot >= 0 and _hot < st.size() and _hot < rects.size():
+		_tooltip(rects[_hot], st[_hot]["card"], int(st[_hot]["count"]))
 
 
-func _card(r: Rect2, card: Dictionary, hot: bool, armed: bool) -> void:
+func _card(r: Rect2, card: Dictionary, hot: bool, armed: bool,
+		   count := 1) -> void:
 	draw_rect(Rect2(r.position + Vector2(0, 4), r.size), Color(0, 0, 0, 0.30),
 			  true)
 	draw_rect(r, CARD_BG_HOT if (hot or armed) else CARD_BG, true)
 	draw_rect(r, GOLD if armed else CARD_EDGE, false, 2.0 if armed else 1.0)
+	# THE STACK BADGE. Two or three of the same card are one card on screen,
+	# and the badge is what says it will land harder.
+	if count > 1:
+		var bc := r.position + Vector2(r.size.x - 13.0, 13.0)
+		draw_circle(bc, 14.0, GOLD)
+		var bt := "x%d" % count
+		var bw := float(_font.get_string_size(bt, HORIZONTAL_ALIGNMENT_LEFT,
+											  -1, 13).x)
+		draw_string(_font, bc + Vector2(-bw * 0.5, 5.0), bt,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.12, 0.09, 0.02))
 
 	Icons.draw_icon(self, String(card.get("icon", "")),
 					r.position + Vector2(r.size.x * 0.5, 44.0), 46.0)
@@ -622,71 +679,104 @@ func _card(r: Rect2, card: Dictionary, hot: bool, armed: bool) -> void:
 	# is what the player scans when deciding, and it is the difference between
 	# "pick one" and "pick one and find out".
 	var kind := String(card["target"])
-	# Annotated: Dictionary.get() returns Variant, and `:=` on it is a parse
-	# error in this project (inference-from-Variant is treated as an error).
-	var note: String = {"none": "instant", "folk": "on a villager",
-						"ground": "on a spot"}.get(kind, kind)
+	# WHAT IT ACTUALLY DOES. This read "instant", "on a villager" and "on a
+	# spot", and all three were false: every original card is swept over
+	# people on the cursor, so the label described a targeting model the game
+	# stopped using a long time ago.
+	var note: String = "everyone" if kind == "all" else "sweep"
+	if count > 1:
+		note = "x%d stronger" % count
 	var tw := float(_font.get_string_size(note, HORIZONTAL_ALIGNMENT_LEFT,
 										  -1, 11).x)
 	draw_string(_font, r.position + Vector2((r.size.x - tw) * 0.5, 102.0), note,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, DIM)
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, GOLD if count > 1 else DIM)
 
 
-## The explanation, above the card, on hover. Drawn rather than left to
-## Godot's tooltip: that one appears near the cursor after a delay, in the
-## theme's colours, and is the single most-ignored widget in any engine.
-## ONE SOURCE for the tooltip's geometry, read by both the draw call below
-## and the hit test in _refresh_hot / _unhandled_input. Two copies of this
-## arithmetic drifting apart is how a button ends up two pixels from where it
-## is drawn -- see _card_rects() in boon_draft.gd for the same rule.
-func _tooltip_geo(anchor: Rect2, card: Dictionary) -> Dictionary:
+func _first_hand_index(card_id: String) -> int:
+	for i in divinity.hand.size():
+		if String(divinity.hand[i]["id"]) == card_id:
+			return i
+	return -1
+
+
+## The explanation, above the card, on hover. ONE SOURCE for its geometry.
+func _tooltip_geo(anchor: Rect2, card: Dictionary, count := 1) -> Dictionary:
 	var desc := String(card["desc"])
 	var title := String(card["name"])
+	var extra := _stack_line(count)
 	var w := maxf(float(_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT,
 											  -1, 16).x),
 				  float(_font.get_string_size(desc, HORIZONTAL_ALIGNMENT_LEFT,
-					-1, 13).x)) + 28.0
-	w = maxf(w, 150.0)
-	var h := 84.0
+											  -1, 13).x))
+	if extra != "":
+		w = maxf(w, float(_font.get_string_size(extra, HORIZONTAL_ALIGNMENT_LEFT,
+												-1, 13).x))
+	w = maxf(w + 28.0, 150.0)
+	var h := 76.0 if extra != "" else 56.0
 	var vp := get_viewport_rect().size
 	var x := clampf(anchor.position.x + anchor.size.x * 0.5 - w * 0.5,
 					PAD, vp.x - w - PAD)
 	var y := anchor.position.y - LIFT - h - 10.0
-	var panel := Rect2(x, y, w, h)
-	var reroll := Rect2(x + 10.0, y + h - 30.0, w - 20.0, 22.0)
-	return {"panel": panel, "reroll": reroll}
+	return {"panel": Rect2(x, y, w, h)}
 
 
-## Explains what the card does, on hover, and offers a way OUT of a card you
-## drew and do not want -- drawn rather than left to Godot's tooltip, which
-## appears near the cursor after a delay, in the theme's colours, and is the
-## single most-ignored widget in any engine.
-func _tooltip(anchor: Rect2, card: Dictionary) -> void:
-	var geo := _tooltip_geo(anchor, card)
-	var panel: Rect2 = geo["panel"]
-	var title := String(card["name"])
+func _stack_line(count: int) -> String:
+	if count <= 1:
+		return ""
+	return "%d cards as one: wider, faster, pays more." % count
+
+
+## Explains what the card does. There is no button in it any more: a control
+## you have to chase the hover up to is a control nobody presses. See _reroll.
+func _tooltip(anchor: Rect2, card: Dictionary, count := 1) -> void:
+	var panel: Rect2 = _tooltip_geo(anchor, card, count)["panel"]
 	_panel(panel)
-	draw_string(_font, panel.position + Vector2(14.0, 24.0), title,
+	draw_string(_font, panel.position + Vector2(14.0, 24.0), String(card["name"]),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, GOLD)
 	draw_string(_font, panel.position + Vector2(14.0, 44.0), String(card["desc"]),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK)
+	var extra := _stack_line(count)
+	if extra != "":
+		draw_string(_font, panel.position + Vector2(14.0, 64.0), extra,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 13, GOLD)
 
-	# The reroll button. A card you do not want should never be a dead slot --
-	# this is the same relief valve the boon draft offers on a bad hand, just
-	# per-card instead of per-draft, because a hand is now locked to three and
-	# a bad third of it is otherwise stuck for the rest of the run.
-	var r: Rect2 = geo["reroll"]
+
+## Reroll every card in the hand, beside the hand, for a flat price.
+func _reroll() -> void:
+	var r := _reroll_rect()
+	if r.size.x <= 0.0:
+		return
 	var cost := int(Divinity.HAND_REROLL_COST)
 	var can: bool = divinity.can_afford(float(cost))
-	draw_rect(r, CARD_BG_HOT if (_hot_hand_reroll and can) else CARD_BG, true)
-	draw_rect(r, GOLD if (can and _hot_hand_reroll) else
-			  (CARD_EDGE if can else Color(1, 1, 1, 0.10)), false, 1.0)
-	var label := "Reroll  %d" % cost
-	var lw := float(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT,
-										  -1, 12).x)
-	draw_string(_font, r.position + Vector2((r.size.x - lw) * 0.5, 15.0), label,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
-				INK if can else Color(0.55, 0.56, 0.60))
+	var hot := _hot_reroll and can
+	draw_rect(Rect2(r.position + Vector2(0, 4), r.size), Color(0, 0, 0, 0.30),
+			  true)
+	draw_rect(r, CARD_BG_HOT if hot else CARD_BG, true)
+	draw_rect(r, GOLD if hot else (CARD_EDGE if can else Color(1, 1, 1, 0.10)),
+			  false, 2.0 if hot else 1.0)
+	var ink := INK if can else Color(0.55, 0.56, 0.60)
+	if _is_narrow():
+		var label := "Reroll  %d" % cost
+		var lw := float(_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT,
+											  -1, 15).x)
+		draw_string(_font, r.position + Vector2((r.size.x - lw) * 0.5, 29.0),
+					label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, ink)
+		return
+	# A drawn circular arrow: the one glyph everybody reads as "again".
+	var c := r.position + Vector2(r.size.x * 0.5, 42.0)
+	draw_arc(c, 17.0, -PI * 0.10, PI * 1.45, 26, ink, 3.2, true)
+	var tip := c + Vector2(cos(-PI * 0.10), sin(-PI * 0.10)) * 17.0
+	draw_colored_polygon(PackedVector2Array([tip + Vector2(-8.0, -2.0),
+											 tip + Vector2(6.0, -7.0),
+											 tip + Vector2(3.0, 7.0)]), ink)
+	for pair in [["Reroll", 84.0, 15, ink], ["%d Faith" % cost, 103.0, 12,
+			GOLD if can else Color(0.55, 0.56, 0.60)]]:
+		var t := String(pair[0])
+		var tw := float(_font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT,
+											  -1, int(pair[2])).x)
+		draw_string(_font, r.position + Vector2((r.size.x - tw) * 0.5,
+					float(pair[1])), t, HORIZONTAL_ALIGNMENT_LEFT, -1,
+					int(pair[2]), pair[3])
 
 
 ## The altar. The most important button on the screen, so it sits above Wrath

@@ -165,13 +165,19 @@ func _cards() -> void:
 	# hit-tests against -- one rect per card, on screen. A card the player can
 	# see but not click, or a rect over a card that is no longer there, is the
 	# whole failure mode of hand-rolled hit testing.
+	# ONE RECT PER STACK, not per card: identical cards collapse into one card
+	# on screen and are played together. The invariant this protects is
+	# unchanged -- what the player sees and what they can click must be the
+	# same list -- only the list is stacks now.
 	var rects: Array = _root.hud._hand_rects()
-	print("[PLAY] hand %d cards, HUD lays out %d rects" % [hand, rects.size()])
+	var stacks: int = _root.divinity.stacks().size()
+	print("[PLAY] hand %d cards in %d stacks, HUD lays out %d rects"
+		% [hand, stacks, rects.size()])
 	if hand == 0:
 		_faults.append("no cards were drawn")
-	if rects.size() != hand:
-		_faults.append("HUD laid out %d card rects for a hand of %d"
-			% [rects.size(), hand])
+	if rects.size() != stacks:
+		_faults.append("HUD laid out %d card rects for %d stacks"
+			% [rects.size(), stacks])
 	var vp: Vector2 = Vector2(_root.get_viewport().get_visible_rect().size)
 	for i in rects.size():
 		var r: Rect2 = rects[i]
@@ -199,7 +205,7 @@ func _cast_ground_card() -> void:
 		   pop_before, _root.folk.size()])
 	if not ok:
 		_faults.append("casting '%s' failed" % name)
-	if _root.hud._hand_rects().size() != _root.divinity.hand.size():
+	if _root.hud._hand_rects().size() != _root.divinity.stacks().size():
 		_faults.append("the HUD did not relayout the hand after a cast")
 
 
