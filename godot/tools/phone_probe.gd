@@ -151,6 +151,14 @@ func _check_overlap() -> void:
 	if _root.divinity.hand.is_empty():
 		for i in 3:
 			_root.divinity.draw_card()
+	# And something on the prayer rail: one village prayer and one person.
+	if _root.prayers.active.is_empty():
+		var now := float(_root.village.now)
+		_root.prayers.active.append(Prayer.new("harvest", null, now))
+		for f in _root.folk:
+			if is_instance_valid(f) and f.brain != null:
+				_root.prayers.active.append(Prayer.new("food", f, now))
+				break
 	var named: Array = []
 	var hand: Array[Rect2] = _hud._hand_rects()
 	for i in hand.size():
@@ -161,6 +169,13 @@ func _check_overlap() -> void:
 	# phone and could not be pressed. It needs a hand to exist at all.
 	if _hud._reroll_rect().size.x > 0.0:
 		named.append(["reroll", _hud._reroll_rect()])
+	var rail: Array[Rect2] = _hud._rail_rects()
+	for i in rail.size():
+		named.append(["prayer %d" % i, rail[i]])
+	# The rail has its own reserved rung: the ledger must start below it.
+	if not rail.is_empty() and _hud._stack_top() < rail[0].end.y:
+		_faults.append("the ledger starts at %.0f, inside the prayer rail "
+			% _hud._stack_top() + "which ends at %.0f" % rail[0].end.y)
 	for a in named.size():
 		for b in range(a + 1, named.size()):
 			var ra: Rect2 = named[a][1]

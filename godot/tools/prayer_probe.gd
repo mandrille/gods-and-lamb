@@ -67,9 +67,16 @@ func _check_quiet_when_fed() -> void:
 		if is_instance_valid(f) and f.brain != null:
 			f.brain.stats["hunger"] = 1.0
 	_run(20.0)
-	print("[PRAY] a well-fed village raised %d prayers"
-		% _root.prayers.active.size())
-	if not _root.prayers.active.is_empty():
+	# PERSONAL prayers only. A prayer from the whole village comes out of the
+	# VILLAGE'S state rather than anybody's stomach -- a fresh map with no trees
+	# genuinely wants trees however well fed its people are -- so it is not
+	# what "a fed villager says nothing" is about. rail_probe covers those.
+	var personal := 0
+	for p in _root.prayers.active:
+		if not p.village_wide():
+			personal += 1
+	print("[PRAY] a well-fed village raised %d personal prayers" % personal)
+	if personal > 0:
 		_faults.append("a village with nothing wrong prayed anyway")
 
 

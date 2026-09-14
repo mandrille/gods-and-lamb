@@ -62,6 +62,22 @@ const FEUD_NEAR := 8.0
 ## ordinary answered prayer: this one cost somebody else something.
 const FEUD_FAITH := 30.0
 
+## THE VILLAGE ASKING AS ONE. At most one at a time, each kind rests after it
+## closes, and the village is only considered every few seconds -- none of it
+## needs to be quicker than that, and all of it is a scan of the whole village.
+const GLOBAL_MAX := 1
+const GLOBAL_COOLDOWN := 200.0
+const GLOBAL_EVERY := 6.0
+## And not at all in the first stretch of a new village. A fresh map has no
+## trees, so "the village wants more trees" would open in the first second --
+## before the player has greened a single tile, which is what trees need. Set
+## as the timer's STARTING value rather than as a check, so a loaded village
+## (whose clock is already far past it) asks straight away, and a probe can
+## still ask on demand by resetting the timer.
+const GLOBAL_FIRST := 45.0
+## What answering the village is worth to each villager.
+const GLOBAL_EACH := 6.0
+
 signal opened(prayer: Prayer)
 signal closed(prayer: Prayer, answered: bool)
 ## One side won and the other did not. Separate from `closed` because the
@@ -77,6 +93,8 @@ var _next_look: Dictionary = {}    ## instance id -> village time
 var _cooldown: Dictionary = {}     ## instance id -> village time
 var _rng := RandomNumberGenerator.new()
 var _feud_at := -1.0               ## village time of the last argument
+var _global_look := GLOBAL_FIRST   ## next village time the village is considered
+var _global_rest: Dictionary = {}  ## kind -> village time it may ask again
 
 
 func _init() -> void:
@@ -96,6 +114,12 @@ func _saw(r: Dictionary) -> void:
 	var tags: int = int(r.get("tags", 0))
 	if tags == 0:
 		return
+	# THE VILLAGE HEARS ABOUT IT WHEREVER IT HAPPENED. A prayer from the whole
+	# village has nobody in particular standing anywhere, so the witness list
+	# cannot answer it -- the tag does, from any act at all.
+	for p in active:
+		if p.village_wide() and tags & int(p.spec().get("tag", 0)) != 0:
+			p.touched_by_god = true
 	for h in (r.get("hits", []) as Array):
 		var f = h[0]
 		for p in active:
@@ -110,6 +134,7 @@ func tick(_delta: float) -> void:
 	_close(now)
 	_open(now)
 	_open_feud(now)
+	_open_global(now)
 
 
 ## --- closing ----------------------------------------------------------------
@@ -128,13 +153,18 @@ func _close(now: float) -> void:
 			# Gave up, or died. No penalty: the design is explicit that
 			# ignoring a prayer is a valid thing for a god to do.
 			active.erase(p)
+			_rest(p, now)
 			closed.emit(p, false)
 			continue
 		if not p.met(host):
 			continue
 		active.erase(p)
+		_rest(p, now)
 		if p.touched_by_god:
-			_thank(p)
+			if p.village_wide():
+				_thank_village(p)
+			else:
+				_thank(p)
 		closed.emit(p, p.touched_by_god)
 
 
@@ -254,6 +284,64 @@ func _thank(p: Prayer, base := ANSWERED_FAITH) -> void:
 	divinity.perform(a)
 
 
+## A village kind may not ask again until it has rested.
+func _rest(p: Prayer, now: float) -> void:
+	if p.village_wide():
+		_global_rest[p.kind] = now + GLOBAL_COOLDOWN
+
+
+## Consider whether the village as a whole has something to ask for.
+func _open_global(now: float) -> void:
+	if now < _global_look:
+		return
+	_global_look = now + GLOBAL_EVERY
+	if host.folk.size() < 2:
+		return
+	var standing := 0
+	for p in active:
+		if p.village_wide():
+			standing += 1
+	if standing >= GLOBAL_MAX:
+		return
+	var kinds: Array = []
+	for kind in Prayer.KINDS:
+		if bool(Prayer.KINDS[kind].get("village", false)):
+			kinds.append(String(kind))
+	# Shuffled with this node's own seeded generator, so a probe gets the same
+	# order every run.
+	for i in range(kinds.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var t = kinds[i]
+		kinds[i] = kinds[j]
+		kinds[j] = t
+	for kind in kinds:
+		if now < float(_global_rest.get(kind, 0.0)):
+			continue
+		if not Prayer.village_wants(kind, host):
+			continue
+		var p := Prayer.new(kind, null, now,
+							Prayer.village_desperate(kind, host))
+		active.append(p)
+		opened.emit(p)
+		return
+
+
+## Answering the village pays EVERY villager, through the normal funnel.
+func _thank_village(p: Prayer) -> void:
+	if divinity == null:
+		return
+	var a := DivineAction.relief(GLOBAL_EACH * divinity.boons.prayer_payout())
+	a.tags = int(p.spec().get("tag", 0))
+	a.verb = "The village's prayer is answered."
+	a.why = "prayer"
+	divinity.perform(a)
+	for f in host.folk:
+		if is_instance_valid(f) and f.brain != null:
+			f.brain.memories.add(Memories.KIND_MIRACLE,
+				"We asked together, and it came.", 0.6, "",
+				1.0 + f.brain.personality.devotion)
+
+
 ## --- opening ----------------------------------------------------------------
 
 func _open(now: float) -> void:
@@ -261,8 +349,14 @@ func _open(now: float) -> void:
 	for p in active:
 		if p.urgent:
 			urgent_count += 1
-	var room: int = MAX_ACTIVE - active.size()
-	var urgent_room: int = MAX_ACTIVE + MAX_URGENT_EXTRA - active.size()
+	# PERSONAL PRAYERS ONLY. The village asking must not take one of the three
+	# slots a hungry person needs -- they are two different kinds of voice.
+	var personal := 0
+	for p in active:
+		if not p.village_wide():
+			personal += 1
+	var room: int = MAX_ACTIVE - personal
+	var urgent_room: int = MAX_ACTIVE + MAX_URGENT_EXTRA - personal
 	if urgent_room <= 0:
 		return
 
@@ -299,6 +393,9 @@ func _consider(f, now: float, has_room: bool) -> Prayer:
 		# single half of an argument is a prayer with no answer condition at
 		# all, which would stand for its full ninety seconds and then lapse.
 		if bool(row.get("feud", false)):
+			continue
+		# Nor is a village prayer ever one person's to make.
+		if bool(row.get("village", false)):
 			continue
 		var desperate := false
 		if bool(row.get("danger", false)):

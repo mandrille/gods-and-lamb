@@ -2375,7 +2375,11 @@ func _add_ui() -> void:
 	# is not news, and saying so would teach the player that prayers resolve on
 	# their own whether or not they help.
 	prayers.closed.connect(func(p: Prayer, answered: bool):
-		if answered and is_instance_valid(p.who) and p.who.brain != null:
+		if not answered:
+			return
+		if p.village_wide():
+			_news("The village's prayer is answered.", "cross")
+		elif is_instance_valid(p.who) and p.who.brain != null:
 			_news("%s is answered." % String(p.who.brain.name), "cross"))
 	prayers.closed.connect(func(_p: Prayer, answered: bool):
 		stats.note("prayers_answered" if answered else "prayers_lapsed")
@@ -2397,14 +2401,10 @@ func _add_ui() -> void:
 	prayers.opened.connect(func(pr):
 		# Somebody asking for something IS the interesting thing happening.
 		director.mark("prayer", float(village.now))
-		# The bubble is the real announcement; the line is for anyone whose eye
-		# was somewhere else, and only for the ones that are actually urgent.
-		if pr.urgent and divinity != null:
-			divinity.notice.emit(pr.says()))
-	prayers.closed.connect(func(pr, answered):
-		if answered and divinity != null:
-			divinity.notice.emit("%s got what they asked for."
-				% pr.who.brain.name if is_instance_valid(pr.who) else "Answered."))
+		# ANNOUNCED ONCE, as news, where the prayer is opened. This handler used
+		# to say urgent prayers a second time as chatter, and a second closed
+		# handler said "got what they asked for" beside "is answered".
+		pass)
 
 	# The held miracle lives in the WORLD, not the UI: it is a cloud with a
 	# position, and it has to be occluded by the terrain like anything else.

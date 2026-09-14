@@ -129,6 +129,21 @@ func _draw() -> void:
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DIM)
 	y += 42
 
+	# WHAT THEY ARE ASKING YOU FOR. The panel for the exact villager with a
+	# bubble over their head never mentioned the bubble -- click the person
+	# who is praying and nothing said what they wanted.
+	var asking = null
+	if divinity != null and divinity.host != null \
+			and divinity.host.get("prayers") != null:
+		asking = divinity.host.prayers.of(who)
+	if asking != null:
+		draw_rect(Rect2(PAD, y, W - PAD * 2.0, 26.0),
+				  Color(0.30, 0.24, 0.08, 0.60), true)
+		Icons.draw_icon(self, asking.icon(), Vector2(PAD + 13.0, y + 13.0), 17.0)
+		draw_string(_font, Vector2(PAD + 28.0, y + 18.0), asking.says(),
+					HORIZONTAL_ALIGNMENT_LEFT, W - PAD * 2.0 - 34.0, 13, SAINT)
+		y += 32
+
 	# Devil <-> saint (item 4). A marker on a two-colour track, with the ends
 	# labelled, because a bare bar does not say which direction is which.
 	y = _morality(y, float(b.morality))

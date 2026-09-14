@@ -88,6 +88,49 @@ const KINDS := {
 		"says": "%s is afraid.",
 		"desperate": "%s is in the fire's path.",
 	},
+	# THE VILLAGE ASKING AS ONE.
+	#
+	# Everything above is one person's private state: Mara is hungry. These are
+	# the other shape the owner asked for -- "we want more trees" rather than
+	# "I want an apple" -- and they come out of village-level state, not out of
+	# anybody's stat bars. Nobody in particular is asking, so there is no bubble
+	# over a head; they live on the prayer rail at the top of the screen.
+	#
+	# Answered by a matching act ANYWHERE: the whole village hears about it,
+	# so planting trees at the far edge answers "more trees" as well as planting
+	# them in the square.
+	"trees": {
+		"need": "",
+		"village": true,
+		"tag": DivineAction.NATURE,
+		"icon": "tree",
+		"says": "The village wants more trees.",
+		"desperate": "The village has no trees left.",
+	},
+	"harvest": {
+		"need": "",
+		"village": true,
+		"tag": DivineAction.FOOD,
+		"icon": "wheat",
+		"says": "The granary is running low.",
+		"desperate": "The granary is empty.",
+	},
+	"rain": {
+		"need": "",
+		"village": true,
+		"tag": DivineAction.WATER,
+		"icon": "rain",
+		"says": "The fields are drying. They pray for rain.",
+		"desperate": "The land is dying of thirst.",
+	},
+	"joy": {
+		"need": "",
+		"village": true,
+		"tag": DivineAction.JOY,
+		"icon": "confetti",
+		"says": "The village is weary.",
+		"desperate": "The whole village has lost heart.",
+	},
 }
 
 ## How close a calamity has to be before somebody starts asking about it.
@@ -102,6 +145,9 @@ const SAFE := 0.62
 ## across the island and do something about it; short enough that a screen full
 ## of old prayers never happens.
 const LIFETIME := 90.0
+## A village asking stands longer than a person does: it is slower to fix, and
+## the player may need to go and find the thing that answers it.
+const GLOBAL_LIFETIME := 240.0
 
 var kind := ""
 var who = null                     ## the Follower asking
@@ -142,6 +188,9 @@ func icon() -> String:
 
 ## What they would say, if they said it out loud.
 func says() -> String:
+	if village_wide():
+		return String(spec().get("desperate" if urgent else "says",
+								 "The village prays."))
 	var name := "Somebody"
 	if who != null and is_instance_valid(who) and who.brain != null:
 		name = String(who.brain.name)
@@ -150,6 +199,9 @@ func says() -> String:
 
 
 func alive(now: float) -> bool:
+	# Nobody in particular is asking, so nobody can die and take it with them.
+	if village_wide():
+		return now - born < GLOBAL_LIFETIME
 	return is_instance_valid(who) and who.brain != null \
 		and now - born < LIFETIME
 
@@ -164,11 +216,20 @@ func feud() -> bool:
 	return bool(spec().get("feud", false))
 
 
+## Is this the whole village asking, rather than one person?
+func village_wide() -> bool:
+	return bool(spec().get("village", false))
+
+
 ## Has the thing they were asking about sorted itself out?
 ##
 ## `host` is only needed for the danger kinds, which have to look at the world
 ## rather than at a stat -- the stat kinds ignore it.
 func met(host = null) -> bool:
+	# Checked FIRST: a village prayer has no villager, and the line below would
+	# otherwise call it settled the instant it was opened.
+	if village_wide():
+		return village_met(kind, host)
 	if not is_instance_valid(who) or who.brain == null:
 		return true
 	# A FEUD IS NEVER SETTLED BY THE WORLD. There is no stat that gets better
@@ -188,4 +249,88 @@ static func near_danger(f, host) -> bool:
 	for c in (host.calamities as Array):
 		if host.grid.world_of(c.cell).distance_to(f.position) <= DANGER_NEAR:
 			return true
+	return false
+
+
+## --- the village asking -----------------------------------------------------
+##
+## Each kind has an opening line and a settling line, and the settling line is
+## set well past the opening one -- a village hovering on the edge would
+## otherwise ask, stop, and ask again every few seconds.
+
+static func trees_wanted(host) -> int:
+	return maxi(4, int(host.folk.size()) + 2)
+
+
+static func tree_count(host) -> int:
+	var n := 0
+	for e in host.builder.placed_props:
+		if String(e.get("id", "")).begins_with("Nature/tree") \
+				and not bool(e.get("gone", false)) \
+				and is_instance_valid(e.get("node")):
+			n += 1
+	return n
+
+
+static func mean_fun(host) -> float:
+	var total := 0.0
+	var n := 0
+	for f in host.folk:
+		if is_instance_valid(f) and f.brain != null:
+			total += float(f.brain.stats.get("fun", 1.0))
+			n += 1
+	return total / float(n) if n > 0 else 1.0
+
+
+static func drought_running(host) -> bool:
+	for c in (host.calamities as Array):
+		if String(c.kind) == "drought":
+			return true
+	return false
+
+
+## Should the village start asking for this?
+static func village_wants(what: String, host) -> bool:
+	if host == null:
+		return false
+	match what:
+		"trees":
+			return tree_count(host) < trees_wanted(host)
+		"harvest":
+			return int(host.village.amount("food")) < int(host.folk.size()) * 2
+		"rain":
+			return drought_running(host)
+		"joy":
+			return mean_fun(host) < 0.40
+	return false
+
+
+## Has it sorted itself out?
+static func village_met(what: String, host) -> bool:
+	if host == null:
+		return true
+	match what:
+		"trees":
+			return tree_count(host) >= trees_wanted(host) + 2
+		"harvest":
+			return int(host.village.amount("food")) >= int(host.folk.size()) * 4
+		"rain":
+			return not drought_running(host)
+		"joy":
+			return mean_fun(host) >= 0.60
+	return true
+
+
+static func village_desperate(what: String, host) -> bool:
+	if host == null:
+		return false
+	match what:
+		"trees":
+			return tree_count(host) == 0
+		"harvest":
+			return int(host.village.amount("food")) == 0
+		"rain":
+			return drought_running(host)
+		"joy":
+			return mean_fun(host) < 0.20
 	return false

@@ -80,6 +80,8 @@ var _hot_reroll := false      ## hovering the reroll-all button
 var _hover_override := Vector2(-1, -1)
 var _hot_wrath := false
 var _hot_commune := false
+var _hot_rail := -1                ## hovered prayer on the rail, or -1
+var _rail_open = null              ## the Prayer whose card is open, or null
 
 
 func _ready() -> void:
@@ -261,6 +263,7 @@ func _refresh_hot(m: Vector2) -> void:
 	_hot_reroll = _reroll_rect().has_point(m)
 	_hot_wrath = _wrath_rect().has_point(m)
 	_hot_commune = _commune_rect().has_point(m)
+	_hot_rail = _rail_at(m)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -291,6 +294,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	# click that arrives in the same frame the pointer moved would otherwise be
 	# tested against where the mouse used to be.
 	_refresh_hot(make_input_local(mb).position)
+
+	# THE PRAYER RAIL, first of all: it is the top of the screen.
+	if _hot_rail >= 0:
+		_open_rail(_hot_rail)
+		get_viewport().set_input_as_handled()
+		return
+	# A click inside an open prayer card is swallowed; anywhere else closes it
+	# and still does what it was going to do -- it is a popover, not a modal.
+	if _rail_open != null:
+		if _rail_detail_rect().has_point(make_input_local(mb).position):
+			get_viewport().set_input_as_handled()
+			return
+		_rail_open = null
 
 	# A click on the hand or the standing buttons, first: these sit on top.
 	if _hot_reroll:
@@ -474,6 +490,7 @@ func _draw() -> void:
 	_ledger()
 	_godbar()
 	_daybar()
+	_rail()
 	_goal()
 	_combo()
 	_hand()
@@ -481,6 +498,7 @@ func _draw() -> void:
 	_commune()
 	_wrath()
 	_toast()
+	_rail_detail()
 	_reticle()
 
 
@@ -504,7 +522,11 @@ const DAYBAR_H := 52.0
 ## width of the first row, because a 268-unit panel centred in 400 units of
 ## screen sits directly on top of the ledger.
 func _stack_top() -> float:
-	return PAD + (DAYBAR_H + 6.0 if _is_narrow() else 0.0)
+	# On a phone the prayer rail has its own rung under the day clock, and the
+	# rung is RESERVED rather than appearing and vanishing: a ladder that jumps
+	# whenever somebody starts or stops praying is a ladder nobody can read the
+	# ledger off.
+	return PAD + (DAYBAR_H + 6.0 + RAIL_SLOT + 12.0 if _is_narrow() else 0.0)
 
 
 func _god_y() -> float:
@@ -864,6 +886,195 @@ func _toast() -> void:
 					HORIZONTAL_ALIGNMENT_LEFT, -1, 15,
 					Color(tint.r, tint.g, tint.b, a))
 		y += 36.0
+
+
+## --- the prayer rail ---------------------------------------------------------
+##
+## WHO IS ASKING, AT THE TOP OF THE SCREEN, AS SOMETHING YOU CAN PRESS.
+##
+## A prayer used to exist only as a bubble over a head -- invisible the moment
+## the camera looked elsewhere -- and a four-second line of text. The owner
+## asked for them at the top, as icons, that say what they want when clicked.
+## The village's own prayers sit first, on a square gold plate; a person's sit
+## after, on the same warm disc as the bubble over their head, so the rail and
+## the world visibly agree.
+const RAIL_SLOT := 46.0
+const RAIL_GAP := 8.0
+const DETAIL_W := 310.0
+const DETAIL_H := 88.0
+
+
+func _rail_y() -> float:
+	if _is_narrow():
+		return PAD + DAYBAR_H + 6.0
+	return PAD - 2.0
+
+
+## How many slots fit: a phone's full row, or the space right of the day clock.
+func _rail_cap() -> int:
+	var vp := get_viewport_rect().size
+	if _is_narrow():
+		return maxi(1, int(floor((vp.x - PAD * 2.0 + RAIL_GAP)
+								 / (RAIL_SLOT + RAIL_GAP))))
+	var day_right := (vp.x + 268.0) * 0.5
+	return maxi(1, int(floor((vp.x - PAD - day_right - 8.0 + RAIL_GAP)
+							 / (RAIL_SLOT + RAIL_GAP))))
+
+
+## The prayers the rail shows: the village first, then the desperate, then the rest.
+func _rail_prayers() -> Array:
+	if host == null or host.get("prayers") == null or host.prayers == null:
+		return []
+	var out: Array = []
+	for p in host.prayers.active:
+		if p.village_wide():
+			out.append(p)
+	for p in host.prayers.active:
+		if not p.village_wide() and p.urgent:
+			out.append(p)
+	for p in host.prayers.active:
+		if not p.village_wide() and not p.urgent:
+			out.append(p)
+	var cap := _rail_cap()
+	if out.size() > cap:
+		out = out.slice(0, cap)
+	return out
+
+
+## ONE SOURCE for the slots, read by both the drawing and the hit test.
+func _rail_rects() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	var n := _rail_prayers().size()
+	var vp := get_viewport_rect().size
+	var y := _rail_y()
+	for i in n:
+		var x: float
+		if _is_narrow():
+			x = PAD + float(i) * (RAIL_SLOT + RAIL_GAP)
+		else:
+			x = vp.x - PAD - RAIL_SLOT - float(i) * (RAIL_SLOT + RAIL_GAP)
+		out.append(Rect2(x, y, RAIL_SLOT, RAIL_SLOT))
+	return out
+
+
+func _rail_at(m: Vector2) -> int:
+	var rects := _rail_rects()
+	for i in rects.size():
+		if rects[i].has_point(m):
+			return i
+	return -1
+
+
+## Open the card, and TAKE THE PLAYER THERE when it is a person asking.
+func _open_rail(i: int) -> void:
+	var list := _rail_prayers()
+	if i < 0 or i >= list.size():
+		return
+	var p = list[i]
+	if _rail_open == p:
+		_rail_open = null
+		return
+	_rail_open = p
+	if p.village_wide() or not is_instance_valid(p.who) or host == null:
+		return
+	if host.rig != null:
+		host.rig.focus = p.who.position
+		host.rig._place()
+	if host.overhead != null:
+		host.overhead.selected = p.who
+	if host.panel != null:
+		host.panel.show_for(p.who)
+
+
+func _rail() -> void:
+	var list := _rail_prayers()
+	var rects := _rail_rects()
+	if list.is_empty():
+		# On a phone the rung is reserved, so an empty one says why it is empty
+		# rather than reading as a hole in the layout.
+		if _is_narrow():
+			draw_string(_font, Vector2(PAD + 4.0, _rail_y() + 28.0),
+						"Nobody is praying right now.",
+						HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DIM)
+		return
+	var now: float = float(host.village.now) if host.village != null else 0.0
+	for i in mini(list.size(), rects.size()):
+		var p = list[i]
+		var r: Rect2 = rects[i]
+		var c := r.get_center()
+		var hot: bool = i == _hot_rail or p == _rail_open
+		var rim: Color = Overhead.PRAY_HOT if p.urgent else Overhead.PRAY_WARM
+		if p.village_wide():
+			draw_rect(r, Color(0.30, 0.24, 0.08, 0.95), true)
+			draw_rect(r, GOLD, false, 3.0 if hot else 2.0)
+		else:
+			draw_circle(c, RAIL_SLOT * 0.5, Color(0.08, 0.09, 0.12, 0.92))
+			draw_arc(c, RAIL_SLOT * 0.5 - 1.5, 0.0, TAU, 28, rim,
+					 3.4 if hot else 2.4, true)
+		if hot:
+			draw_rect(r.grow(3.0), Color(1, 1, 1, 0.35), false, 1.5)
+		Icons.draw_icon(self, p.icon(), c, 26.0)
+		var life: float = Prayer.GLOBAL_LIFETIME if p.village_wide() \
+			else Prayer.LIFETIME
+		var left := clampf(1.0 - (now - float(p.born)) / life, 0.0, 1.0)
+		draw_rect(Rect2(r.position.x + 4.0, r.end.y + 3.0,
+						(r.size.x - 8.0) * left, 3.0), rim, true)
+
+
+func _rail_detail_rect() -> Rect2:
+	if _rail_open == null:
+		return Rect2()
+	var vp := get_viewport_rect().size
+	var y := _rail_y() + RAIL_SLOT + 12.0
+	if _is_narrow():
+		return Rect2(PAD, y, vp.x - PAD * 2.0, DETAIL_H)
+	return Rect2(vp.x - PAD - DETAIL_W, y, DETAIL_W, DETAIL_H)
+
+
+## What counts as an answer, said in the player's own verbs.
+func _hint_for(tag: int) -> String:
+	match tag:
+		DivineAction.FOOD:
+			return "an apple from a tree, Feast, or Plenty"
+		DivineAction.LIFE:
+			return "a blessing, Mend, or Cleanse"
+		DivineAction.JOY:
+			return "Revel, Vision, or Gathering"
+		DivineAction.NATURE:
+			return "growing grass and trees, or Grove"
+		DivineAction.STONE:
+			return "breaking a rock, or Upheaval"
+		DivineAction.WATER:
+			return "Rain, or Cleanse"
+		DivineAction.PROTECTION:
+			return "Calm, or ending the danger"
+	return "any act of the right kind"
+
+
+func _rail_detail() -> void:
+	if _rail_open == null:
+		return
+	if host == null or host.prayers == null \
+			or not host.prayers.active.has(_rail_open):
+		_rail_open = null
+		return
+	var p = _rail_open
+	var r := _rail_detail_rect()
+	_panel(r)
+	draw_rect(Rect2(r.position, Vector2(r.size.x, 3.0)),
+			  Overhead.PRAY_HOT if p.urgent else GOLD, true)
+	Icons.draw_icon(self, p.icon(), r.position + Vector2(24.0, 26.0), 24.0)
+	draw_string(_font, r.position + Vector2(46.0, 31.0), p.says(),
+				HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 58.0, 15,
+				Overhead.PRAY_HOT if p.urgent else INK)
+	var whose := "The whole village is asking."
+	if not p.village_wide() and is_instance_valid(p.who) and p.who.brain != null:
+		whose = "%s is asking you directly." % String(p.who.brain.name)
+	draw_string(_font, r.position + Vector2(14.0, 55.0), whose,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, DIM)
+	draw_string(_font, r.position + Vector2(14.0, 75.0),
+				"Answer with " + _hint_for(int(p.spec().get("tag", 0))) + ".",
+				HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 28.0, 12, GOLD)
 
 
 ## THE DAY, at the top centre, with the sun going down beside it.
