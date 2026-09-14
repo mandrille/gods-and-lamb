@@ -75,7 +75,8 @@ const WOLF := preload("res://scripts/wolf.gd")
 var beasts: Array = []
 ## How many animals a plot supports. Bought land brings a herd with it, which
 ## is part of what makes a purchase feel like it arrived with something.
-const BEASTS_PER_PLOT := 3
+## Two, not three: a plot is a third of the area it was.
+const BEASTS_PER_PLOT := 2
 ## Fired whenever a beast leaves the world -- eaten by a wolf, slain by a
 ## hunter, struck by wrath. `kind` rather than a node: by the time anything
 ## can react the node may already be freed.
@@ -283,7 +284,7 @@ func _ready() -> void:
 	# Framed on ONE plot, not on the whole archipelago. The plot is 10.5 m
 	# across and the default 30 m pull-back was set for a 48 m landscape, which
 	# left the village a postage stamp in a field of blue.
-	rig.dist = 27.0
+	rig.dist = 20.0
 	# Clamp panning to the ground, with a margin so the edge can be inspected
 	# but not left behind entirely.
 	var pad := 4.0
@@ -1038,7 +1039,9 @@ func _stock_animals() -> void:
 			continue
 		# Two sheep to a cow: a flock with the odd cow in it reads as a
 		# village's animals, an even split reads as a menu of options.
-		var aid := "Animals/cow" if beasts.size() % 3 == 2 else "Animals/sheep"
+		# The cow is the SECOND animal, not the third: with two to a plot the
+		# third never arrived on a one-plot village, so a new game had no cow.
+		var aid := "Animals/cow" if beasts.size() % 3 == 1 else "Animals/sheep"
 		if _spawn_beast(aid, grid.world_of(cell)):
 			made += 1
 	if made > 0:
@@ -2641,7 +2644,7 @@ func next_goal() -> String:
 				return "Grow to 20 souls  (%d)" % folk.size()
 			return "Bring them through a night"
 		4:
-			return "Hold four plots  (%d)" % islands.count()
+			return "Hold %d plots  (%d)" % [Islands.AGE_PLOTS, islands.count()]
 	for n in POP_MILESTONES:
 		if not _milestones_paid.has(n) and folk.size() < n:
 			return "Grow to %d followers  (%d)" % [n, folk.size()]

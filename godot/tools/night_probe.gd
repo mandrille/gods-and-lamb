@@ -138,7 +138,7 @@ func _press_begin() -> void:
 ## proves nothing about a weighted draw.
 func _check_away_reads_aura() -> void:
 	var save := {
-		"v": 1,
+		"v": SaveGame.VERSION,
 		"meta": {"saved_at": 1788561234, "max_seen_unix": 1788561234,
 				 "away_seed": 4242, "aura": "vigil"},
 		"world": {"props": []},

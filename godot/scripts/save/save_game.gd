@@ -19,7 +19,11 @@ class_name SaveGame
 ## the same shape: a settings key that falls back costs a slider position, and
 ## a save key that falls back costs a village.
 
-const VERSION := 1
+## 2: the plots shrank from 34 tiles to 20 on a 5x5 grid. Every saved cell and
+## slot coordinate changed MEANING -- which is exactly the rule for when a bump
+## is owed, as opposed to adding an optional key -- so a version-1 village is
+## archived rather than loaded with its huts standing in the river.
+const VERSION := 2
 const PATH := "user://save.json"
 const BACKUP := "user://save.bak.json"
 

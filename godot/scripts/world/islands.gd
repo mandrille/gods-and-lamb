@@ -26,23 +26,42 @@ class_name Islands
 ##
 ## NOTHING IS BUILT FOR YOU. Every structure is one the villagers raise.
 
-## Tiles across one plot. Big: the opening should be a landscape you look
-## around in, not a tile you look at.
-const SPAN := 34
+## Tiles across one plot.
+##
+## SMALLER, AND MORE OF THEM. This was 34, on a 3x3 grid: eight purchases and
+## the map was finished, and the owner asked for the terrain to be smaller so
+## there would be more upgrades and a longer game. 20 on a 5x5 grid keeps the
+## whole world within two tiles of its old size -- so the river, the roads and
+## the camera bounds barely move -- while the starting plot drops to about a
+## third of the area and the purchases go from eight to twenty-four.
+const SPAN := 20
 ## FLUSH -- no gap. A gap here is what made plots read as separate islands.
 const PITCH := SPAN
-const GRID := 3           ## GRID x GRID plots
+const GRID := 5           ## GRID x GRID plots -- keep it ODD, so home() is the centre
 const MARGIN := 2         ## empty border, so edge tiles are not clipped
 
 const TILE := 0.5
 const LIFT := 0.5
 
-## Rising, so the second plot is a goal and the last is an achievement.
-const PRICE := [0, 40, 95, 170, 265, 380, 520, 690, 880]
+## THE PRICE OF THE NEXT PLOT, as a curve rather than a table.
+##
+## There are twenty-four purchases now, not eight, and a table that long is a
+## table somebody forgets to extend the next time the grid changes -- past its
+## end the old one charged a flat 1,100 forever. 25 * n^1.35 rises the same way
+## the table did: 25 for the first plot, about 415 for the eighth, about 1,800
+## for the last.
+const PRICE_BASE := 25.0
+const PRICE_POWER := 1.35
 ## Three plots should comfortably hold twenty-odd people. At 6 a whole village
 ## fitted in a corner of the land it had paid for, and the cap -- not the
 ## arrival rate, not the food -- was what stopped it growing.
-const POP_PER_ISLAND := 7
+## Four, not seven: a plot is a third of the area it was, and at seven a single
+## plot would have held more people than it had room to house.
+const POP_PER_ISLAND := 4
+
+## How many plots mark the last age. It was four of nine; seven of twenty-five
+## keeps it the end of the ladder rather than something bought in passing.
+const AGE_PLOTS := 7
 
 const FOUR_WAY: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0),
 								   Vector2i(0, 1), Vector2i(0, -1)]
@@ -102,8 +121,7 @@ func pop_cap() -> int:
 
 
 func price_next() -> int:
-	var n := count()
-	return PRICE[n] if n < PRICE.size() else PRICE[PRICE.size() - 1] + 220
+	return int(round(PRICE_BASE * pow(float(count()), PRICE_POWER)))
 
 
 ## Plots that are not owned but touch one that is.
@@ -252,10 +270,11 @@ func _river_cells(n: int) -> Dictionary:
 		var t := float(row)
 		var mid := base + sin(t * 0.055 + phase) * 7.0 \
 				   + sin(t * 0.019 + phase2) * 4.0
-		for k in range(-3, 4):
-			# Three tiles of water with ONE of sand each side. At four tiles of
-			# bank the river read as a beach with a stripe of water down it.
-			out[Vector2i(int(round(mid)) + k, row)] = "W" if absi(k) <= 2 else "A"
+		for k in range(-2, 3):
+			# THREE tiles of water with one of sand each side, five in all. It
+			# was seven, five of them water -- on a 20-tile plot that is a third
+			# of the land the player starts with, gone to a river.
+			out[Vector2i(int(round(mid)) + k, row)] = "W" if absi(k) <= 1 else "A"
 	return out
 
 
@@ -322,8 +341,8 @@ func _fields(ground: Array, n: int) -> void:
 		r.seed = _seed + spot.x * 7919 + spot.y * 104729
 		if r.randf() < 0.45:
 			continue                      # not every lattice cell gets one
-		var w := r.randi_range(5, 10)
-		var h := r.randi_range(4, 8)
+		var w := r.randi_range(4, 7)
+		var h := r.randi_range(3, 6)
 		for j in h:
 			for i in w:
 				if _is_land(_char_at(ground, spot.x + i, spot.y + j)):
@@ -336,8 +355,8 @@ func _cliffs(ground: Array, upper: Array, n: int) -> void:
 		r.seed = _seed + spot.x * 31337 + spot.y * 6971
 		if r.randf() < 0.4:
 			continue
-		var w := r.randi_range(8, 13)
-		var h := r.randi_range(7, 11)
+		var w := r.randi_range(5, 8)
+		var h := r.randi_range(4, 7)
 		for j in h:
 			for i in w:
 				# Notched corners, so a shelf is not a rectangle stamped on
@@ -374,8 +393,12 @@ func _scatter(props: Array, ground: Array, upper: Array,
 	# which reads as the land having been here before them, plus a handful of
 	# rocks to break for the first stone. Everything green is now grown by
 	# hand, on ground the player has greened first.
-	var plan := [["Nature/rock", 12, 1.0],
-				 ["Nature/reeds", 8, 0.6], ["Nature/lily_pad", 6, 0.6]]
+	# Scaled to the plot's AREA. These were counts for a 34-tile plot, and on a
+	# 20-tile one the same twelve rocks would sit three times as close together.
+	var area := float(SPAN * SPAN) / float(34 * 34)
+	var plan := [["Nature/rock", maxi(5, int(round(12.0 * area))), 1.0],
+				 ["Nature/reeds", maxi(3, int(round(8.0 * area))), 0.6],
+				 ["Nature/lily_pad", maxi(2, int(round(6.0 * area))), 0.6]]
 	for entry in plan:
 		var aid := String(entry[0])
 		var want := int(entry[1])

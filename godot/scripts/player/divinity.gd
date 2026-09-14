@@ -1103,9 +1103,9 @@ func _check_age() -> void:
 			ready = (host.folk.size() >= 20
 					 and host.daylight != null and host.daylight.day >= 2)
 		4:
-			# Four plots and a full deck: the end of the ladder rather than a
+			# Seven plots and a full deck: the end of the ladder rather than a
 			# rung on it, and worth the largest lump in the game.
-			ready = islands != null and islands.count() >= 4
+			ready = islands != null and islands.count() >= Islands.AGE_PLOTS
 	if not ready:
 		return
 

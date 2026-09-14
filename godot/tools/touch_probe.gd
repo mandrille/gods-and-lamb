@@ -276,22 +276,35 @@ func _check_fruit() -> void:
 ## screen and stayed in the builder's list -- paying stone on every click
 ## forever, blocking its tile, and coming back on the next grid rebuild.
 func _check_broken_rock() -> void:
+	# A ROCK THE PICKER CAN ACTUALLY SEE. The first rock in the list used to do,
+	# but on the smaller plot a tree the probe grew earlier stands in front of
+	# it along the camera ray -- and the picker, correctly, returns the nearest
+	# thing under the cursor, so the "rock" click fruited the tree. The seam
+	# under test is picker-to-handler, so the rock has to be what is picked.
+	var cam: Camera3D = _root.rig.cam
 	var rock := {}
+	var at := Vector3.ZERO
+	var screen := Vector2.ZERO
 	for e in _root.builder.placed_props:
-		if String(e.get("id", "")) == "Nature/rock":
+		if String(e.get("id", "")) != "Nature/rock":
+			continue
+		if not is_instance_valid(e.get("node")):
+			continue
+		var here: Vector3 = e["node"].global_position + Vector3(0, 0.2, 0)
+		_root.rig.focus = here
+		_root.rig.dist = 12.0
+		_root.rig._place()
+		_root.pick.setup(_root.rig, _root.builder, _root.builder.placed_props)
+		var sp: Vector2 = cam.unproject_position(here)
+		var hit: Dictionary = _root.pick._pick_at(sp)
+		if hit.get("src", hit) == e or hit.get("node") == e.get("node"):
 			rock = e
+			at = here
+			screen = sp
 			break
 	if rock.is_empty():
-		print("[TOUCH] no rock left to break twice")
+		print("[TOUCH] no rock the picker can see on its own; skipped")
 		return
-	var cam: Camera3D = _root.rig.cam
-	var at: Vector3 = rock["node"].global_position + Vector3(0, 0.2, 0)
-	# Look at it, or it may be off screen or behind the camera.
-	_root.rig.focus = at
-	_root.rig.dist = 12.0
-	_root.rig._place()
-	_root.pick.setup(_root.rig, _root.builder, _root.builder.placed_props)
-	var screen: Vector2 = cam.unproject_position(at)
 
 	var stone: int = _root.village.amount("stone")
 	_root._touched_at = -99.0
@@ -344,9 +357,16 @@ func _check_growing() -> void:
 	if after <= before:
 		_faults.append("touching clear grass grew nothing")
 	# And the same cell again must NOT stack a second plant on the first.
+	#
+	# Counted ON THIS CELL, not across the whole world. A second touch on a
+	# cell holding a tree now fruits that tree -- on purpose, it is the most
+	# direct "I clicked the tree" there is -- and the apples it drops are
+	# props too, so a world-wide count read fruit as a second plant. Fruit
+	# never lands on the tree's own cell, so this asserts exactly the rule.
+	var on_cell := _props_on(cell)
 	_root._touched_at = -99.0
 	_root._on_ground(_root.grid.world_of(cell))
-	if _root.builder.placed_props.size() > after:
+	if _props_on(cell) > on_cell:
 		_faults.append("a second touch stacked another plant on the first")
 	# The seed is a function of the CELL, so it cannot be rerolled.
 	if WorldTouch.seed_for(cell) != WorldTouch.seed_for(cell):
@@ -386,7 +406,25 @@ func _check_faith() -> void:
 	if who == null:
 		_faults.append("nobody to witness a touch")
 		return
-	var cell: Vector2i = _root.grid.cell_of(who.position)
+	# ON BARE DIRT, which a touch always greens. The cell under whoever came
+	# first used to do, but on the smaller plot it is often grass within a
+	# tree's reach -- and a touch there goes to the tree or is refused, and a
+	# refusal rightly pays nothing. This check is about WITNESSING, so it
+	# stands the villager on ground where the touch is certain to land.
+	var cell := Vector2i(-1, -1)
+	for row in _root.builder.lower.size():
+		var line: String = _root.builder.lower[row]
+		for col in line.length():
+			var c := Vector2i(col, row)
+			if line[col] == "D" and not _root._prop_on(c) and _root.islands.slot_of_cell(c).x >= 0:
+				cell = c
+				break
+		if cell.x >= 0:
+			break
+	if cell.x < 0:
+		print("[TOUCH] no bare dirt left to touch; skipped")
+		return
+	who.position = _root.grid.world_of(cell)
 	var before := float(who.brain.faith_xp) \
 		+ float(who.brain.faith_level) * 1000.0
 	_root._touched_at = -99.0
@@ -495,3 +533,13 @@ func _report() -> void:
 	print("[TOUCH] %d FAILURE(S)" % _faults.size())
 	for f in _faults:
 		print("  - %s" % f)
+
+
+func _props_on(cell: Vector2i) -> int:
+	var n := 0
+	for e in _root.builder.placed_props:
+		if bool(e.get("gone", false)) or not is_instance_valid(e.get("node")):
+			continue
+		if int(e.get("col", -1)) == cell.x and int(e.get("row", -1)) == cell.y:
+			n += 1
+	return n

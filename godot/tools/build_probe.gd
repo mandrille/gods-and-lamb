@@ -146,7 +146,9 @@ func _check_new_buildings() -> void:
 	# plots is plenty of land and exercises `buy_island` -> `rebuild_world`
 	# again before the saturation phase does its own purchase below.
 	_root.divinity.add_faith(9999.0)
-	for i in 2:
+	# SIX, not two: a plot is a third of the area it was, and twenty large
+	# footprints did not fit comfortably on three of the old ones either.
+	for i in 6:
 		var slots: Array = _root.islands.buyable()
 		if slots.is_empty():
 			break
@@ -180,9 +182,16 @@ func _check_new_buildings() -> void:
 	var idx := 0
 	for aid in NEW_BUILDINGS:
 		for scale_v in [1.06, 0.94]:
-			var gx := idx % 5
-			var gy := (idx / 5) % 4
-			var hint := home_origin + Vector2i(5 + gx * 6, 5 + gy * 7)
+			# Round-robin across EVERY OWNED PLOT. The old lattice reached 29
+			# tiles into the home plot, which at 20 tiles is off it -- and
+			# anything off owned land fails `is_buildable` outright.
+			var owned: Array = _root.islands.unlocked.keys()
+			var slot: Vector2i = owned[idx % owned.size()]
+			var k: int = idx / owned.size()
+			var hint: Vector2i = _root.islands.origin(slot) \
+				+ Vector2i(3 + (k % 3) * 6, 3 + ((k / 3) % 3) * 6)
+			if slot == Islands.home():
+				hint = home_origin + Vector2i(3 + (k % 3) * 6, 3 + ((k / 3) % 3) * 6)
 			idx += 1
 			var spot := _find_free_spot(aid, hint)
 			if spot.x < 0:

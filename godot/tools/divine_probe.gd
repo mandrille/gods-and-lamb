@@ -296,8 +296,15 @@ func _check_they_notice() -> void:
 	var who = _anyone()
 	if who == null:
 		return
-	# Somewhere they are not standing, or "turned to face it" is meaningless.
-	var at: Vector3 = who.position + Vector3(3.0, 0.0, 0.0)
+	# Somewhere they are not standing AND NOT ALREADY FACING, or "turned to
+	# face it" is meaningless. This was a fixed 3 m in +X, and on the smaller
+	# map a founder spawns facing exactly +X -- so the villager was chosen, was
+	# marked, and "turned" to the heading they already had. Measured: yaw
+	# 1.5708 before, 1.5708 toward the act, 1.5708 after; the same villager
+	# turned at once to an act from the side. So the act goes to their side,
+	# perpendicular to whatever way they face, which cannot coincide.
+	var yaw: float = who.rotation.y
+	var at: Vector3 = who.position + Vector3(cos(yaw), 0.0, -sin(yaw)) * 3.0
 	who.state = who.State.IDLE
 	who._notice_left = 0.0
 	var facing_before: float = who.rotation.y

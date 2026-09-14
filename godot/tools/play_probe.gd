@@ -374,10 +374,13 @@ func _check_targeting() -> void:
 	elif hits < tried:
 		_faults.append("only %d of %d points ON the villager selected them"
 			% [hits, tried])
-	# And a point well clear of everyone must select nobody.
-	var far: Vector2 = feet + Vector2(420.0, 0.0)
-	if _root.overhead.under(far) != null:
-		_faults.append("a point 420 px away still selected a villager -- the "
+	# And a point clear of EVERYONE must select nobody. "420 px right of this
+	# villager" stopped meaning that when the plot shrank: the camera sits
+	# closer and the founders stand together, so the point landed on the other
+	# one. Find a point clear of every villager by the picker's own geometry.
+	var far: Vector2 = _clear_point(feet)
+	if far.x > -99999.0 and _root.overhead.under(far) != null:
+		_faults.append("a point clear of every villager still selected a villager -- the "
 			+ "target is too big to be a target")
 
 
@@ -641,3 +644,28 @@ func _report() -> void:
 			printerr("[PLAY]   - " + f)
 		printerr("[PLAY] %d FAILURE(S)" % _faults.size())
 		quit(1)
+
+
+## A screen point outside every villager's pick capsule with room to spare, or
+## (-1e5, -1e5) when the view is too crowded to have one.
+func _clear_point(near: Vector2) -> Vector2:
+	var cam: Camera3D = _root.rig.cam
+	for off in [Vector2(420, 0), Vector2(-420, 0), Vector2(0, 420),
+				Vector2(0, -420), Vector2(620, 300), Vector2(-620, -300)]:
+		var p: Vector2 = near + off
+		var clear := true
+		for f in _root.folk:
+			if not is_instance_valid(f):
+				continue
+			var pf: Vector2 = cam.unproject_position(f.position)
+			var ph: Vector2 = cam.unproject_position(
+				f.position + Vector3(0, Overhead.HEAD_HEIGHT, 0))
+			var radius: float = maxf(Overhead.PICK_RADIUS,
+									 maxf(ph.distance_to(pf), 8.0) * 0.62)
+			if _root.overhead._to_segment(p, pf, ph) < radius * 1.5:
+				clear = false
+				break
+		if clear:
+			return p
+	print("[PLAY] no point on screen is clear of every villager; skipped")
+	return Vector2(-100000.0, -100000.0)

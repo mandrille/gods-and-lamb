@@ -155,7 +155,7 @@ func _check_clock(save: Dictionary) -> void:
 ## scene at all.
 func _save() -> Dictionary:
 	return {
-		"v": 1,
+		"v": SaveGame.VERSION,
 		"meta": {"saved_at": 1788561234, "max_seen_unix": 1788561234,
 				 "away_seed": 918273645, "aura": ""},
 		"world": {"props": [{"id": "Nature/crop_row", "col": 4, "row": 4},
